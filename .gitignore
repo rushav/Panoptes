@@ -1,0 +1,13 @@
+build/
+*.o
+*.so
+*.a
+__pycache__/
+*.pyc
+.venv/
+*.raw
+*.bag
+data/
+*.swp
+.vscode/
+.idea/
