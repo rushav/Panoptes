@@ -45,3 +45,32 @@ normal.
 
 - The camera LED ring must be lit. If it is dark, the problem is PoE, not software.
 - USB cameras are not supported by the Linux Camera SDK. GigE/PoE only.
+
+## Multi-camera synchronization
+
+Two Prime 13W cameras (serials 33661, 33275) on one PoE switch were verified
+hardware-synchronized with no additional configuration:
+
+- Both cameras report the **same frame IDs**
+- `Frame::TimeStamp()` is **identical** across cameras for a shared frame ID
+  (measured offset: 0.00000 s across all sampled frames)
+- Frame rate 120 Hz (timestamp delta 0.0083 s)
+
+No eSync device is required for frame-level alignment between Ethernet cameras.
+
+### Device discovery is staggered
+
+`WaitForNewDevice()` returns as soon as the *first* device initializes. With
+multiple cameras this yields an incomplete device list. Poll `GetDevices()`
+until the count stops growing before starting capture.
+
+### Dropped frames
+
+Frame IDs show gaps under a naive per-camera polling loop. Increasing socket
+buffers helps:
+
+    sudo sysctl -w net.core.rmem_max=26214400
+    sudo sysctl -w net.core.rmem_default=26214400
+
+The proper fix is the SDK's Synchronizer / frame-group API rather than polling
+each camera independently.
