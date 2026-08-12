@@ -74,3 +74,40 @@ buffers helps:
 
 The proper fix is the SDK's Synchronizer / frame-group API rather than polling
 each camera independently.
+
+## Frame group synchronization (cModuleSync)
+
+`cModuleSync` delivers synchronized frame groups across cameras and eliminates
+the frame loss seen when polling each camera independently.
+
+Configuration used:
+
+    sync->SetOptimization(cModuleSync::ForceCompleteDelivery);
+    sync->SetAllowIncompleteGroups(true);
+
+Measured with two Prime 13W cameras:
+
+| Metric | Result |
+|---|---|
+| Delivery rate | 120 Hz sustained |
+| `LastFrameGroupMode()` | **Hardware** |
+| `LastFrameGroupSpread()` | 0 s |
+| Frames delivered | 1621 / 1621 (**0% loss**) |
+
+By comparison, a naive per-camera `GetNextFrame()` polling loop dropped frames
+continuously.
+
+Note: `Synchronizer` (synchronizer.h) is a per-camera frame pool, not the
+multi-camera grouping mechanism. `cModuleSync` (modulesync.h) is the correct
+class. No SDK sample demonstrates it.
+
+## Static centroid noise floor
+
+A stationary marker at ~1 m, Object mode, threshold 240:
+
+- X spread ≈ 0.05 px peak-to-peak
+- Y spread ≈ 0.04 px peak-to-peak
+
+Blob area for a single marker at this range is ~46–56 px, so an area filter
+threshold of 30 is appropriate. A threshold of 50 sits inside the marker's own
+area distribution and causes intermittent rejection.
