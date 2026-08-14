@@ -146,3 +146,28 @@ Four Prime 13W cameras, 9x6 ChArUco board, 90 mm squares, 67 mm markers:
 Rational distortion model (`CALIB_RATIONAL_MODEL`) for the 82-degree FOV lens.
 Focal lengths agree to within 1% across cameras, and principal points sit at
 image centre — consistent with identical hardware.
+
+## Calibration pipeline results
+
+Four Prime 13W cameras, 2 x 2 m square, 9x6 ChArUco (90 mm squares).
+
+| Stage | RMS reprojection |
+|---|---|
+| Intrinsics (per camera) | 0.32 - 0.39 px |
+| Pairwise extrinsics, chained | loop closure 13.8 mm / 0.66 deg |
+| Bundle adjustment | 3.88 px initial |
+| BA + Huber loss + outlier rejection | **0.4475 px** (median 0.300) |
+
+Reconstructed geometry: adjacent baselines 2.296-2.400 m, diagonals
+3.313-3.341 m. Ratio 1.41 confirms a square layout.
+
+### Outliers come from board motion
+
+50/310 observations exceeded 2 px and were rejected. They clustered in
+consecutive capture indices on individual cameras — the board was moving
+during those captures. Grayscale mode is **asynchronous**, so cameras do not
+expose simultaneously; any board motion between exposures makes the two views
+mutually inconsistent.
+
+Hold the board still on each capture during the extrinsics pass. Outlier
+rejection remains as a safety net.
