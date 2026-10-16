@@ -45,4 +45,11 @@ cv::Mat Detector::annotate(const cv::Mat& gray, const Detection& d) const {
     return out;
 }
 
+// Markers are small, bright and round. Window glare is irregular; a
+// distant speck is usually noise. Area and roundness come from the
+// camera itself - this is the 2D object filter the SDK leaves to us.
+bool plausibleMarker(const Blob& b, float minArea, float maxArea, float minRound) {
+    return b.area >= minArea && b.area <= maxArea && b.roundness >= minRound;
+}
+
 }  // namespace mocap

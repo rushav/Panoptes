@@ -29,7 +29,7 @@ import numpy as np
 import cv2
 
 TEST_FRACTION = 0.25
-SEED = 42
+SEED = 99
 GRID_X, GRID_Y = 5, 6
 
 

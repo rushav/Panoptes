@@ -19,7 +19,7 @@ int main() {
     // the count holds steady. Full enumeration takes 4-8 seconds cold.
     size_t previous = 0;
     int stable = 0;
-    for (int i = 0; i < 40 && stable < 6; ++i) {
+    for (int i = 0; i < 120 && stable < 20; ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
 
         CameraList list;

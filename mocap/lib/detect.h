@@ -11,6 +11,8 @@
 
 #pragma once
 
+#include "camera.h"            // Blob
+
 #include <opencv2/core.hpp>
 #include <opencv2/aruco/charuco.hpp>
 #include <vector>
@@ -54,5 +56,10 @@ private:
     cv::Ptr<cv::aruco::Dictionary>    dict_;
     cv::Ptr<cv::aruco::CharucoBoard>  board_;
 };
+
+// Markers are small, bright and round. Window glare is irregular and a
+// distant speck is usually noise, so area and roundness - both measured
+// by the camera itself - are the 2D object filter the SDK leaves to us.
+bool plausibleMarker(const Blob& b, float minArea, float maxArea, float minRound);
 
 }  // namespace mocap

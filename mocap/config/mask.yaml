@@ -1,0 +1,39 @@
+%YAML:1.0
+# Blocking-mask tool, src/07_mask. (OpenCV needs the directive line above.)
+
+# Object-mode settings masks are learned and applied under. A saved mask
+# records the settings it was learned with; loading it under different ones
+# warns, because exposure and threshold change which glare becomes a blob.
+camera:
+  exposure_us: 10
+  gain: 0
+  intensity: 15
+  threshold: 40
+  frame_rate_hz: 30
+  ir_filter: 1
+
+learn:
+  start_delay_s: 5        # time to step out of the volume after launching
+  window_s: 30
+  persist_fraction: 0.5   # seen in more than this fraction of frames = static
+  match_radius_px: 4      # blobs this close across frames are one source
+  dilate_cells: 2         # margin around each source, in mask cells
+  warn_coverage: 0.10     # mask over this fraction of the frame: re-aim instead
+
+verify:
+  window_s: 10
+
+coverage:
+  min_observers: 3        # triangulation wants at least this many
+  stale_ms: 200           # newest frame older than this = not observing
+  log_interval_ms: 100
+  near_mask_cells: 1      # a loss this close to the mask is blamed on it
+
+show:
+  tile_width_px: 400
+  grayscale_exposure_us: 8133
+  grayscale_gain: 7
+
+paths:                    # relative to this file's directory
+  masks: masks
+  logs: ../logs
