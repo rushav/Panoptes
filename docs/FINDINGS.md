@@ -11,7 +11,13 @@ repeated here.
 Commands are in [RUNBOOK.md](RUNBOOK.md).
 
 Every claim below marked **Verified** includes the measurement it came from.
-Open questions are collected at the end.
+Claims taken from code comments or from reading the SDK binary, with no
+measurement recorded in this repo, are marked as such. Open items and open
+questions are collected at the end.
+
+Sections 1–10 were written against the GUI tool `src/intrinsics_capture`,
+removed in commit a91b3c6. Their measurements stand; where they describe that
+tool's behaviour, a note says what the current code does instead.
 
 ---
 
@@ -47,6 +53,12 @@ Two earlier beliefs were both wrong, in opposite directions:
 The tool now re-reads the range on every frame rate change and after applying
 the startup defaults. Confirmed live: opening at 30 Hz logs
 `exposure range at 30 Hz: 10..33133`.
+
+*Current code:* `Camera::maxExposure()` (`lib/camera.cpp`) asks the SDK on
+every call instead of caching, and `Camera::apply()` sets the frame rate
+before the exposure so the exposure is not clamped against the old ceiling.
+`src/05_identify` still caps its `]` key at a hardcoded 33133, which is
+correct only at 30 Hz.
 
 **Why it matters:** at 30 Hz there is 4× more exposure headroom available than
 the working default of 8133 uses. If a board is ever too dark at working
@@ -105,7 +117,7 @@ decim=4  received 10.0 fps  1280x1024 | FrameRate()=120 ActualFrameRate()=120  D
 
 The imager genuinely is running at the configured rate — `ActualFrameRate()`
 confirms it — the *delivery* of full-resolution grayscale is what is limited.
-The tool shows the two numbers separately for this reason.
+The removed GUI showed the two numbers separately; no current tool does.
 
 **Why it matters:** harmless for tripod calibration, where the board is held
 still. It would matter for anything wanting fast grayscale.
@@ -136,7 +148,8 @@ same figure is reassuring about both.
 **Why it matters:** gain can be used freely to buy brightness. The usual worry
 that gain amplifies sensor noise into corner uncertainty does not show up here.
 
-Reproduce with `python/corner_jitter.py <session_dir> ...`.
+The script that produced this, `corner_jitter.py`, is no longer in the repo,
+so the measurement cannot currently be reproduced from here.
 
 ---
 
@@ -154,8 +167,8 @@ were extrapolating at the edges rather than being measured there.
 
 To confirm the mechanism, two synthetic capture sets were rendered against
 known ground truth (fx = fy = 780, cx = 632, cy = 518, a real radial distortion
-field applied per pixel), then solved with this repo's own
-`solve_intrinsics.py`:
+field applied per pixel), then solved with `solve_intrinsics.py` (since
+removed; `python/fit_intrinsics.py` is its replacement):
 
 | Set | Empty cells (5×6) | RMS | fx recovered | Undistortion error vs truth, outer 20% of field |
 |-----|------------------:|----:|-------------:|------------------------------------------------:|
@@ -173,9 +186,10 @@ observations exist. A region with no data contributes nothing to RMS, so RMS is
 constitutionally incapable of reporting the gap.
 
 **Why it matters:** coverage has to be watched *during* capture. Discovered
-afterwards, it means recapturing. This is why the capture tool draws the
-coverage grid live and why the solve panel repeats the empty-cell count next to
-the intrinsics.
+afterwards, it means recapturing. This is why `src/04_capture` draws the
+coverage grid live and turns its status line green only at zero empty cells
+(`lib/coverage.h`, `lib/coverage.cpp`). The Python solve does not re-check
+coverage.
 
 ---
 
@@ -195,9 +209,10 @@ calibration, because 20 near-identical views are trivially easy to fit.
 
 **Why it matters:** all-fronto-parallel views leave focal length and distance
 mutually ambiguous — a small near board and a large far one produce the same
-image. The tell is fx drifting away from fy. The tool now estimates board tilt
-per capture via `solvePnP` and flags when fewer than 30% of captures exceed
-20°.
+image. The tell is fx drifting away from fy. `src/04_capture` estimates board
+tilt per capture via `solvePnP` (assuming f = 780 px, principal point at the
+image centre) and displays the share of captures beyond 20° plus a tilt
+histogram. It shows the number; it does not warn below 30%.
 
 ---
 
@@ -217,9 +232,10 @@ later versions call the legacy layout. Confirmed on real captures — 4.6's
 20-frame sessions with no flag set.
 
 So the same board is described two different ways depending on the OpenCV
-major version. `legacy_pattern: true` in
-`config/charuco_board.yaml` carries the flag to the 5.x solver;
-`session.json` records it so a session stays interpretable later.
+major version. *Current code:* there is no `config/charuco_board.yaml`.
+`load_board()` in `python/compare_models.py` sets `setLegacyPattern(True)`
+unconditionally, and `fit_intrinsics.py` and `bootstrap_intrinsics.py` use it
+from there. `session.json` does **not** record the flag (`lib/session.cpp`).
 
 ---
 
@@ -235,26 +251,39 @@ the cameras.
 `CameraList` can also return **the same serial more than once** — observed
 consistently on 33661, which appears twice on every enumeration.
 
-The tool polls the device list until the count has been stable for 1.5 s, and
-collapses duplicates by serial, preferring the entry that has reached
-`Initialized`.
+The removed tool polled the device list until the count had been stable for
+1.5 s. **That window is too short for ten cameras**: tuned for four (6 stable
+polls of 250 ms), it reported only 5 of 10 ready, because the count plateaus
+while later cameras are still initialising (`lib/camera.cpp`, comment in
+`discover()`). The current `discover()` polls every 250 ms and needs 20 stable
+polls (5 s of no change), capped at 120 polls (30 s). `src/01_discover` uses
+the same window.
+
+*Current code:* `src/02_stream` and `src/03_detect` still carry the old
+window (6 stable polls, 40-poll cap). Duplicates are collapsed by serial, but
+`discover()` keeps the **first** entry for a serial and `01_discover` keeps
+the **last**; neither prefers the `Initialized` one.
 
 ---
 
 ## 9. Other SDK behaviour worth knowing
 
-**Verified.** All of these are handled in
-`src/intrinsics_capture/camera_source.cpp`.
+**Verified** against the removed tool. The first two are handled in
+`lib/camera.cpp` (and inline in `src/02_stream`, `src/03_detect`).
 
 - `SetVideoType` is asynchronous. `VideoType()` reports the new mode
   immediately, but frames already queued still carry the old one, and
   `GrayscaleData()` on an object-mode frame returns null. In practice exactly
   one object-mode frame arrives after `Start()` and must be dropped.
-- `NextFrame()` returns the **oldest** queued frame. One call per loop
-  iteration falls further behind on every pass; the queue has to be drained to
-  the end each time.
+  `Camera::start()` sets the type, calls `Start()`, then sets it again, and
+  every fetched frame's `FrameType()` is checked.
+- `NextFrame()` returns the **oldest** queued frame, as a
+  `std::shared_ptr<const Frame>`. One call per loop iteration falls further
+  behind on every pass; the queue has to be drained to the end each time.
+  Dropping the `shared_ptr` frees the buffer; there is no manual `Release()`.
 - SDK listener callbacks fire on its own discovery thread. Calling back into
   the SDK from inside one can deadlock, so callbacks only touch local state.
+  (No current code registers a listener.)
 - Starting a second instance immediately after killing the first occasionally
   hangs in `CameraLibraryStartup()` while the previous process's sockets are
   still bound. A couple of seconds between runs avoids it.
@@ -272,6 +301,260 @@ At 1–1.5 m the board reaches the frame edges and detection is stable.
 
 ---
 
+## 11. Object mode is what ten cameras run on
+
+**Partly verified.** Grayscale is ~1.3 MB per frame and one camera alone
+delivers 6–8 fps (section 3), so ten grayscale streams are not an operating
+mode. In object mode the camera thresholds on board and sends only blob
+centroids, each with the camera's own area and roundness (`lib/camera.h`).
+That is what `src/05_identify` and `src/07_mask` run all ten cameras on.
+
+Object mode is described in the code comments as hardware-synchronised across
+cameras. **Unverified here:** `Camera::diagnostics()` prints the SDK's
+`IsVideoTypeSynchronous(ObjectMode)` answer, but no output is recorded, and no
+synchronised capture has been built (see Open items).
+
+**`SendEmptyFrames(true)` is required for diagnosis.** Without it the camera
+sends nothing when it sees no markers, so "no frames" and "no blobs" are the
+same observation and a dark scene looks like a dead stream. Every object-mode
+tool turns it on. Source: code comment in `lib/camera.h`; no measurement
+recorded.
+
+**The object-mode operating point is not settled.** Two sets of values are
+in use, and nothing in the repo measures one against the other:
+
+| Source | Exposure (µs) | Threshold | Gain | Intensity | Rate |
+|--------|--------------:|----------:|-----:|----------:|-----:|
+| `src/05_identify`, `src/07_objdiag` defaults | 500 | 200 | 0 | 15 | 30 Hz |
+| `config/mask.yaml` (masks learned here) | 10 | 40 | 0 | 15 | 30 Hz |
+
+10 µs is the SDK's exposure floor (section 1). The `05_identify` source notes
+that the floor "is not automatically a working value".
+
+The camera reports its own threshold limits (`MinimumThreshold()` /
+`MaximumThreshold()`). The code comments say a value outside them is silently
+clamped or ignored and reads downstream as "no markers"; this is unverified.
+`src/07_objdiag --sweep` measures the peak blob count across that range.
+
+---
+
+## 12. Change one setting at a time while streaming
+
+**Observed, not measured** (code comments in `lib/camera.cpp`).
+
+- Re-sending every setting mid-stream costs a settling period per command,
+  which looks like a stall in frame delivery. `Camera::apply()` sends only
+  the fields that changed since the last call; `setThreshold()` and
+  `setExposure()` send one value. The vendor's own sample app also sets one
+  value per user action.
+- Settings applied while the camera is stopped are not reliably retained, so
+  `Camera::start()` applies them after `Start()`.
+- Reasserting the video type when it has not changed costs a mode-change
+  settling period, so `apply()` only sends it on a real change.
+- Polling `NextFrame()` in a tight loop can starve the SDK's own receive
+  thread and itself look like 0 fps; `src/07_objdiag` sleeps 1 ms between
+  empty polls.
+
+---
+
+## 13. Blocking masks
+
+**SDK semantics: read from the SDK binary** (`cBlockControlBase` /
+`cBlockControlMask` in `libCameraLibrary.so`), not from documentation.
+`mask --probe` exists to confirm the behavioural ones on hardware; **no probe
+output is recorded**, so those remain unverified except where noted.
+
+- The mask is a grid of cells, not pixels. `BlockingGrid()` is the cell size
+  in pixels; `BlockingMaskWidth/Height()` are the cell counts,
+  `ceil(1280 / grid)` × `ceil(1024 / grid)`. Pixel (x, y) is in cell
+  (x / grid, y / grid). **Verified:** all ten cameras report **640 × 512
+  cells of 2 px** (`grid` in every `config/masks/<serial>.json`).
+- `SetBitMaskPixel(X, Y)` takes **cell** coordinates despite its name. A
+  pixel coordinate is bounds-checked only against the cell grid, so it masks
+  the wrong cell or is silently ignored. No current code calls it.
+- `AddBlockingRectangle` takes **pixel** coordinates and divides by the grid.
+  No current code calls it.
+- `SetBlockingMask` / `GetBlockingMask` take one byte per cell, row-major,
+  and the size must be exactly cols × rows. `SetBlockingMask` with any other
+  size **clears** the staged mask; `GetBlockingMask` does nothing.
+  `Camera::stageMask()` checks the size before calling.
+- Every edit goes into an SDK-side staging copy. Nothing reaches the camera
+  until `UpdateBlockingMask()`, which sends only the chunks that differ from
+  what the SDK believes the camera holds. That belief starts **empty** in
+  every new process, so a mask the camera kept from an earlier run is
+  invisible, and an incremental update on top of it leaves stale cells.
+  `Camera::setMask()` therefore commits all-blocked and then the target,
+  which forces every chunk to be sent whatever the camera held.
+- Whether `ClearBlockingMask()` by itself reaches the camera is unverified.
+- `IsBlockingMaskEnabled()` reports an SDK-side flag, not a camera readback.
+
+**Learn and verify results, 2026-10-17 15:37** (from
+`config/masks/*.json`; all ten cameras at the `mask.yaml` settings in
+section 11):
+
+| | Range over the ten cameras |
+|---|---|
+| Persistent sources found in a 30 s empty-volume window | 2 – 7 |
+| Cells masked | 424 – 1177 (0.13% – 0.36% of the frame) |
+| Verify window | 300 frames per camera |
+| Residual persistent sources after masking | **0 on all ten** |
+| Blobs per frame after masking | 0 on nine; 0.12 on 33276 |
+
+So learn → apply → commit removes the static interference at these settings.
+
+**Masks are settings-specific.** Exposure and threshold decide which glare
+becomes a blob, so each saved mask records the settings it was learned
+under and `mask --load` warns if any differ. A mask is also valid only while
+its camera has not moved.
+
+**The acceptance test has no recorded pass.** `mask --coverage` passes only
+if the walked marker is never seen by fewer than `min_observers` (3)
+cameras. Four walk logs are in `logs/`; in each the minimum is 0 observers,
+with 17% to 100% of samples below 3. The logs don't record whether the
+zero-observer samples are the marker outside the volume or a real gap.
+
+---
+
+## 14. Intrinsics of camera 33661
+
+**Verified** by `python/fit_intrinsics.py` (OpenCV 5.0.0, Brown-Conrady,
+all frames) on three sessions. The sessions are in `$HOME/panoptes-data/sessions`,
+which is outside the repo:
+
+| Session | Views | RMS (px) | fx | fy | cx | cy |
+|---|---:|---:|---:|---:|---:|---:|
+| `intrinsics_33661_20260924_155048` | 67 | 0.383 | 779.69 | 780.88 | **636.48** | 514.57 |
+| `intrinsics_33661_20260925_094611` | 50 | 0.359 | 781.94 | 781.92 | **645.88** | 511.82 |
+| `intrinsics_33661_20260925_103705` | 50 | 0.372 | 782.17 | 781.29 | **643.37** | 510.31 |
+| Range | | | 2.48 | 1.05 | **9.40** | 4.26 |
+
+cx is the outlier: 9.4 px across sessions against 2.5 px for fx. The
+`bootstrap_intrinsics.py` docstring explains why cx and cy are the
+weakest-determined parameters. Whether resampling one session reproduces this
+spread has not been recorded (see Open items).
+
+`config/layout.yaml` uses fx 782.0, fy 781.6, cx 644.6, cy 511.1. These match
+the mean of the two 2026-09-25 sessions to within 0.1 px. That derivation is
+inferred; `layout.yaml` says only "measured on 33661". Its distortion
+coefficients are **assumed placeholders**, not these fits. For example,
+`layout.yaml` k2 is 0.02, while the three fits give 0.082–0.099.
+
+**Model choice.** `fit_intrinsics.py` and `layout.yaml` record Brown-Conrady
+(5 coefficients), chosen over the rational model (8) because held-out testing
+"showed the rational model's three extra coefficients bought nothing at
+82 deg". `compare_models.py` prints held-out error and edge straightness but
+saves only training RMS. On the 2026-09-24 session that file shows
+Brown-Conrady 0.3756 px, rational 0.3746 px, and fisheye 181 px (a failed
+fit). **The held-out numbers behind the choice are not recorded**, so the
+reason is unverified from repo data.
+
+---
+
+## 15. Synthetic triangulation accuracy, nominal layout
+
+**Verified as a computation; it is a floor, not a forecast.** Run 2026-10-17
+by `python/accuracy_study.py`. It assumes perfect calibration, static centroid
+noise of 0.054 px, shared 33661 intrinsics with placeholder distortion, and
+geometric visibility only. Full tables, method and assumptions:
+[`analysis/README.md`](../analysis/README.md); numbers and provenance:
+`analysis/accuracy_study.json`.
+
+| | Median | p90 | Max |
+|---|---:|---:|---:|
+| Whole volume, RMS 3D error | 0.098 mm | 0.193 mm | 0.82 mm |
+| Perch box (perch ± 12 in), RMS 3D error | 0.077 mm | 0.089 mm | 0.102 mm |
+
+- **19% of the volume cannot be triangulated at all** (80.7% is seen by 2+
+  cameras), and 24.3% is seen by fewer than 3. The gap is the top of the room,
+  above about 90 in. Every camera aims at z = 30 in, so that region falls
+  outside every frustum. Coverage, not accuracy, is the main volume finding.
+- The perch box is fully covered: 96% of its points are seen by all ten, none
+  by fewer than eight.
+- The two camera heights balance the axes. Upper six alone: z is weak (0.105 mm
+  median on the perch box). Lower four alone: y is weak (0.075 mm). All ten:
+  0.043 / 0.047 / 0.043 mm.
+- Any six cameras are worse, up to about 1.8× on the perch box. The worst
+  sixes keep only one lower camera.
+- 20 perturbed layouts (±2 in position, 2° aim, ±2° roll) move every headline
+  statistic by at most 9.3%. Tape-measured positions are good enough for these
+  conclusions.
+- For scale, the previous rig measured 13.8 mm loop closure over a 9 m
+  circuit. The geometry and centroid noise use very little of that budget.
+
+---
+
+## 16. Build and host environment
+
+**Verified on this host** except where noted.
+
+- Every binary that talks to the cameras needs
+  `cap_net_raw,cap_net_admin+eip`. Linking writes a new file, which **drops
+  file capabilities**, so `setcap` must be rerun after every relink. (A fresh
+  build on 2026-10-19 showed no capabilities on any binary under `getcap`.)
+- Running a tool under `sudo` instead breaks desktop audio for the session
+  and leaves root-owned files behind. (From the previous RUNBOOK; not
+  re-tested.)
+- The C++ tools link the system OpenCV **4.6** (`libopencv-dev`). The Python
+  scripts use OpenCV **5.x** from `opencv-contrib-python` in `.venv`. The
+  split is deliberate. OpenCV 5 removed the `aruco` calibration path that 4.6
+  uses and added `CharucoDetector` / `matchImagePoints`, and 5.x cannot be
+  loaded into a process already linked to 4.6. The venv also keeps the numpy
+  2.x that the wheel needs away from apt's `python3-matplotlib` and
+  `python3-scipy`, which are built against numpy 1.x.
+- Ubuntu 24.04 marks the system Python as externally managed (PEP 668), so
+  `pip install` outside a venv is refused. `python3.12-venv` is not installed
+  by default.
+
+---
+
+## Open items
+
+1. **cx cross-session discrepancy.** 9.4 px across three sessions of the
+   same camera (section 14). Running `bootstrap_intrinsics.py` on one session
+   would show whether pose sampling explains it; that has not been recorded.
+2. **WRONG MODE false alarm.** `05_identify` and `07_mask` print `WRONG MODE`
+   when `modeIsObject()` is false. That flag describes the most recent
+   *fetch*, and `fetch()` resets it when no frame was waiting. A camera
+   streaming object frames normally, with nothing queued at the moment of the
+   report, therefore prints `WRONG MODE`. This is inferred from
+   `lib/camera.cpp` and has not been reproduced deliberately.
+3. **Tools don't report mask state.** Only `07_mask` knows about masks, and
+   it leaves them applied on exit. `05_identify`, `07_objdiag` and
+   `04_capture` neither read nor clear them, and the "blocking mask" line in
+   `diagnostics()` is the SDK flag, not the camera's state. A camera still
+   holding a mask is blind in those cells, which looks like a detection bug.
+   Whether masks survive a process restart or a power cycle is what
+   `mask --probe` step 1 tests; no result is recorded.
+4. **Mask tool's compile-time config path.** `MOCAP_CONFIG_DIR` is the
+   absolute path of `config/` at configure time. Moving or renaming the repo
+   breaks the default. Workaround: rebuild, or pass `--config DIR`.
+5. **Frame sync** across cameras, via `cModuleSync` (the SDK header
+   describes it as "utilized to synchronize frame data"), not `Synchronizer`.
+   Not built; the choice is unverified on hardware.
+6. **Marker labeling.** Not built.
+7. **Extrinsics: wand and L-frame.** Not built. A wand works in object mode,
+   which is synchronised; a board needs grayscale, which is not
+   (`src/notes.md`).
+8. **Reference markers.** Not built.
+9. **Object-mode operating point** (section 11). Two settings sets are in
+   use, and masks are valid only for the one they were learned under.
+10. **Mask acceptance test has no recorded pass** (section 13).
+11. **Inconsistencies found while documenting, 2026-10-19:**
+    - `src/02_stream` and `src/03_detect` use the short discovery window
+      that undercounts ten cameras (section 8).
+    - `05_identify` hardcodes the 30 Hz exposure ceiling (section 1).
+    - `session.json`'s `created` field is rewritten on every flush, so it
+      records the last write. The session folder name is local time;
+      `created` is UTC.
+    - `config/cameras.yaml` and `docs/hardware/cameras.md` list six cameras,
+      with 33275 "excluded, defocused". `config/layout.yaml` mounts ten,
+      including 33275 as camera E, and all ten have masks. No code reads
+      `cameras.yaml`.
+    - `PyYAML` is in `python/requirements.txt`, but no script imports it;
+      `rig.py` reads YAML through `cv2.FileStorage`.
+    - `layout.yaml` distortion is assumed although fitted coefficients
+      exist (section 14).
+
 ## Open questions
 
 - **Does the 2–3 m detection limit matter for extrinsics?** It does not for
@@ -280,7 +563,9 @@ At 1–1.5 m the board reaches the frame edges and detection is stable.
   will put it further away than 1.5 m from at least some of them. Whether the
   ChArUco board is detectable at usable rates at those distances — or whether
   extrinsics needs a different target entirely — is untested.
-- **Distortion coefficient interpretability.** Rational-model coefficients come
+- **Distortion coefficient interpretability.** (Written when the rational
+  model was in use; the current fit is Brown-Conrady, section 14.)
+  Rational-model coefficients come
   out large and correlated (k1≈k4, k2≈k5) because the model is a ratio of two
   polynomials. Recovered geometry is accurate regardless, but there is no
   established threshold on the coefficients themselves for spotting a bad fit.
