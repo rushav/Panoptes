@@ -1,0 +1,48 @@
+%YAML:1.0
+# PANOPTES rig geometry. (OpenCV FileStorage needs the directive line above.)
+#
+# LENGTHS IN THIS FILE ARE INCHES, as tape-measured in the room. Code converts
+# to millimetres once, in rig.load_layout(), and works in mm everywhere after.
+# Positions are estimates to roughly the nearest inch; study.yaml's
+# sensitivity section perturbs them rather than trusting them as exact.
+#
+# Frame: origin = near-left-bottom corner of the volume.
+#   x right, y away from the operator, z up.
+
+units: inch
+
+volume:
+  min: [0, 0, 0]
+  max: [61, 134, 119]
+
+aim: [30, 67, 30]         # every camera is pointed at this
+up: [0, 0, 1]             # world up, fixes camera roll in the look-at
+
+perch: [30, 102, 50]      # on the E-G plane, y = 102
+
+cameras:
+  - { name: A, serial: 33664, position: [0,  0,   51.5] }
+  - { name: B, serial: 33661, position: [0,  134, 51.5] }
+  - { name: C, serial: 33276, position: [61, 134, 51.5] }
+  - { name: D, serial: 33665, position: [61, 0,   51.5] }
+  - { name: E, serial: 33275, position: [0,  102, 119] }
+  - { name: F, serial: 33660, position: [0,  40,  119] }
+  - { name: G, serial: 33277, position: [61, 102, 119] }
+  - { name: H, serial: 33659, position: [61, 40,  119] }
+  - { name: I, serial: 33663, position: [30, 0,   119] }
+  - { name: J, serial: 33662, position: [30, 134, 119] }
+
+# One model for all ten: intrinsics measured on 33661 (fit_intrinsics.py).
+# Brown-Conrady 5-parameter, chosen over rational after held-out testing.
+camera_model:
+  model: OptiTrack Prime 13W
+  resolution: [1280, 1024]
+  fov_deg: [82, 70]       # nominal, horizontal x vertical; a cross-check only
+  intrinsics_source: camera 33661
+  fx: 782.0
+  fy: 781.6
+  cx: 644.6
+  cy: 511.1
+  # [k1, k2, p1, p2, k3], OpenCV order. ASSUMED, not measured: mild barrel
+  # chosen so the pinhole+distortion FOV comes out near the 82 x 70 deg spec.
+  dist: [-0.08, 0.02, 0.0005, -0.0003, -0.003]

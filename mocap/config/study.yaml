@@ -1,0 +1,46 @@
+%YAML:1.0
+# Synthetic triangulation study, python/accuracy_study.py. Geometry lives in
+# layout.yaml; this file holds only how the study samples and perturbs it.
+# Lengths are inches, to match layout.yaml.
+
+seed: 20261017
+
+noise_px: 0.054           # 1-sigma per image axis: measured static centroid jitter
+trials: 200               # Monte Carlo trials per grid point
+min_observers_flag: 3     # flag points seen by fewer cameras than this
+
+grid:
+  spacing_in: 6.0         # upper bound; each axis is split evenly end to end
+
+perch:
+  half_size_in: 12.0      # box is perch +/- this on every axis, clipped to volume
+  spacing_in: 3.0         # its own denser grid; the box is where accuracy matters
+
+slices:                   # heat maps. Horizontal slices at these heights...
+  z_in: [12, 30, 51.5, 80, 110]
+  perch_plane_y_in: 102   # ...plus one vertical x-z slice through the perch
+  spacing_in: 2.0
+  trials: 100
+  vmax_percentile: 98     # shared colour scale tops out here; higher values clip
+
+subsets:
+  random_count: 4         # random 6-camera subsets, on top of all/upper/lower
+  random_size: 6
+  upper: [E, F, G, H, I, J]
+  lower: [A, B, C, D]
+
+sensitivity:
+  layouts: 20             # perturbed layouts to run
+  position_in: 2.0        # each position axis uniform in +/- this
+  aim_deg: 2.0            # optical axis tilted by up to this, random direction
+  roll_deg: 2.0           # and rolled about itself by up to this
+  trials: 50              # per point; headline stats average over thousands of points
+  robust_rel_spread: 0.20 # (max-min)/nominal below this on every headline = robust
+
+refine:
+  iterations: 10          # Levenberg-Marquardt steps from the DLT seed
+  chunk_obs: 200000       # observations per worker batch: memory vs parallelism
+
+output:
+  dir: "../analysis"      # relative to this file's directory (quoted: OpenCV keeps
+                          # a trailing comment as part of an unquoted string)
