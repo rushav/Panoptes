@@ -13,7 +13,7 @@
 //   mask --coverage   apply saved masks; walk one marker through the volume
 //   mask --probe      measure SDK mask behaviour on this hardware
 //   mask --clear      remove masks from every camera
-//   --config DIR      config directory (default: mocap/config)
+//   --config DIR      config directory (default: config/ in the source tree)
 
 #include "../../lib/camera.h"
 

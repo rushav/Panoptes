@@ -20,7 +20,7 @@ Steps, in order:
   5. sensitivity: rerun on randomly perturbed layouts
 
 Usage: python accuracy_study.py [layout.yaml] [study.yaml]
-Outputs into mocap/analysis/: PNGs, accuracy_study.json, accuracy_study.npz
+Outputs into analysis/: PNGs, accuracy_study.json, accuracy_study.npz
 """
 
 import os
@@ -295,8 +295,8 @@ def provenance(paths, S, info, rig):
         "timestamp": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
         "git_commit": git("rev-parse", "HEAD"),
         # ":/" anchors the pathspec at the repo root; untracked study files count.
-        "git_dirty": bool(git("status", "--porcelain", "--", ":/mocap/python",
-                              ":/mocap/config/layout.yaml", ":/mocap/config/study.yaml")),
+        "git_dirty": bool(git("status", "--porcelain", "--", ":/python",
+                              ":/config/layout.yaml", ":/config/study.yaml")),
         "config_sha256": {os.path.basename(p): hashlib.sha256(open(p, "rb").read()).hexdigest()
                           for p in paths},
         "versions": {"python": platform.python_version(), "numpy": np.__version__,

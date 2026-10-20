@@ -5,7 +5,7 @@ this rig, and why it matters. This file is authoritative for **operational**
 findings: what settings work, what the SDK actually does, what was measured.
 
 Camera inventory, serials, model specifications and network layout live in
-[../../docs/hardware/cameras.md](../../docs/hardware/cameras.md) and are not
+[hardware/cameras.md](hardware/cameras.md) and are not
 repeated here.
 
 Commands are in [RUNBOOK.md](RUNBOOK.md).
@@ -136,7 +136,7 @@ same figure is reassuring about both.
 **Why it matters:** gain can be used freely to buy brightness. The usual worry
 that gain amplifies sensor noise into corner uncertainty does not show up here.
 
-Reproduce with `mocap/python/corner_jitter.py <session_dir> ...`.
+Reproduce with `python/corner_jitter.py <session_dir> ...`.
 
 ---
 
@@ -218,7 +218,7 @@ later versions call the legacy layout. Confirmed on real captures — 4.6's
 
 So the same board is described two different ways depending on the OpenCV
 major version. `legacy_pattern: true` in
-`mocap/config/charuco_board.yaml` carries the flag to the 5.x solver;
+`config/charuco_board.yaml` carries the flag to the 5.x solver;
 `session.json` records it so a session stays interpretable later.
 
 ---
@@ -244,7 +244,7 @@ collapses duplicates by serial, preferring the entry that has reached
 ## 9. Other SDK behaviour worth knowing
 
 **Verified.** All of these are handled in
-`mocap/src/intrinsics_capture/camera_source.cpp`.
+`src/intrinsics_capture/camera_source.cpp`.
 
 - `SetVideoType` is asynchronous. `VideoType()` reports the new mode
   immediately, but frames already queued still carry the old one, and

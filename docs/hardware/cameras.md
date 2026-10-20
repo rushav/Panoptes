@@ -4,9 +4,9 @@ This file is authoritative for **inventory and specifications**: which cameras
 exist, their serials and status, model specs, and network layout.
 
 For working settings, SDK behaviour and what has been measured on this
-hardware, see [../../mocap/docs/FINDINGS.md](../../mocap/docs/FINDINGS.md).
+hardware, see [../FINDINGS.md](../FINDINGS.md).
 For the commands to build and run the capture tooling, see
-[../../mocap/docs/RUNBOOK.md](../../mocap/docs/RUNBOOK.md).
+[../RUNBOOK.md](../RUNBOOK.md).
 
 OptiTrack Prime 13W — **legacy Prime series, not PrimeX**.
 The Linux SDK docs only name X-series; legacy support is undocumented
@@ -38,7 +38,7 @@ Refocus 33275 with a variance-of-Laplacian metric rather than judging
 sharpness by eye.
 
 Working settings for ChArUco calibration capture (filter in, ring at full) are
-recorded in [FINDINGS.md](../../mocap/docs/FINDINGS.md#2-the-ir-bandpass-filter-can-stay-in-for-charuco-capture),
+recorded in [FINDINGS.md](../FINDINGS.md#2-the-ir-bandpass-filter-can-stay-in-for-charuco-capture),
 not here.
 
 ## Network
@@ -50,4 +50,4 @@ camera network; internet comes over Wi-Fi.
     sudo tcpdump -i enp6s0 -n port 13013   # confirm a camera is alive
 
 Discovery is staggered and can list a serial twice; see
-[FINDINGS.md](../../mocap/docs/FINDINGS.md#8-device-discovery-is-staggered-and-can-duplicate).
+[FINDINGS.md](../FINDINGS.md#8-device-discovery-is-staggered-and-can-duplicate).

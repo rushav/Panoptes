@@ -15,8 +15,8 @@ exists.
 ## Running it
 
 ```
-.venv/bin/python mocap/python/triangulate.py      # self-test only
-.venv/bin/python mocap/python/accuracy_study.py   # full study, ~2 min on 32 cores
+.venv/bin/python python/triangulate.py      # self-test only
+.venv/bin/python python/accuracy_study.py   # full study, ~2 min on 32 cores
 ```
 
 | File | Role |

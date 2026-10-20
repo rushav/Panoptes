@@ -34,8 +34,8 @@ sudo setcap cap_net_raw,cap_net_admin+eip ./build/mask    # after every relink
 ./build/mask --clear      # remove masks from every camera
 ```
 
-Settings live in `mocap/config/mask.yaml`. Saved masks are written to
-`mocap/config/masks/<serial>.json`, and coverage logs to `mocap/logs/`.
+Settings live in `config/mask.yaml`. Saved masks are written to
+`config/masks/<serial>.json`, and coverage logs to `logs/`.
 
 ## SDK mask semantics
 
