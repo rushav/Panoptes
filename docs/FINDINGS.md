@@ -126,40 +126,80 @@ still. It would matter for anything wanting fast grayscale.
 
 ## 4. Imager gain is free at this exposure
 
-**Verified.**
+**Verified, and re-measured 2026-10-27 on the new board.**
 
-Corner jitter on a static board over 20 frames, same scene, same exposure
-(8133 µs), IR filter IN, IR intensity 15, 30 Hz. Jitter is the per-corner
-standard deviation of position across frames, over the 40 corners present in
-every frame:
+Jitter is static corner repeatability: board and camera fixed, the per-corner
+standard deviation of detected position across frames. It is measured by
+`python/corner_jitter.py` (RUNBOOK §6, "Corner repeatability (jitter)
+session").
 
-| Gain | Median jitter | Mean | Worst | Corners detected |
-|-----:|--------------:|-----:|------:|------------------|
-| 0 | 0.0561 px | 0.0568 px | 0.0820 px | 40/40 in all 20 frames |
-| 7 | 0.0540 px | 0.0559 px | 0.0912 px | 40/40 in all 20 frames |
+- **Radial std** is `sqrt(std_x² + std_y²)`, the RMS distance from the
+  corner's mean position.
+- **Per-axis** is radial / √2, the per-axis sigma of isotropic noise.
 
-Gain 7 is marginally *better* at the median and marginally worse at the worst
-corner. The difference is noise, not signal.
+**Current measurement**: camera 33664, the calib.io 12×9 board (§17). Both
+sessions were 200 frames at 1–1.5 m, with the board static, centred and
+tilted. Exposure 8133 µs, IR filter in, intensity 15, 30 Hz.
 
-This also matches the previous rig's ~0.05 px static centroid noise, measured
-independently on different hardware — two unrelated measurements landing on the
-same figure is reassuring about both.
+| Gain | Session | Frames kept | Fit, median | Radial median | p90 | Max | Per-axis median |
+|-----:|---------|------------:|------------:|--------------:|----:|----:|----------------:|
+| 7 | `intrinsics_33664_20261027_151529` | 200/200 | 0.70 px | **0.0543 px** | 0.0705 | 0.0879 | 0.0384 |
+| 0 | `intrinsics_33664_20261027_152034` | 199/200 (1 rejected for corner count) | 0.70 px | **0.0600 px** | 0.0820 | 0.1052 | 0.0424 |
 
-**Why it matters:** gain can be used freely to buy brightness. The usual worry
-that gain amplifies sensor noise into corner uncertainty does not show up here.
+Every one of the 88 corners was present in every kept frame. Full results,
+including per-corner positions and stds:
+[analysis/jitter/intrinsics_33664_20261027_151529_corner_jitter.json](../analysis/jitter/intrinsics_33664_20261027_151529_corner_jitter.json)
+and
+[analysis/jitter/intrinsics_33664_20261027_152034_corner_jitter.json](../analysis/jitter/intrinsics_33664_20261027_152034_corner_jitter.json).
+Both record commit `da80eec` with `git_dirty: true`: `corner_jitter.py` was not
+yet committed when they ran.
 
-The script that produced this, `corner_jitter.py`, is no longer in the repo,
-so the measurement cannot currently be reproduced from here.
+**Gain remains free.** Gain 7 is *better* than gain 0 at the median (0.0543
+vs 0.0600 px), at p90 and at the worst corner. Gain can be used freely to buy
+brightness. The usual worry that gain amplifies sensor noise into corner
+uncertainty does not show up.
 
-**Status after §7.** These sessions were taken with the old 9×6 board. Their
-corners were very likely produced by the 4.6 C++ path, which mislabelled
-every corner (§7); *which detector `corner_jitter.py` used is not recorded*.
-Jitter is a repeatability metric: the spread of each corner's position across
-frames of a static scene. A consistent mislabelling gives the same wrong ID to
-the same physical point in every frame, so it does not invalidate the figure.
-Re-measure it on the new board (§17) when its capture sessions start.
+**The original figure is reproduced, and was a radial median.** The original
+measurement was two 20-frame sessions on the old 9×6 board, camera 33661, 40
+corners:
 
----
+| Gain | Median | Mean | Worst |
+|-----:|-------:|-----:|------:|
+| 0 | 0.0561 px | 0.0568 px | 0.0820 px |
+| 7 | 0.0540 px | 0.0559 px | 0.0912 px |
+
+- Those sessions (`intrinsics_33661_20260824_*`) and the original script are
+  gone.
+- The new gain 7 radial median agrees with the old figure to 0.6%. The new
+  per-axis median (0.0384) does not. So the old figure was a radial median.
+  *That is inferred from the agreement; the old script's definition is not
+  recorded.*
+- Gain 0 agrees less closely: 0.0600 against 0.0561, 7% higher.
+- The two measurements differ in camera, board, frame count (200 vs 20) and
+  pose. Agreement to within 10% across all of that is the reproduction.
+- Most of the old corners were likely labelled wrongly by the 4.6 C++ path
+  (§7). That doesn't matter for a repeatability figure, since a consistent
+  mislabelling gives the same wrong ID to the same physical point in every
+  frame. The new sessions were detected through the OpenCV 5.x path with
+  correct labels (fit 0.70 px).
+- This also matches the previous rig's ~0.05 px static centroid noise,
+  measured independently on different hardware.
+
+**The edge figure is still unmeasured.** In both sessions all 88 corners fell
+in the centre region of the 5×6 coverage grid (none in the outer ring of
+cells). The numbers above are centre-of-frame repeatability only. An edge
+figure needs a session with the board in a corner of the frame (RUNBOOK §6).
+
+**The accuracy study is conservative by about √2.** `config/study.yaml`
+`noise_px: 0.054` is described as "1-sigma per image axis".
+`python/accuracy_study.py` applies it that way:
+`rng.normal(0, sigma, (k, trials, C, 2))` draws 0.054 px independently on x
+and on y, and `predicted_cov()` takes the same sigma. But 0.054 px is the
+**radial** median. The measured per-axis median at gain 7 is 0.0384 px. The
+study therefore assumes 1.41× the measured per-axis corner noise, about √2.
+Its error figures (§15) are pessimistic by that factor for centre-of-frame
+corners, if errors scale linearly with noise. That scaling is *inferred*; the
+study has not been re-run at 0.0384.
 
 ## 5. Coverage, not RMS, is what tells you the calibration is sound
 

@@ -372,6 +372,7 @@ Run from the repo root with the venv interpreter.
 | `.venv/bin/python python/fit_intrinsics.py <session> [<session> ...]` | Brown-Conrady fit on all frames. Writes `<session>/intrinsics.json`, prints a table, and with several sessions prints the spread across them |
 | `.venv/bin/python python/compare_models.py <session>` | Brown-Conrady vs rational vs fisheye: held-out error and edge straightness. Writes `<session>/model_comparison.json` (training RMS only) |
 | `.venv/bin/python python/bootstrap_intrinsics.py <session> [n_subsets] [subset_size]` | Refit random subsets (defaults 20 of 50) to see whether pose sampling explains a cross-session difference |
+| `.venv/bin/python python/corner_jitter.py <session> [--max-fit PX] [--out DIR]` | Static corner repeatability (section 6). Writes `corner_jitter.json` and `corner_jitter.png` into the session folder. For a plain PNG folder add `--board FILE`. `--self-test` runs 9 checks on synthetic noise |
 | `.venv/bin/python python/triangulate.py [layout.yaml]` | Triangulation self-test, 12 checks. Exit 0 only if all pass |
 | `.venv/bin/python python/accuracy_study.py [layout.yaml] [study.yaml]` | Synthetic study. Writes `analysis/` PNGs, `accuracy_study.json` and `.npz`. Refuses to run if the self-test fails |
 
@@ -453,6 +454,65 @@ For one camera's intrinsics:
      [FINDINGS §14](FINDINGS.md#14-intrinsics-of-camera-33661).
 7. **To use the result**, edit `camera_model` in `config/layout.yaml` by
    hand. Nothing writes it automatically.
+
+### Corner repeatability (jitter) session
+
+This measures how much a detected corner moves between frames when nothing
+moves. It is the figure in FINDINGS §4, and the corner noise the accuracy
+study assumes.
+
+**Record it with `04_capture`, not `02_stream`.**
+
+- `02_stream` saves one frame to `./frame.png` and exits.
+- `04_capture` writes every capture to a session folder, with a
+  `session.json` that records the board and each frame's exposure, gain,
+  intensity, rate and filter state.
+- It only accepts frames with every corner found, which a jitter set needs
+  anyway.
+- Each capture is a new camera frame: the frame fetch returns nothing when no
+  new frame has arrived (*inferred from `lib/camera.cpp`*). The script also
+  rejects byte-identical frames.
+
+Steps:
+
+1. **Mount both.** Board on a tripod, camera fixed. Nobody touches or leans on
+   either during the run.
+2. **Distance and position.** Board at 1–1.5 m, fully in view, roughly
+   centred.
+3. **Tilt about 20°** about the vertical axis. To check it:
+   - start `capture <serial>` and press space once
+   - read `tilt N deg` in the printed line
+   - `u` to undo, adjust, repeat
+4. **Operating point.** `capture` starts at the grayscale operating point
+   (section 5): gain 7, 8133 µs, intensity 15, 30 Hz, filter in. For a gain-0
+   comparison, start a separate session and press `[` seven times before the
+   first capture. Don't change settings mid-session; the script rejects
+   frames whose settings differ from the majority.
+5. **Capture 200 frames.** Hold space, or press it repeatedly, until
+   `captured 200` (about 30 s at 6–8 fps). Then `q`.
+6. **Analyse.**
+   ```sh
+   .venv/bin/python python/corner_jitter.py "$HOME"/panoptes-data/sessions/intrinsics_<serial>_<timestamp>
+   ```
+7. **Read the output.** It prints:
+   - the board, frames kept and rejected (with reasons), corners used
+   - the fit residual of the kept frames
+   - radial and per-axis std (median, p90, max) for all corners, centre and
+     edge cells
+
+**What to look for:**
+
+- **Compare like with like.** Radial std is √2 × per-axis std for isotropic
+  noise. The reference figures in FINDINGS §4 are radial medians.
+- **"WARNING: a corner moved more than 1 px"** means something moved; the
+  run is not a jitter measurement.
+- **Every frame rejected for `fit`.** The fit is a homography on the
+  distorted image. Near the frame edge, lens distortion alone can approach
+  3 px (2.2–2.9 px in the self-test for an off-centre tilted board). Keep the
+  board centred, or raise `--max-fit` and say so in the result.
+- **The edge region is empty** unless the board reaches the outer ring of
+  coverage cells. One static pose measures one region. Record a second
+  session with the board near a corner for an edge figure.
 
 ---
 
