@@ -151,6 +151,14 @@ that gain amplifies sensor noise into corner uncertainty does not show up here.
 The script that produced this, `corner_jitter.py`, is no longer in the repo,
 so the measurement cannot currently be reproduced from here.
 
+**Status after §7.** These sessions were taken with the old 9×6 board. Their
+corners were very likely produced by the 4.6 C++ path, which mislabelled
+every corner (§7); *which detector `corner_jitter.py` used is not recorded*.
+Jitter is a repeatability metric: the spread of each corner's position across
+frames of a static scene. A consistent mislabelling gives the same wrong ID to
+the same physical point in every frame, so it does not invalidate the figure.
+Re-measure it on the new board (§17) when its capture sessions start.
+
 ---
 
 ## 5. Coverage, not RMS, is what tells you the calibration is sound
@@ -191,6 +199,21 @@ coverage grid live and turns its status line green only at zero empty cells
 (`lib/coverage.h`, `lib/coverage.cpp`). The Python solve does not re-check
 coverage.
 
+**The same lesson applies to detection: a full corner count is not an
+acceptance criterion either.** On the old board the 4.6 C++ path reported
+40/40 corners on every frame while every corner carried the wrong ID (§7). A
+board with rows and cols swapped behaves the same way. Rendered synthetically,
+it gave 54/54 markers, 88/88 corners and every ID in range, but a 249 px
+residual. A count says how many corners were found, not whether they are the
+right ones.
+
+What does tell them apart is the **fit residual**: the worst distance between
+the detected corners and a homography fitted from their board coordinates
+(`Detector::layoutResidualPx()` in `lib/detect.cpp`, shown as `fit` by
+`03_detect`). Correct labels give about 1 px (0.7–1.5 px measured, §7 and
+§17); wrong labels give hundreds. Lens distortion raises it somewhat for a
+board near the frame edge.
+
 ---
 
 ## 6. Pose variety separates focal length from distance
@@ -216,28 +239,72 @@ histogram. It shows the number; it does not warn below 30%.
 
 ---
 
-## 7. `setLegacyPattern(True)` is required on OpenCV 5.x
+## 7. Board layout: OpenCV 4.6 does not build the legacy layout
 
-**Verified.**
+**Verified, 2026-10-27.** This corrects an earlier version of this section,
+which said 4.6's `CharucoBoard` already uses the legacy layout.
 
-`board.setLegacyPattern(True)` is required in the Python solver even though the
-board was generated with calib.io's "ChArUco Legacy" checkbox **unchecked**.
-Without it, `CharucoDetector.detectBoard()` returns zero corners on frames
-where `detectMarkers` happily finds 26 of 27 markers — a silent failure that
-looks like a detection problem rather than a layout mismatch.
+OpenCV ≥ 4.7 has `setLegacyPattern()`. The flag moves the markers onto the
+other colour of square, and it only does so for boards with an **even** row
+count. With an odd row count, legacy and non-legacy are the same layout.
 
-The C++ side needs no such flag: OpenCV 4.6's `CharucoBoard` already uses what
-later versions call the legacy layout. Confirmed on real captures — 4.6's
-`interpolateCornersCharuco` returns 40.0 of 40 corners on average across both
-20-frame sessions with no flag set.
+**OpenCV 4.6's `CharucoBoard::create()` builds the NON-legacy layout.** This
+was checked by dumping marker object points and IDs from 4.6 `create()` and
+from 5.0 with each flag value. For the old 9×6 board, 4.6 equals 5.0
+non-legacy and differs from 5.0 legacy: marker 0 sits on square (1, 0)
+instead of (0, 0).
 
-So the same board is described two different ways depending on the OpenCV
-major version. *Current code:* there is no `config/charuco_board.yaml`.
-`load_board()` in `python/compare_models.py` sets `setLegacyPattern(True)`
-unconditionally, and `fit_intrinsics.py` and `bootstrap_intrinsics.py` use it
-from there. `session.json` does **not** record the flag (`lib/session.cpp`).
+**The old 9×6 board has the legacy layout.** It was generated with calib.io's
+"ChArUco Legacy" checkbox **unchecked**, yet it needs the legacy layout. On
+frames from `intrinsics_33661_20260925_103705`:
 
----
+- 5.0 with `setLegacyPattern(True)` finds 39–40 corners per frame, with a
+  worst homography residual of 1.97 px over 15 frames.
+- 5.0 without it finds no usable view. `detectMarkers` still finds the
+  markers, so the failure looks like a detection problem rather than a layout
+  mismatch.
+
+**So the 4.6 C++ path mislabelled every old-board corner.**
+`interpolateCornersCharuco` returned a full 40/40 corners, with 27/27 markers,
+on every frame tested. But the IDs were attached to the wrong corners:
+
+- A homography fitted from board coordinates to the detected corners left a
+  worst residual of 200–234 px per frame.
+- The same corner ID landed a median 70 px (max 248 px) from where 5.0
+  legacy put it.
+- Positionally, most corners still sat near a real checker corner (median
+  0.7 px, worst 45 px). Their labels were wrong.
+
+The earlier "confirmation" of this section was that 4.6 returned 40.0 of 40
+corners on average. That was a count, and the count was right while the
+labels were not (see the lesson at the end of §5).
+
+**Consequences for the old-board sessions:**
+
+- **Intrinsics are unaffected.** The Python solve re-detects every frame with
+  OpenCV 5.x and `setLegacyPattern(True)`, so it never used the C++ labels
+  (§14 stands).
+- **Live tilt and distance feedback during those captures was unreliable.**
+  `04_capture` estimated pose with `solvePnP` on the mislabelled corners, so
+  the tilt, distance, tilted share and histogram it showed (§6) did not
+  describe the board. The coverage tally counts corner positions, not IDs, so
+  it was largely unaffected (*inferred*).
+
+**Current code.** `lib/detect.cpp` (`applyLayout`) no longer trusts
+`create()`'s layout. It places the markers by the 4.7+ rule for the
+configured `legacy_pattern` and recomputes 4.6's nearest-marker tables:
+
+- Its layout equals 5.0's for 9×6 and 12×9 with both flag values.
+- Where the layout is unchanged, its tables equal `create()`'s.
+- On the old frames above it gives 40/40 corners with a residual of
+  0.98–1.52 px.
+
+The board, including `legacy_pattern`, is defined in
+`config/charuco_board.yaml`. The old board is kept in
+`config/charuco_board_old.yaml` with `legacy_pattern: true`. `session.json`
+records the full board (`lib/session.cpp`). `python/board.py` uses that
+record, or the old-board file for sessions recorded before the board config
+existed, after checking that it matches what the session recorded.
 
 ## 8. Device discovery is staggered and can duplicate
 
@@ -298,6 +365,10 @@ At 2–3 m the board fills too little of the frame, marker count begins
 fluctuating rather than sitting at 27/27, and detected corners cluster
 mid-frame — which is exactly the narrow-data failure described in section 5.
 At 1–1.5 m the board reaches the frame edges and detection is stable.
+
+This was observed with the old 9×6 board (67 mm markers). The 12×9 board
+(§17) has 45 mm markers on a smaller pattern. Its distance limit is not yet
+measured, and is *inferred* to be shorter.
 
 ---
 
@@ -507,6 +578,40 @@ geometric visibility only. Full tables, method and assumptions:
 
 ---
 
+## 17. The calib.io 12×9 board
+
+**Verified on hardware, 2026-10-27, camera 33664.**
+
+This board replaced the old 9×6 board for intrinsics. Its definition and
+provenance are in `config/charuco_board.yaml`.
+
+| | |
+|---|---|
+| Vendor | calib.io, on an 800 × 600 mm aluminium plate |
+| Pattern | 9 rows × 12 cols of 60 mm squares (nominal), 720 × 540 mm |
+| Markers | 45 mm (nominal), `DICT_5X5_100`; 54 markers, IDs 0–53 |
+| Corners | 11 × 8 = 88 interior corners |
+| `legacy_pattern` | `false`. With 9 rows it makes no difference (§7). |
+
+The measured sizes are the caliper values in the YAML. Nominal sizes are
+never used in their place.
+
+**Hardware detection test.** `03_detect` on camera 33664 gave 54/54
+markers, 88/88 corners, max ID 53 and a fit residual (§5) of 0.7–0.8 px. The
+result was identical with `--legacy` and `--no-legacy`. That matches the
+offline check: with an odd row count, both flag values give the same marker
+layout in `lib/detect` and in 5.0. calib.io's statement that odd-row boards
+are unaffected by the OpenCV layout change therefore holds on this rig.
+
+**The 5×5 dictionaries are nested.** IDs 0–53 have identical bit patterns in
+`DICT_5X5_100`, `_250` and `_1000`, checked in both OpenCV 4.6 and 5.0. A
+board generated in any of them detects in the others. `_100` is used because
+it has the largest error-correction margin: `maxCorrectionBits` 3, against 2
+for `_250` and `_1000`. The old board's sessions record `DICT_5X5_1000`;
+their IDs 0–26 are the same markers.
+
+---
+
 ## Open items
 
 1. **cx cross-session discrepancy.** 9.4 px across three sessions of the
@@ -571,6 +676,7 @@ geometric visibility only. Full tables, method and assumptions:
   established threshold on the coefficients themselves for spotting a bad fit.
   Comparing undistortion displacement fields between calibrations would be a
   more direct check, and is not yet built.
-- **Whether 5×6 is the right coverage grid.** 30 cells over 40 corners per view
+- **Whether 5×6 is the right coverage grid.** 30 cells over 88 corners per view
+  on the current 12×9 board (40 on the old one)
   means a single well-placed capture can touch many cells at once. A finer grid
   would be stricter; nothing has been done to establish the right granularity.

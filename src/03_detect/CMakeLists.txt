@@ -6,7 +6,7 @@ set(SDK_DIR "$ENV{HOME}/optitrack/CameraSDK")
 
 find_package(OpenCV REQUIRED)
 
-add_executable(detect main.cpp)
+add_executable(detect main.cpp ../../lib/detect.cpp)
 target_include_directories(detect PRIVATE ${SDK_DIR}/include)
 target_link_directories(detect PRIVATE ${SDK_DIR}/lib)
 target_link_libraries(detect PRIVATE CameraLibrary jpeg ${OpenCV_LIBS})

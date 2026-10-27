@@ -142,7 +142,7 @@ ChArUco capture:
 | IR filter | in | Calibrate in the same optical configuration you track in. A glass plate in the light path shifts the focal plane, so intrinsics measured without it would not apply (FINDINGS §2). |
 | IR intensity | 15 (max) | With the filter in, the ring is the light source. With the ring off, the frame averages 6/255 and detects nothing (§2). |
 | Gain | 7 | Gain is free here: corner jitter 0.054 px at gain 7 against 0.056 px at gain 0 (§4). |
-| Exposure | 8133 µs | Gives 27/27 markers and 40/40 corners at ~1.5 m (§2). The ceiling at 30 Hz is 33133, so there is 4× headroom (§1). |
+| Exposure | 8133 µs | Gave every marker at ~1.5 m on the previous 9×6 board (§2). The ceiling at 30 Hz is 33133, so there is 4× headroom (§1). |
 | Frame rate | 30 Hz | Delivery is capped at ~8 fps anyway, and a lower rate raises the exposure ceiling (§1). |
 
 **Object mode: for tracking.** The camera thresholds on board and sends only
@@ -286,17 +286,50 @@ same focal-shift reason as above. The number depends on the scene, so it
 only finds the peak on one camera; it is not a quality threshold and is not
 comparable between cameras.
 
-**The target.** The board is ChArUco: 9×6 squares of 90 mm, 67 mm ArUco
-markers, `DICT_5X5_1000`, giving 27 markers and 40 interior corners
-(`BoardSpec`). Detection is two-stage. First the markers are found; each
-carries an ID, so partial views identify themselves. Then the corners between
-known markers are interpolated and refined to sub-pixel precision.
-Calibration consumes the corners; the markers only say which corner is which.
+**The target.** The board is a calib.io ChArUco board: 12×9 squares of
+60 mm (nominal), 45 mm ArUco markers, `DICT_5X5_100`, giving 54 markers and
+88 interior corners (FINDINGS §17).
+
+- **One definition.** `config/charuco_board.yaml` defines the board:
+  - rows and cols
+  - nominal and caliper-measured sizes
+  - dictionary
+  - `legacy_pattern`
+  - provenance
+- **No defaults.** `loadBoardSpec()` (`lib/detect.cpp`) and `python/board.py`
+  read that file, and `BoardSpec` has no defaults. A missing or blank
+  measured size stops the tool, and nominal is never used in its place.
+- **Override.** `03_detect` and `04_capture` take `--board FILE`;
+  `config/charuco_board_old.yaml` keeps the retired 9×6 board for reproducing
+  its sessions.
+- **Printed.** Both tools print the exact board they loaded at startup, so a
+  session can't run against the wrong board silently.
+
+Detection is two-stage. First the markers are found; each carries an ID, so
+partial views identify themselves. Then the corners between known markers
+are interpolated and refined to sub-pixel precision. Calibration consumes
+the corners; the markers only say which corner is which.
+
+**The layout is built in `lib/detect`, not by OpenCV 4.6.** 4.6's
+`CharucoBoard::create()` always builds what 4.7+ calls the non-legacy layout.
+For an even row count the legacy layout differs, and 4.6 then still returns
+every corner, with the IDs on the wrong ones. That is what happened with the
+old board (FINDINGS §7). `applyLayout()` places the markers by the 4.7+ rule
+for the configured `legacy_pattern` and recomputes 4.6's nearest-marker
+tables. The result matches 5.x exactly.
+
+**The fit residual, not the corner count, says the detection is right.**
+`Detector::layoutResidualPx()` fits a homography from the detected corners'
+board coordinates to their image positions and returns the worst residual.
+Correct labels give about 1 px; a wrong layout or swapped rows/cols gives
+hundreds, with a full corner count (FINDINGS §5). `03_detect` shows it as
+`fit`, next to the count of marker IDs beyond the board's range.
 
 **The capture loop.** `04_capture` grabs, detects, draws the detection and
 the coverage overlay, and waits for the operator.
 
-- **Space accepts a capture only if all 40 corners were found.** Partial
+- **Space accepts a capture only if every corner (88 on the 12×9 board) was
+  found.** Partial
   views are valid data, but mixing them with full ones makes per-view error
   harder to read.
 - **Each accepted capture tallies its corners into a 5×6 grid over the image**
@@ -327,7 +360,8 @@ and a tilt histogram.
 **Session output** (`Session`). Each accepted capture is written as
 `frame_NNNN.png`. `session.json` is rewritten after every change and records:
 
-- camera serial, OpenCV version and board geometry
+- camera serial, OpenCV version, and the full board record from the YAML
+  (measured and nominal sizes, dictionary, `legacy_pattern`, provenance)
 - for each frame: marker and corner counts, and the exposure, gain,
   intensity, frame rate and filter state it was taken under
 
@@ -348,10 +382,13 @@ process with the C++ tools' OpenCV 4.6 (FINDINGS §16).
 **Detection in 5.x.** `CharucoDetector.detectBoard()` finds the corners and
 `board.matchImagePoints()` turns their IDs into 3D board coordinates;
 `cv2.calibrateCamera` then solves. OpenCV 5 removed the old
-`interpolateCornersCharuco` / `calibrateCameraCharuco` path. The same
-physical board needs `setLegacyPattern(True)` in 5.x and nothing in 4.6, or
-5.x silently finds zero corners (FINDINGS §7). Views with fewer than 6
-corners are dropped.
+`interpolateCornersCharuco` / `calibrateCameraCharuco` path. The board comes
+from `python/board.py`. It uses the record in the session's `session.json`,
+or `config/charuco_board_old.yaml` for sessions recorded before the board
+config existed, after checking that it matches what the session recorded.
+`setLegacyPattern()` is set from that record. A wrong value on an even-row
+board makes 5.x silently find zero corners (FINDINGS §7). Views with fewer
+than 6 corners are dropped.
 
 **Choosing a model** (`compare_models.py`). Training RMS can't choose
 between models: more coefficients always fit the training views better,

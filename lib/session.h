@@ -1,7 +1,8 @@
 // Session output: captured frames plus the provenance to interpret them.
 //
 // Every calibration output carries versions, timestamp, source session,
-// board geometry, and the camera settings each frame was taken under.
+// the full board record (config/charuco_board.yaml, measured sizes
+// included), and the camera settings each frame was taken under.
 // The rig will be moved and recalibrated repeatedly, so a folder of
 // PNGs with no record of how they were taken is nearly worthless.
 

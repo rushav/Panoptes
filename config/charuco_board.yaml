@@ -1,0 +1,47 @@
+%YAML:1.0
+---
+# ChArUco calibration board in use. The single source of truth for board
+# geometry: lib/detect (03_detect, 04_capture) and python/board.py read it,
+# and 04_capture copies it into every session.json.
+#
+# Read with OpenCV FileStorage. Quote string values that carry a trailing
+# comment.
+#
+# Orientation follows OpenCV: cols = squares along x (squaresX), rows =
+# squares along y (squaresY). 12 x 9 squares give 54 markers and 11 x 8 = 88
+# interior corners.
+#
+# measured: caliper values, in mm. Every tool refuses to start while one is
+# blank. Nominal is never substituted for it.
+
+name: "calibio_12x9_60mm"
+rows: 9
+cols: 12
+
+square_mm:
+   nominal: 60.0
+   measured: 60.0          # TODO(Rushav): fill in from calipers, e.g. 60.02
+
+marker_mm:
+   nominal: 45.0
+   measured: 45.0          # TODO(Rushav): fill in from calipers
+
+# 5X5 dictionaries are nested: IDs 0-53 are identical in _100/_250/_1000
+# (checked in OpenCV 4.6 and 5.0). _100 has maxCorrectionBits 3 vs 2.
+dictionary: "DICT_5X5_100"
+
+# OpenCV >= 4.7 layout flag. It changes the layout only for boards with an
+# EVEN row count. With 9 rows, true and false give identical marker positions
+# (checked by dumping both layouts in 4.6 and 5.0). CONFIRMED on hardware
+# 2026-10-27, camera 33664: 03_detect --legacy and --no-legacy both gave 54/54
+# markers, 88/88 corners, max ID 53, fit 0.7-0.8 px (FINDINGS 17).
+legacy_pattern: false
+
+provenance:
+   vendor: "calib.io"
+   order_date: "2026-10-27"        # TODO(Rushav)
+   material: "aluminium"
+   pattern_mm: "720 x 540"
+   plate_mm: "800 x 600"
+   measured_by: "Rushav"       # TODO(Rushav)
+   measured_date: "2023-10-27"     # TODO(Rushav), YYYY-MM-DD

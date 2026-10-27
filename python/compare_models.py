@@ -28,6 +28,8 @@ import sys, os, json, glob
 import numpy as np
 import cv2
 
+import board as board_config
+
 TEST_FRACTION = 0.25
 SEED = 99
 GRID_X, GRID_Y = 5, 6
@@ -35,15 +37,16 @@ GRID_X, GRID_Y = 5, 6
 
 # ---------------------------------------------------------------- detection
 
-def load_board(meta):
-    b = meta["board"]
-    dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_1000)
-    board = cv2.aruco.CharucoBoard(
-        (b["squares_x"], b["squares_y"]),
-        b["square_mm"], b["marker_mm"], dictionary)
-    # OpenCV 5.x needs this set explicitly; 4.6's layout already is legacy.
-    board.setLegacyPattern(True)
-    return board, cv2.aruco.CharucoDetector(board)
+def load_board(meta, session=""):
+    """(board, detector, spec) for the board the session was captured with.
+
+    Prints the exact board, so a session is never solved against the wrong
+    one silently. See board.py for how old sessions are resolved.
+    """
+    spec, how = board_config.for_session(meta, session)
+    print(f"{board_config.describe(spec)}  [{how}]")
+    board, detector = board_config.make(spec)
+    return board, detector, spec
 
 
 def detect_all(session, board, detector):
@@ -182,8 +185,8 @@ def fit_fisheye(obj, img, size):
 
 def main(session):
     meta = json.load(open(os.path.join(session, "session.json")))
-    board, detector = load_board(meta)
-    board_cols = meta["board"]["squares_x"] - 1
+    board, detector, spec = load_board(meta, session)
+    board_cols = spec["cols"] - 1
 
     img_pts, obj_pts, size = detect_all(session, board, detector)
     print(f"{len(img_pts)} usable views, {size[0]}x{size[1]}\n")

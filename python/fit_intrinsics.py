@@ -21,7 +21,7 @@ from compare_models import load_board, detect_all
 
 def fit(session):
     meta = json.load(open(os.path.join(session, "session.json")))
-    board, detector = load_board(meta)
+    board, detector, spec = load_board(meta, session)
     img_pts, obj_pts, size = detect_all(session, board, detector)
 
     # Brown-Conrady (flags=0): chosen after held-out testing showed the
@@ -48,7 +48,7 @@ def fit(session):
         "per_view_error": per_view,
         "opencv_version": cv2.__version__,
         "image_size": list(size),
-        "board": meta["board"],
+        "board": spec,
     }
 
     with open(os.path.join(session, "intrinsics.json"), "w") as f:

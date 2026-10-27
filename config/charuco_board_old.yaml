@@ -1,0 +1,40 @@
+%YAML:1.0
+---
+# The previous ChArUco board, retired 2026-10-27. Kept to reproduce the
+# sessions captured with it (intrinsics_33661_202609*). Use it with
+#   04_capture --board config/charuco_board_old.yaml
+#   03_detect  --board config/charuco_board_old.yaml
+# python/board.py falls back to this file for sessions whose session.json
+# predates the full board record, and checks that the two agree.
+#
+# 9 x 6 squares give 27 markers and 40 interior corners.
+
+name: "old_9x6_90mm"
+rows: 6
+cols: 9
+
+# The code recorded only these values, labelled "measured after printing,
+# not nominal". The nominal sizes were not recorded.
+square_mm:
+   measured: 90.0
+marker_mm:
+   measured: 67.0
+
+dictionary: "DICT_5X5_1000"
+
+# 6 rows is even, so the flag matters. The physical board matches the
+# OpenCV >= 4.7 LEGACY layout (marker 0 on the top-left square): on frames
+# from intrinsics_33661_20260925_103705, 5.0 with legacy detects 39-40 corners
+# per frame, and without it detects none. OpenCV 4.6's CharucoBoard::create()
+# builds the OTHER layout for this board. lib/detect builds the layout itself
+# for that reason.
+legacy_pattern: true
+
+provenance:
+   vendor: ""
+   order_date: ""
+   material: ""
+   pattern_mm: ""
+   plate_mm: ""
+   measured_by: ""
+   measured_date: ""

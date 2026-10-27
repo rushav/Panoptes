@@ -39,7 +39,7 @@ repo.
 | Optics | 82° × 70° field of view, manual focus; 850 nm IR ring; switchable 850 nm bandpass filter |
 | Network | Gigabit Ethernet with PoE, link-local addressing, one host NIC dedicated to the cameras |
 | Mounting | 4 cameras at 51.5 in, 6 at 119 in, all aimed at one point, around a 61 × 134 × 119 in volume |
-| Calibration target | ChArUco board: 9 × 6 squares of 90 mm, 67 mm markers, `DICT_5X5_1000` |
+| Calibration target | calib.io ChArUco board: 12 × 9 squares of 60 mm (nominal), 45 mm markers, `DICT_5X5_100`, on aluminium; defined in [config/charuco_board.yaml](config/charuco_board.yaml) with caliper-measured sizes |
 | Host | Linux (Ubuntu 24.04), C++17, OpenCV 4.6 (C++) and 5.x (Python) |
 
 Specifications: [docs/hardware/cameras.md](docs/hardware/cameras.md). Camera
@@ -54,7 +54,9 @@ positions and serials: [config/layout.yaml](config/layout.yaml).
 - **Grayscale streaming** from any camera.
 - **ChArUco intrinsics capture** with a live coverage grid and tilt histogram.
   The acceptance criterion is zero empty grid cells, not RMS reprojection
-  error. Intrinsics for one camera are solved in Python, and the solves are
+  error. Every tool prints the board it loaded, and each session records it.
+  Detection reports a fit residual as well as the corner count, because a
+  wrong board layout still returns every corner. Intrinsics for one camera are solved in Python, and the solves are
   compared across sessions.
 - **Ten-camera object mode**: every camera streaming blob centroids at once,
   in a tiled view labelled by serial.

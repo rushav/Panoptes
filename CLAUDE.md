@@ -81,9 +81,16 @@ around one of these, it is deliberate.
     Every rebuilt binary needs it again. Don't run tools under sudo. (§16)
 13. **Two OpenCV versions, on purpose.** C++ uses system OpenCV 4.6; Python
     uses 5.x (`opencv-contrib-python`) in `.venv`. Don't unify them. (§16)
-14. **OpenCV 5 needs `board.setLegacyPattern(True)`** for this board, and
-    calibrates via `CharucoDetector.detectBoard` + `matchImagePoints` +
-    `calibrateCamera`. OpenCV 4.6 needs no flag. (§7)
+14. **`lib/detect` builds the board layout itself, by the OpenCV 4.7+
+    rule.** OpenCV 4.6's `create()` always builds the non-legacy layout, and
+    it mislabelled every corner of the old 9×6 board. `legacy_pattern` in
+    `config/charuco_board.yaml` only matters for an even row count; the 12×9
+    board is the same either way. Python (5.x) sets it with
+    `setLegacyPattern()` from the same config and calibrates via
+    `CharucoDetector.detectBoard` + `matchImagePoints` + `calibrateCamera`.
+    **Never trust a corner count without the fit residual**
+    (`layoutResidualPx`, `fit` in `03_detect`). A wrong layout still returns
+    every corner, with a residual of ~200 px against ~1 px. (§5, §7, §17)
 15. **RMS reprojection error is not an acceptance criterion. Zero empty
     coverage cells (5 × 6 grid) is.** All-fronto-parallel views are a
     separate failure; aim for 30% or more of captures tilted beyond 20°.

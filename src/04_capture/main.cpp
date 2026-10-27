@@ -10,11 +10,25 @@
 
 #include <opencv2/opencv.hpp>
 #include <cstdio>
+#include <cstring>
+#include <stdexcept>
 
 int main(int argc, char** argv) {
-    int serial = (argc > 1) ? std::stoi(argv[1]) : 33661;
+    int serial = 33661;
+    std::string boardPath = mocap::kBoardConfig;
+    for (int i = 1; i < argc; ++i) {
+        if (!strcmp(argv[i], "--board") && i + 1 < argc) boardPath = argv[++i];
+        else serial = std::stoi(argv[i]);
+    }
 
-    mocap::BoardSpec board;                 // defaults: 9x6, 90mm, 67mm
+    mocap::BoardSpec board;
+    try {
+        board = mocap::loadBoardSpec(boardPath);
+    } catch (const std::exception& e) {
+        fprintf(stderr, "%s\n", e.what());
+        return 1;
+    }
+    printf("%s\n\n", board.describe().c_str());
     mocap::Detector detector(board);
 
     mocap::Camera cam(serial);

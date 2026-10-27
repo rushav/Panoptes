@@ -14,7 +14,14 @@
 //      precision by reading the gray gradient across the black-white edge.
 //
 // Calibration uses the CORNERS, not the markers. Markers are scaffolding
-// that says which corner is which. A 9x6 board has 27 markers, 40 corners.
+// that says which corner is which.
+//
+// The board comes from config/charuco_board.yaml through lib/detect, the
+// same path 04_capture uses. --legacy / --no-legacy override the file's
+// legacy_pattern for layout tests. A full corner count alone does not prove
+// the layout is right; `fit` (lib/detect layoutResidualPx) does.
+
+#include "../../lib/detect.h"
 
 #include <cameralibrary.h>
 #include <opencv2/opencv.hpp>
@@ -23,26 +30,45 @@
 #include <memory>
 #include <thread>
 #include <cstdio>
+#include <cstring>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
 using namespace CameraLibrary;
 
-// Board geometry. Squares/markers in mm, measured after printing.
-const int   SQUARES_X = 9, SQUARES_Y = 6;
-const float SQUARE_MM = 90.0f, MARKER_MM = 67.0f;
-
 int main(int argc, char** argv) {
-    int wanted   = (argc > 1) ? std::stoi(argv[1]) : 33661;
-    int exposure = (argc > 2) ? std::stoi(argv[2]) : 8133;
-    int gain     = (argc > 3) ? std::stoi(argv[3]) : 7;
-    int fps      = (argc > 4) ? std::stoi(argv[4]) : 30;
+    std::string boardPath = mocap::kBoardConfig;
+    int legacy = -1;                        // -1: as the board file says
+    std::vector<int> pos;
+    for (int i = 1; i < argc; ++i) {
+        if      (!strcmp(argv[i], "--legacy"))    legacy = 1;
+        else if (!strcmp(argv[i], "--no-legacy")) legacy = 0;
+        else if (!strcmp(argv[i], "--board") && i + 1 < argc) boardPath = argv[++i];
+        else pos.push_back(std::stoi(argv[i]));
+    }
+    int wanted   = (pos.size() > 0) ? pos[0] : 33661;
+    int exposure = (pos.size() > 1) ? pos[1] : 8133;
+    int gain     = (pos.size() > 2) ? pos[2] : 7;
+    int fps      = (pos.size() > 3) ? pos[3] : 30;
 
-    // OpenCV 4.6 API. Note there is no setLegacyPattern call here -
-    // 4.6's board layout already IS the legacy one. Only the 5.x Python
-    // solver needs that flag. Same board, two code paths.
-    auto dict  = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_5X5_1000);
-    auto board = cv::aruco::CharucoBoard::create(
-        SQUARES_X, SQUARES_Y, SQUARE_MM, MARKER_MM, dict);
+    mocap::BoardSpec spec;
+    try {
+        spec = mocap::loadBoardSpec(boardPath);
+    } catch (const std::exception& e) {
+        fprintf(stderr, "%s\n", e.what());
+        return 1;
+    }
+    bool fromFile = spec.legacyPattern;
+    if (legacy >= 0) spec.legacyPattern = legacy == 1;
+    printf("%s\n", spec.describe().c_str());
+    if (legacy >= 0)
+        printf("legacy_pattern %s by %s (file says %s)\n",
+               spec.legacyPattern ? "true" : "false",
+               legacy ? "--legacy" : "--no-legacy", fromFile ? "true" : "false");
+    printf("\n");
+    mocap::Detector detector(spec);
+    const int maxId = spec.totalMarkers() - 1;
 
     CameraManager::X().WaitForInitialization();
 
@@ -94,37 +120,31 @@ int main(int argc, char** argv) {
 
         cv::Mat gray(h, w, CV_8UC1, (void*)pixels);
 
-        // Stage 1: find the ArUco markers and their IDs.
-        std::vector<int> markerIds;
-        std::vector<std::vector<cv::Point2f>> markerCorners;
-        cv::aruco::detectMarkers(gray, dict, markerCorners, markerIds);
-
-        // Stage 2: from those, locate and refine the checkerboard corners.
-        std::vector<cv::Point2f> charucoCorners;
-        std::vector<int> charucoIds;
-        if (!markerIds.empty()) {
-            cv::aruco::interpolateCornersCharuco(
-                markerCorners, markerIds, gray, board,
-                charucoCorners, charucoIds);
-        }
+        // Both stages (markers, then corners) run in lib/detect.
+        mocap::Detection d = detector.detect(gray);
 
         // Draw on a colour copy so detections are visible.
-        cv::Mat display;
-        cv::cvtColor(gray, display, cv::COLOR_GRAY2BGR);
-        if (!markerIds.empty())
-            cv::aruco::drawDetectedMarkers(display, markerCorners, markerIds);
-        if (!charucoIds.empty())
-            cv::aruco::drawDetectedCornersCharuco(display, charucoCorners, charucoIds,
-                                                  cv::Scalar(0, 0, 255));
+        cv::Mat display = detector.annotate(gray, d);
+        if (!d.markerIds.empty())
+            cv::aruco::drawDetectedMarkers(display, d.markerCorners, d.markerIds);
+
+        // IDs beyond the board's range are misreads or another target.
+        int outOfRange = 0, highest = -1;
+        for (int id : d.markerIds) {
+            if (id > maxId) ++outOfRange;
+            highest = std::max(highest, id);
+        }
 
         double meanBrightness = cv::mean(gray)[0];
 
         char status[200];
         snprintf(status, sizeof(status),
-                 "markers %2zu/27   corners %2zu/40   mean %.1f",
-                 markerIds.size(), charucoIds.size(), meanBrightness);
+                 "markers %2d/%d   corners %2zu/%d   ids>%d %d (max %d)   fit %.1f px   mean %.1f",
+                 d.markersFound, spec.totalMarkers(), d.corners.size(),
+                 spec.totalCorners(), maxId, outOfRange, highest,
+                 detector.layoutResidualPx(d), meanBrightness);
         cv::putText(display, status, cv::Point(20, 40),
-                    cv::FONT_HERSHEY_SIMPLEX, 1.0,
+                    cv::FONT_HERSHEY_SIMPLEX, 0.8,
                     cv::Scalar(0, 255, 0), 2);
 
         // Print once a second rather than every frame.

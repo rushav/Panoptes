@@ -30,7 +30,7 @@ SEED = 0
 
 def main(session, n_subsets=20, subset_size=50):
     meta = json.load(open(os.path.join(session, "session.json")))
-    board, detector = load_board(meta)
+    board, detector, spec = load_board(meta, session)
     img_pts, obj_pts, size = detect_all(session, board, detector)
 
     n = len(img_pts)

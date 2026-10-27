@@ -213,11 +213,21 @@ directory**. It exits 1 if no grayscale frame arrives.
 ### 03_detect: live ChArUco detection for settings sweeps
 
 ```sh
-src/03_detect/build/detect [serial] [exposure] [gain] [fps]   # defaults 33661 8133 7 30
+src/03_detect/build/detect [serial] [exposure] [gain] [fps] [--board FILE] [--legacy | --no-legacy]
+# defaults 33661 8133 7 30, board config/charuco_board.yaml, legacy_pattern from the file
 ```
 
-Live view with markers and corners drawn and `markers N/27 corners N/40
-mean B` overlaid. It prints about once a second.
+It first prints the board it loaded (and any `--legacy` / `--no-legacy`
+override), then shows a live view with markers and corners drawn and
+`markers N/M corners N/C ids>K n (max I) fit F px mean B` overlaid. It prints
+that line about once a second.
+
+- `ids>K n`: markers whose ID is beyond the board's range. These are misreads
+  or another target.
+- `fit`: worst residual, in px, of a homography from board coordinates to the
+  detected corners. It reads −1 with fewer than 6 corners. A wrong layout or
+  swapped rows/cols still gives a FULL corner count in OpenCV 4.6, with IDs on
+  the wrong corners. Only `fit` shows it: a few px is right, ~200 px is wrong.
 
 | Key | Action |
 |---|---|
@@ -227,17 +237,20 @@ mean B` overlaid. It prints about once a second.
 ### 04_capture: intrinsics capture
 
 ```sh
-src/04_capture/build/capture [serial]        # default 33661
+src/04_capture/build/capture [serial] [--board FILE]   # defaults 33661, config/charuco_board.yaml
 ```
 
-Starts at the grayscale operating point (section 5). It creates
+It prints the board it loaded, and refuses to start if the board file is
+missing or a measured size is blank. The full board record goes into
+`session.json`. Use `--board config/charuco_board_old.yaml` to reproduce an
+old-board session. Starts at the grayscale operating point (section 5). It creates
 `$HOME/panoptes-data/sessions/intrinsics_<serial>_<YYYYmmdd_HHMMSS>/`
 (local time) and prints the path. The overlay shows corners, captures, empty
 cells, exposure against its ceiling, gain, and the tilted share.
 
 | Key | Action |
 |---|---|
-| `space` | Capture. Accepted only with 40/40 corners; otherwise prints `skipped` |
+| `space` | Capture. Accepted only with every corner of the board found; otherwise prints `skipped` |
 | `u` | Undo the last capture, removing the PNG and its coverage |
 | `+` / `=` | Exposure +1000, up to the camera's reported ceiling |
 | `-` | Exposure −1000, down to 10 |
@@ -377,8 +390,9 @@ Run from the repo root with the venv interpreter.
 | Exposure | 8133 µs |
 | Frame rate | 30 Hz |
 
-Expect 27/27 markers and 40/40 corners at 1–1.5 m, and a live view of 6–8
-fps; that rate is normal. The reasons are in
+Expect every marker and corner (27/27 and 40/40 on the old 9 × 6 board; the
+12 × 9 board gives 54/54 and 88/88, FINDINGS §17) at
+1–1.5 m, and a live view of 6–8 fps; that rate is normal. The reasons are in
 [ARCHITECTURE §2](ARCHITECTURE.md#2-two-operating-modes).
 
 **Object mode, for tracking.** This is **not settled**. Two sets are in use
@@ -413,7 +427,8 @@ For one camera's intrinsics:
 2. **Focus.** Run `focus <serial>`, with the board in the centre rectangle at
    working distance. Find the peak, lock the lens ring, then `q`.
 3. **Optional check.** Run `detect <serial>`. At 1–1.5 m it should read
-   `markers 27/27 corners 40/40`. If it is dark, raise the exposure (third
+   `markers 54/54 corners 88/88` with `fit` at a few px (12 × 9 board). If it
+   is dark, raise the exposure (third
    argument, up to 33133 at 30 Hz) or the gain.
 4. **Capture.** Run `capture <serial>` with the board at **1–1.5 m**. Further
    than that, the board fills too little of the frame and corners cluster
@@ -491,7 +506,7 @@ the old ceiling is wrong. `capture` reads the ceiling from the camera;
 `identify`'s `]` key is hardcoded to 33133, the 30 Hz value. Compare
 `asked` with the readback that `identify` and `objdiag` print.
 
-**`capture` prints `skipped: only N/40 corners`.** The board is partly out
+**`capture` prints `skipped: only N/88 corners`.** The board is partly out
 of frame or too far away. Move it closer than 1.5 m.
 
 **`mask` prints `error: cannot read .../mask.yaml`.** The repo has moved
@@ -508,9 +523,15 @@ learned under.
 other rings. Downtilt or re-aim it and relearn, rather than masking more than
 10% of its frame.
 
-**Python finds 0 corners on every frame.** `setLegacyPattern(True)` is
-required on OpenCV 5.x (FINDINGS §7). It is set in
-`compare_models.load_board()`; keep it there.
+**Python finds 0 corners on every frame.** The board's `legacy_pattern` is
+wrong for the physical board (FINDINGS §7). Python takes it from the
+session's `session.json` board record, or from
+`config/charuco_board_old.yaml` for sessions recorded before the board
+config existed. Each script prints the board it resolved.
+
+**A tool prints `board config ...: square_mm.measured is missing`.** Fill in
+the caliper measurements in `config/charuco_board.yaml`. Nominal sizes are
+never used in their place.
 
 **`accuracy_study.py` exits with "self-test failed".** Run
 `python/triangulate.py` alone and read which check failed. The study refuses

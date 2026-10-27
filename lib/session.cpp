@@ -76,13 +76,7 @@ void Session::flush() const {
         << "  \"camera_serial\": " << serial_ << ",\n"
         << "  \"created\": \"" << isoNow() << "\",\n"
         << "  \"opencv_version\": \"" << CV_VERSION << "\",\n"
-        << "  \"board\": {\n"
-        << "    \"squares_x\": " << board_.squaresX << ",\n"
-        << "    \"squares_y\": " << board_.squaresY << ",\n"
-        << "    \"square_mm\": " << board_.squareMM << ",\n"
-        << "    \"marker_mm\": " << board_.markerMM << ",\n"
-        << "    \"dictionary\": \"DICT_5X5_1000\"\n"
-        << "  },\n"
+        << "  \"board\": " << board_.toJson("  ") << ",\n"
         << "  \"frames\": [\n" << json_ << "\n  ]\n"
         << "}\n";
 }
