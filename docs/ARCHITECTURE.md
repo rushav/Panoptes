@@ -19,7 +19,7 @@ So the design question at every stage is the same: what does the SDK
 actually do, measured on this hardware, and what must be built on top?
 
 The SDK is thinly documented, and several of its calls behave differently
-from their names (FINDINGS §8, §9, §13). The habit that runs through the
+from their names (FINDINGS §10, §11, §15). The habit that runs through the
 code is to **verify by measurement and read back what the camera reports**,
 never trusting a request or a UI readback.
 
@@ -43,9 +43,10 @@ discover ─► open/start ─┬─► grayscale ─► ChArUco detect ─► c
 
 | | Contents | Rule |
 |---|---|---|
-| `lib/` | `camera` (SDK wrapper), `detect` (ChArUco), `coverage` (acceptance grid), `session` (capture output) | No UI code. Every SDK quirk is handled here, once. |
+| `lib/` | `camera` (SDK wrapper), `detect` (ChArUco), `coverage` (acceptance grid), `autocapture` (frame selection), `session` (capture output) | No UI code. Every SDK quirk is handled here, once. |
 | `src/NN_name/` | One small program per task, each its own CMake project that compiles the `lib/` sources it needs | Thin: parse arguments, loop, draw, call `lib/`. |
 | `python/` | Calibration solve, rig model, triangulation, synthetic study | Separate runtime (OpenCV 5.x in `.venv`); shares only file formats with the C++ side. |
+| `tests/` | Unit tests for `lib/` logic that needs no camera (`test_autocapture`) | Own CMake project; links OpenCV only, no SDK. |
 
 **Why the split exists.** `lib/camera.cpp` carries the reason in a comment.
 `grab()` (grayscale) and `grabBlobs()` (object mode) used to have separate
@@ -62,7 +63,7 @@ tool that includes it compiles against OpenCV and the standard library only.
 SDK directly. They were the first steps of characterising the SDK, and
 01–02 predate `lib/`. They duplicate SDK handling, and the duplicates have
 drifted already: 02 and 03 still use the discovery window that undercounts
-ten cameras (FINDINGS §8). That is the cost the split exists to avoid.
+ten cameras (FINDINGS §10). That is the cost the split exists to avoid.
 
 There is no top-level CMake project. Each tool builds on its own (RUNBOOK
 §3).
@@ -77,12 +78,15 @@ There is no top-level CMake project. Each tool builds on its own (RUNBOOK
 **Discovery is a network operation.** The cameras are powered over PoE,
 self-assign link-local addresses, and broadcast their presence on UDP 13013.
 `CameraManager::X().WaitForInitialization()` starts the SDK's listener and
-returns as soon as the *first* device is ready, not all of them (FINDINGS §8).
+returns as soon as the *first* device is ready, not all of them (FINDINGS §10).
 So `discover()` polls `CameraList` every 250 ms until the count has held for
 20 polls (5 s), capped at 120 polls (30 s). The window scales with camera
 count. A 1.5 s window, tuned for four cameras, read a plateau mid-enumeration
 as "done" and reported 5 of 10. The list can repeat a serial, so results are
-collapsed by serial.
+collapsed by serial. `discover()` keeps the **first** entry for a serial and
+`01_discover` keeps the **last**; neither prefers the `Initialized` one.
+`01_discover` uses the same 5 s window; `02_stream` and `03_detect` still
+carry the old one (6 stable polls, 40-poll cap; FINDINGS §10).
 
 `Camera`'s constructor calls `discover()` again before looking up its serial.
 Because every call waits out the 5 s stability window, opening ten cameras
@@ -118,7 +122,7 @@ skewed image.
 
 All tools are single-threaded polling loops, and none registers SDK
 callbacks. `07_objdiag` sleeps 1 ms between empty polls, because a tight
-`NextFrame()` loop can starve the SDK's receive thread (FINDINGS §12).
+`NextFrame()` loop can starve the SDK's receive thread (FINDINGS §14).
 
 ---
 
@@ -133,46 +137,54 @@ The camera can send two very different things, and the system needs both.
 **Grayscale: for calibration.** This is the full 1280×1024 image. A
 checkerboard is not a set of bright blobs, so calibration needs the picture.
 Frames are ~1.3 MB, delivery is bandwidth-bound at 6–8 fps whatever the
-imager rate (FINDINGS §3), and the frames are not synchronised across
+imager rate (FINDINGS §5), and the frames are not synchronised across
 cameras. The defaults in `Settings` are the measured working point for
 ChArUco capture:
 
 | Setting | Value | Why |
 |---|---|---|
-| IR filter | in | Calibrate in the same optical configuration you track in. A glass plate in the light path shifts the focal plane, so intrinsics measured without it would not apply (FINDINGS §2). |
-| IR intensity | 15 (max) | With the filter in, the ring is the light source. With the ring off, the frame averages 6/255 and detects nothing (§2). |
-| Gain | 7 | Gain is free here: corner jitter 0.054 px at gain 7 against 0.056 px at gain 0 (§4). |
-| Exposure | 8133 µs | Gave every marker at ~1.5 m on the previous 9×6 board (§2). The ceiling at 30 Hz is 33133, so there is 4× headroom (§1). |
-| Frame rate | 30 Hz | Delivery is capped at ~8 fps anyway, and a lower rate raises the exposure ceiling (§1). |
+| IR filter | in | Calibrate in the same optical configuration you track in. A glass plate in the light path shifts the focal plane, so intrinsics measured without it would not apply (FINDINGS §4). |
+| IR intensity | 15 (max) | With the filter in, the ring is the light source. With the ring off, the frame averages 6/255 and detects nothing (§4). |
+| Gain | 7 | Gain is free here: corner jitter 0.0543 px at gain 7 against 0.0600 px at gain 0 (§6). |
+| Exposure | 8133 µs | Gave every marker at ~1.5 m on the previous 9×6 board (§4). The ceiling at 30 Hz is 33133, so there is 4× headroom (§3). |
+| Frame rate | 30 Hz | Delivery is capped at ~8 fps anyway, and a lower rate raises the exposure ceiling (§3). |
 
 **Object mode: for tracking.** The camera thresholds on board and sends only
 blob centroids, each with its own area and roundness. Frames are tiny, so all
 ten cameras stream at once, and this is the mode the SDK synchronises across
-cameras (unverified here, FINDINGS §11).
+cameras (unverified here, FINDINGS §13).
 
 - **Exposure:** short, because retroreflective markers are far brighter than
   the scene.
 - **Gain:** 0.
 - **Threshold:** the brightness cutoff, kept inside the camera's own reported
-  range.
+  range (`MinimumThreshold()` / `MaximumThreshold()`, exposed as
+  `Camera::minThreshold()` / `maxThreshold()`). A value outside it is said to
+  be silently clamped or ignored (FINDINGS §13).
 - **`SendEmptyFrames`:** on, so a frame with zero blobs still arrives. "Dark
   scene" and "dead stream" are then different observations.
 
 The exact exposure and threshold are not settled. Two sets are in use
-(FINDINGS §11).
+(FINDINGS §13).
 
 **Changing mode is asynchronous.** `SetVideoType` takes effect on later
-frames while already-queued frames keep the old type (FINDINGS §9).
+frames while already-queued frames keep the old type (FINDINGS §11).
 `start()` sets the type, calls `Start()`, sets it again, then applies
 settings, because settings applied while stopped are not reliably kept.
 Every fetched frame's type is checked: `grab()` returns nothing for an
 object frame, and `grabBlobs()` returns nothing for a grayscale one.
 
 **Settings change one at a time.** Re-sending every setting mid-stream
-stalls delivery (FINDINGS §12). `apply()` diffs against the last request and
-sends only what changed. It sets the frame rate before the exposure, because
-the rate sets the exposure ceiling (§1). `actual()` reads values back from the
-camera; it never echoes the request.
+stalls delivery (FINDINGS §14). `apply()` diffs against the last request and
+sends only what changed; `setThreshold()` and `setExposure()` send one value
+each, which is what `05_identify`'s keys use. `apply()` touches the video type
+only on a real mode change. It sets the frame rate before the exposure, because
+the rate sets the exposure ceiling (§3), and `maxExposure()` asks the SDK on
+every call instead of caching, because a ceiling read before a rate change is
+wrong. `actual()` reads values back from the camera rather than echoing the
+request; the mode, IR filter state and `emptyFrames` are the exceptions and
+echo it. `05_identify`'s `]` key ignores the ceiling and caps at a hardcoded
+33133.
 
 **Why the mode split shapes the future extrinsics design** (`src/notes.md`).
 A board-based extrinsic calibration needs grayscale, which is not
@@ -199,15 +211,16 @@ indistinguishable from markers.
 **The SDK's answer, and its traps.** The camera can drop regions of its
 image *before* blob detection. The mask is a grid of 2-px cells, 640×512 on
 this hardware. The SDK's semantics had to be read out of the binary, and they
-contain three traps (FINDINGS §13):
+contain three traps (FINDINGS §15):
 
 - `SetBitMaskPixel` takes cell coordinates.
 - `SetBlockingMask` with the wrong buffer size silently clears.
 - `UpdateBlockingMask()` sends only chunks that differ from what the SDK
   *believes* the camera holds, and in a new process that belief is "empty".
 
-So `Camera::setMask()` validates the size, commits an all-blocked mask, then
-commits the target. Every chunk differs from something, so every chunk is
+So `Camera::stageMask()` checks the buffer is exactly cols × rows before
+calling the SDK, and `Camera::setMask()` validates the size, commits an
+all-blocked mask, then commits the target. Every chunk differs from something, so every chunk is
 sent, and the camera ends in the right state whatever it held before.
 
 **Learn** (`mask`, empty volume):
@@ -255,7 +268,7 @@ enough. `--coverage` has the operator walk one marker through the volume and
 fails if any moment is seen by fewer than `min_observers` (3) cameras. Each
 camera's losses are blamed on its mask when they happen within
 `near_mask_cells` of it. Results, and the fact that no pass is recorded, are
-in FINDINGS §13.
+in FINDINGS §15.
 
 **Measure the SDK.** `--probe` steps through:
 
@@ -288,7 +301,7 @@ comparable between cameras.
 
 **The target.** The board is a calib.io ChArUco board: 12×9 squares of
 60 mm (nominal), 45 mm ArUco markers, `DICT_5X5_100`, giving 54 markers and
-88 interior corners (FINDINGS §17).
+88 interior corners (FINDINGS §19).
 
 - **One definition.** `config/charuco_board.yaml` defines the board:
   - rows and cols
@@ -314,15 +327,17 @@ the corners; the markers only say which corner is which.
 `CharucoBoard::create()` always builds what 4.7+ calls the non-legacy layout.
 For an even row count the legacy layout differs, and 4.6 then still returns
 every corner, with the IDs on the wrong ones. That is what happened with the
-old board (FINDINGS §7). `applyLayout()` places the markers by the 4.7+ rule
+old board (FINDINGS §9). `applyLayout()` places the markers by the 4.7+ rule
 for the configured `legacy_pattern` and recomputes 4.6's nearest-marker
-tables. The result matches 5.x exactly.
+tables. The result matches 5.x exactly (checked for 9×6 and 12×9, both flag
+values; FINDINGS §9). The old board is kept in
+`config/charuco_board_old.yaml` with `legacy_pattern: true`.
 
 **The fit residual, not the corner count, says the detection is right.**
 `Detector::layoutResidualPx()` fits a homography from the detected corners'
 board coordinates to their image positions and returns the worst residual.
 Correct labels give about 1 px; a wrong layout or swapped rows/cols gives
-hundreds, with a full corner count (FINDINGS §5). `03_detect` shows it as
+hundreds, with a full corner count (FINDINGS §7). `03_detect` shows it as
 `fit`, next to the count of marker IDs beyond the board's range.
 
 **The capture loop.** `04_capture` grabs, detects, draws the detection and
@@ -339,7 +354,7 @@ the coverage overlay, and waits for the operator.
 - **`u` undoes the last capture** in both the tally and the session folder.
 
 **Acceptance: zero empty cells, not RMS.** This is the central calibration
-decision, and the evidence is FINDINGS §5. RMS reprojection error is computed
+decision, and the evidence is FINDINGS §7. RMS reprojection error is computed
 only where observations exist, so it cannot see a region with no data. On
 synthetic data with known truth:
 
@@ -353,9 +368,9 @@ So the status line turns green at zero empty cells, and coverage is watched
 
 A second, independent failure is that all-fronto-parallel views make focal
 length and distance ambiguous, which shows up as fx drifting from fy
-(FINDINGS §6). It needs a different fix, so tilt is tracked separately: the
+(FINDINGS §8). It needs a different fix, so tilt is tracked separately: the
 tool shows the share of captures tilted more than 20° (aim for 30% or more)
-and a tilt histogram.
+and a tilt histogram. It shows the number; it does not warn below 30%.
 
 **Session output** (`Session`). Each accepted capture is written as
 `frame_NNNN.png`. `session.json` is rewritten after every change and records:
@@ -364,20 +379,112 @@ and a tilt histogram.
   (measured and nominal sizes, dictionary, `legacy_pattern`, provenance)
 - for each frame: marker and corner counts, and the exposure, gain,
   intensity, frame rate and filter state it was taken under
+- in auto mode only, the extra records in section 5
 
 The rig will be moved and recalibrated repeatedly, and a folder of PNGs with
 no record of how they were taken is nearly worthless. Sessions go to
-`$HOME/panoptes-data/sessions`, outside the repo.
+`$HOME/panoptes-data/sessions`, outside the repo. `created` is rewritten on
+every flush (FINDINGS, Open items).
 
 ---
 
-## 5. Solve and the distortion model
+## 5. Automatic frame selection
+
+**Files:** `lib/autocapture.h`, `lib/autocapture.cpp`,
+`config/autocapture.yaml`, `src/04_capture/main.cpp` (`runAuto`),
+`lib/coverage.*` (`emptyCellsHit`), `lib/session.*` (`setExtra`, per-frame
+extras), `tests/test_autocapture.cpp`.
+
+**What it replaces.** In manual mode the operator holds the board still and
+presses space. In `--auto` the operator moves the board slowly and
+`AutoCapture` decides per frame. That replaces a human judgement, so every
+rule is explicit, named, read from `config/autocapture.yaml` (no defaults:
+`loadAutoConfig()` refuses a missing field), and copied into `session.json`.
+The gates take corners and a `BoardSpec`, not a camera, so the
+wand/extrinsics stage can reuse them.
+
+**The gates,** in order. The first failure names the rejection:
+
+1. **Full board.** All corners found, and `layoutResidualPx()` under
+   `max_fit_px` (default 5: correct labels give about 1 px mid-frame and up
+   to ~3 px at the edge; wrong labels ~200 px; FINDINGS §7, §9).
+2. **Still.** Every corner moved less than `still_px` since the previous
+   frame, matched by corner ID. The previous frame must itself have passed
+   gate 1, or the verdict is `no_reference`. The reference updates on every
+   evaluated frame, accepted or not.
+3. **Novel.** `Coverage::emptyCellsHit()` finds an empty cell, or the frame's
+   pose bin holds fewer than `min_per_bin`. A bin counts as unfilled below
+   `min_per_bin`, not only at zero; otherwise the session-end condition could
+   never be met.
+4. **Settings unchanged.** Exposure, gain, intensity, frame rate and filter
+   equal the reference, taken from `Camera::actual()` at the first evaluated
+   frame. The first four are camera readbacks; the filter is the request.
+5. **Spacing in time.** `min_interval_ms` since the last accept.
+6. **Spacing in position.** Some corner moved `min_move_px` since the last
+   accept. Gate 5 alone lets a pose held longer than the interval be taken
+   twice, which gate 3 allows while its bin is short. It also stops a corner
+   jittering across a cell border from counting as a new cell.
+
+Every value is measured for any frame that passes gate 1, so the live view
+can show it, but the verdict is decided strictly in gate order. `evaluate()`
+counts every frame's verdict; `commit()` adds an accepted frame to coverage
+and its bin, and refuses one that was not accepted.
+
+**Why stillness is a gate.** At 8133 µs, a board moving 20 cm/s at 1.5 m
+(~2 mm/px) smears a corner by ~0.8 px, 15× the 0.054 px static jitter
+(FINDINGS §6). Neither the corner count nor the fit residual shows blur.
+Movement between consecutive frames stands in for motion during the
+exposure; it is not a measurement of it. The default `still_px` of 0.3 is
+about 2× the expected worst-corner difference between two frames of a still
+board (~0.15 px).
+
+**Pose bins:** 5 tilt directions × 3 distance bands.
+
+- **Tilt.** `solvePnP` with `approx_focal_px` (780) and the principal point at
+  the image centre, as in `Coverage`. With the board normal n turned to face
+  the camera (n.z < 0): tilt about x = atan2(n.y, −n.z), about y =
+  atan2(n.x, −n.z). Under `flat_deg` (20, the coverage "tilted" threshold)
+  the bin is `flat`; otherwise it is the quadrant of the two signs. `+x`
+  means the board faces image-down, `+y` image-right. The unit test checks
+  this against which image edge comes out shorter.
+- **Distance band,** from apparent size. `apparentSquarePx()` takes the
+  component-wise median horizontal and vertical corner-step vectors h and v,
+  and returns the largest singular value of [h v]. That is the scale along
+  the board direction tilt foreshortens least, which is the tilt axis. A
+  spacing along a board axis doesn't work, because compound tilt shrinks
+  both axes. At 1.25 m with 25°/25° tilt, the axis spacing read 33.9 px per
+  square (the far band); the singular value reads 37.4–37.5 px (mid, as at
+  0° tilt).
+
+**Session end:** zero empty cells **and** every bin at `min_per_bin`, or the
+operator's `q`.
+
+**What it records** (auto only; a manual `session.json` is byte-identical to
+before, apart from `created`):
+
+- per accepted frame, an `auto` object: reason (`cells`, `bin`),
+  `motion_px`, distance moved since the last accept, fit, size, tilt, time
+- `autocapture`: the config, bin counts, every verdict's count, and the
+  reference settings
+- `autocapture_end`: why the session ended
+
+Rejected frames are never written. `--auto-dry` runs the same loop with no
+`Session` at all, because the `Session` constructor creates the folder.
+
+**Status.** `tests/test_autocapture` checks the gates on synthetic corner
+sets: the real board projected through a pinhole camera, with seeded noise.
+**Unvalidated on real data** (FINDINGS, Open items). The validation rule is
+in RUNBOOK §9.
+
+---
+
+## 6. Solve and the distortion model
 
 **Files:** `python/compare_models.py`, `python/fit_intrinsics.py`,
 `python/bootstrap_intrinsics.py`.
 
 The solve runs in Python because it needs OpenCV 5.x, which can't share a
-process with the C++ tools' OpenCV 4.6 (FINDINGS §16).
+process with the C++ tools' OpenCV 4.6 (FINDINGS §18).
 
 **Detection in 5.x.** `CharucoDetector.detectBoard()` finds the corners and
 `board.matchImagePoints()` turns their IDs into 3D board coordinates;
@@ -387,7 +494,7 @@ from `python/board.py`. It uses the record in the session's `session.json`,
 or `config/charuco_board_old.yaml` for sessions recorded before the board
 config existed, after checking that it matches what the session recorded.
 `setLegacyPattern()` is set from that record. A wrong value on an even-row
-board makes 5.x silently find zero corners (FINDINGS §7). Views with fewer
+board makes 5.x silently find zero corners (FINDINGS §9). Views with fewer
 than 6 corners are dropped.
 
 **Choosing a model** (`compare_models.py`). Training RMS can't choose
@@ -404,7 +511,7 @@ them on two checks the optimiser never saw:
 The split uses a fixed seed and reports how many grid cells the test set
 covers. A split that put every edge view in training would make every model
 look good. Brown-Conrady was chosen; the held-out numbers behind that choice
-were not saved (FINDINGS §14).
+were not saved (FINDINGS §16).
 
 **The final fit** (`fit_intrinsics.py`). This fits Brown-Conrady on every
 frame and writes `intrinsics.json` into the session, with per-view error so
@@ -419,11 +526,11 @@ pose sampling explains it and nothing physical changed. The principal point
 (cx, cy) is the weakest-determined parameter: shifting it can be largely
 compensated by shifting every board pose, so the optimiser sits in a shallow
 valley. That is the open question for camera 33661, whose cx spans 9.4 px
-across three sessions (FINDINGS §14, Open items #1).
+across three sessions (FINDINGS §16, Open items #1).
 
 ---
 
-## 6. The rig model and triangulation
+## 7. The rig model and triangulation
 
 **Files:** `config/layout.yaml`, `python/rig.py`, `python/triangulate.py`.
 
@@ -434,7 +541,7 @@ downstream is mm. Every camera is aimed at one point (z = 30 in), and world
 up fixes roll, so each rotation comes from a look-at construction. All ten
 share one intrinsic model, taken from camera 33661. Its distortion
 coefficients are placeholders chosen to match the 82° × 70° spec, not the
-fitted values (FINDINGS §14).
+fitted values (FINDINGS §16).
 
 **Projection** (`Rig.project`) is standard OpenCV Brown-Conrady, vectorised
 over all cameras and points, with an **analytic Jacobian**
@@ -501,7 +608,7 @@ triangulation still needs frame sync, marker labeling and extrinsics.
 
 ---
 
-## 7. Synthetic accuracy study
+## 8. Synthetic accuracy study
 
 **Files:** `python/accuracy_study.py`, `config/study.yaml`,
 `analysis/README.md`, `analysis/accuracy_study.json`.
@@ -515,7 +622,7 @@ layout triangulate a marker, and where?
   (3 in or less) on a box ±12 in around the perch.
 - **Noise:** each point is projected into the cameras that can see it, and
   0.054 px Gaussian noise is added per axis. That is the measured static
-  corner jitter (FINDINGS §4).
+  corner jitter (FINDINGS §6).
 - **Trials:** each point is triangulated 200 times, and the RMS error is
   reported per axis.
 - **Variations:**
@@ -526,7 +633,7 @@ layout triangulate a marker, and where?
 - **Provenance:** the run records the git commit and dirty flag, config
   hashes and library versions.
 
-**Results** (FINDINGS §15).
+**Results** (FINDINGS §17).
 
 - **Accuracy is a non-issue at this scale.** The perch box reaches 0.077 mm
   median. The whole volume reaches 0.098 mm.

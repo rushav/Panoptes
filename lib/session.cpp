@@ -34,7 +34,8 @@ Session::Session(const std::string& root, int serial, const BoardSpec& board)
     fs::create_directories(path_);
 }
 
-void Session::record(const cv::Mat& gray, const Detection& d, const Settings& a) {
+void Session::record(const cv::Mat& gray, const Detection& d, const Settings& a,
+                     const std::string& extraFields) {
     ++count_;
 
     std::ostringstream name;
@@ -51,6 +52,7 @@ void Session::record(const cv::Mat& gray, const Detection& d, const Settings& a)
       << ", \"intensity\": " << a.intensity
       << ", \"frame_rate\": " << a.frameRate
       << ", \"ir_filter\": " << (a.irFilter ? "true" : "false")
+      << (extraFields.empty() ? "" : ", ") << extraFields
       << "}";
     json_ += e.str();
 
@@ -70,14 +72,23 @@ void Session::removeLast() {
     flush();
 }
 
+void Session::setExtra(const std::string& key, const std::string& json) {
+    for (auto& [k, v] : extras_)
+        if (k == key) { v = json; flush(); return; }
+    extras_.emplace_back(key, json);
+    flush();
+}
+
 void Session::flush() const {
     std::ofstream out(path_ + "/session.json");
     out << "{\n"
         << "  \"camera_serial\": " << serial_ << ",\n"
         << "  \"created\": \"" << isoNow() << "\",\n"
         << "  \"opencv_version\": \"" << CV_VERSION << "\",\n"
-        << "  \"board\": " << board_.toJson("  ") << ",\n"
-        << "  \"frames\": [\n" << json_ << "\n  ]\n"
+        << "  \"board\": " << board_.toJson("  ") << ",\n";
+    for (auto& [k, v] : extras_)
+        out << "  \"" << k << "\": " << v << ",\n";
+    out << "  \"frames\": [\n" << json_ << "\n  ]\n"
         << "}\n";
 }
 

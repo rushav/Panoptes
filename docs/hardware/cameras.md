@@ -38,7 +38,7 @@ Refocus 33275 with a variance-of-Laplacian metric rather than judging
 sharpness by eye.
 
 Working settings for ChArUco calibration capture (filter in, ring at full) are
-recorded in [FINDINGS.md](../FINDINGS.md#2-the-ir-bandpass-filter-can-stay-in-for-charuco-capture),
+recorded in [FINDINGS.md](../FINDINGS.md#4-the-ir-bandpass-filter-can-stay-in-for-charuco-capture),
 not here.
 
 ## Network
@@ -50,4 +50,4 @@ camera network; internet comes over Wi-Fi.
     sudo tcpdump -i enp6s0 -n port 13013   # confirm a camera is alive
 
 Discovery is staggered and can list a serial twice; see
-[FINDINGS.md](../FINDINGS.md#8-device-discovery-is-staggered-and-can-duplicate).
+[FINDINGS.md](../FINDINGS.md#10-device-discovery-is-staggered-and-can-duplicate).

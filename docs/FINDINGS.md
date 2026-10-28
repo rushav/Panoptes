@@ -1,33 +1,126 @@
-# Mocap findings
+# Findings
 
-What was learned running OptiTrack Prime 13W cameras and calibrating them on
-this rig, and why it matters. This file is authoritative for **operational**
-findings: what settings work, what the SDK actually does, what was measured.
+Everything measured on this rig, and the rules that follow from it. This file
+is the single home for measured numbers and for open items; other docs cite it
+by section (§N).
 
-Camera inventory, serials, model specifications and network layout live in
-[hardware/cameras.md](hardware/cameras.md) and are not
-repeated here.
+- How the code works: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Commands: [RUNBOOK.md](RUNBOOK.md)
+- Camera inventory, serials, specs, network: [hardware/cameras.md](hardware/cameras.md)
 
-Commands are in [RUNBOOK.md](RUNBOOK.md).
+**Marking.** **Verified** means a measurement is recorded here. *Inferred*
+means read from code, a code comment or the SDK binary, with no measurement in
+this repo.
 
-Every claim below marked **Verified** includes the measurement it came from.
-Claims taken from code comments or from reading the SDK binary, with no
-measurement recorded in this repo, are marked as such. Open items and open
-questions are collected at the end.
+**Record notes.**
 
-Sections 1–10 were written against the GUI tool `src/intrinsics_capture`,
-removed in commit a91b3c6. Their measurements stand; where they describe that
-tool's behaviour, a note says what the current code does instead.
+- §3–§12 were first written against the GUI tool `src/intrinsics_capture`,
+  removed in commit a91b3c6. The measurements stand; tool behaviour described
+  in them has since changed (see ARCHITECTURE).
+- 2026-10-19: the repo root is what used to be `mocap/` in GIX-TALON, renamed
+  PANOPTES.
+- 2026-10-28: sections renumbered. Topic section **old §N is now §N+2**
+  (Key numbers and Rules were inserted as §1–§2). Comments in code and config
+  that cite "FINDINGS N" use the old numbers.
 
 ---
 
-## 1. Exposure ceiling is set by the frame period, not fixed
+## 1. Key numbers
 
-**Verified — corrects an earlier assumption.**
+- **Corner jitter (static):** 0.0543 px radial median at gain 7, 0.0600 px at gain 0; 2026-10-27, camera 33664, `intrinsics_33664_20261027_151529` / `_152034`, `python/corner_jitter.py`. §6
+- **Gain:** free at the grayscale operating point (gain 7 better than gain 0 at median, p90 and max); same sessions. §6
+- **Intrinsics repeatability, 33661:** range fx 2.48, fy 1.05, cx 9.40, cy 4.26 px over 3 sessions; same-day pair fx 0.23, fy 0.63, cx 2.51, cy 1.51 px; 2026-09-24/25, `python/fit_intrinsics.py`. §16
+- **Distortion model:** Brown-Conrady (5); training RMS BC 0.3756 / rational 0.3746 / fisheye 181 px on `intrinsics_33661_20260924_155048`, `python/compare_models.py`; held-out numbers not recorded. §16
+- **Coverage beats RMS:** centre-clustered set (18/30 empty) RMS 0.262 px vs edge-covered 0.223 px, yet edge undistortion error 55.96 vs 26.82 px; synthetic, `solve_intrinsics.py` (removed), date not recorded. §7
+- **4.6 mislabelling:** old 9×6 board, 40/40 corners with homography residual 200–234 px; 2026-10-27, frames of `intrinsics_33661_20260925_103705`. §9
+- **calib.io 12×9 board test:** 54/54 markers, 88/88 corners, fit 0.7–0.8 px, same with `--legacy` and `--no-legacy`; 2026-10-27, camera 33664, `03_detect`. §19
+- **Mask learn/verify:** 0 residual persistent sources on all ten cameras, 424–1177 cells masked (0.13–0.36%); 2026-10-17 15:37, `config/masks/*.json`. §15
+- **Mask coverage walk:** no recorded PASS, minimum 0 observers in all 4 logs; 2026-10-16/17, `logs/coverage_*.csv`. §15
+- **Triangulation floor:** 0.077 mm median (perch box), 0.098 mm (whole volume), 19% of the volume untriangulable; 2026-10-17, `python/accuracy_study.py`, `analysis/accuracy_study.json`. §17
+- **Exposure ceiling:** `floor(1e6/fps) − 200` µs (33133 at 30 Hz); camera 33661, date not recorded. §3
+- **IR filter in:** 27/27 markers, 40/40 corners in every frame at ~1.5 m; 2026-08-24, `intrinsics_33661_20260824_234853` / `_235746`. §4
+- **Grayscale delivery:** ~10.7 MB/s, 6–8 fps whatever the imager rate; camera and date not recorded. §5
+- **Pose variety:** 20 static views at tilt std 0.02° solve to fx = 154 and fx = 554 against ~780, RMS 0.08–0.09 px; 2026-08-24 gain sessions. §8
+- **Working distance:** 1–1.5 m for intrinsics (old 9×6 board), observation only. §12
+- **IMU parameters:** not in this repo. No IMU document, config or measurement exists to link.
 
-The SDK re-reports `MinimumExposureValue()` / `MaximumExposureValue()` after
-every `SetFrameRate()`, and the maximum tracks the frame period exactly.
-Measured on camera 33661, setting each rate and then reading the range back:
+---
+
+## 2. Rules we learned
+
+These must not be re-derived. **This list is identical to the one in
+[CLAUDE.md](../CLAUDE.md#verified-sdk-and-hardware-behaviour-do-not-fix-these-away);
+change both together.**
+
+1. **Discovery is staggered and scales with camera count.** The SDK signals
+   ready after the *first* camera. Poll `CameraList` every 250 ms until the
+   count is unchanged for 5 s (20 polls), capped at 30 s. A 1.5 s window
+   reported 5 of 10. (§10)
+2. **`CameraList` can repeat a serial.** Collapse by serial. (§10)
+3. **`SetVideoType` is asynchronous.** Set it, `Start()`, set it again, then
+   apply settings. Check `FrameType()` on every frame; queued frames keep the
+   old mode, and `GrayscaleData()` on an object frame is null. (§11)
+4. **`NextFrame()` returns the OLDEST frame** as `std::shared_ptr<const Frame>`.
+   Drain to the newest every loop. Freeing is by dropping the pointer; there
+   is no manual `Release()`. (§11)
+5. **`ImagerWidth()` / `ImagerHeight()` are `double`s, the sensor size in mm.**
+   Pixel counts are `PhysicalPixelWidth()` / `PhysicalPixelHeight()`;
+   `Width()` / `Height()` describe an ROI. (`lib/camera.cpp`, SDK header)
+6. **`SetImagerGain` takes `eImagerGain`**, not `int`. Cast explicitly. (SDK
+   header)
+7. **The exposure ceiling is `floor(1e6/fps) − 200` µs.** Re-read
+   `MaximumExposureValue()` after any frame-rate change, and set the rate
+   before the exposure. (§3)
+8. **The blocking mask is a grid of 640 × 512 cells of 2 px.** (§15)
+   - `SetBitMaskPixel` takes **cells**.
+   - `AddBlockingRectangle` takes **pixels**.
+   - `SetBlockingMask` needs **exactly cols × rows bytes**; any other size
+     silently clears the staged mask.
+   - Nothing reaches the camera until `UpdateBlockingMask()`, which sends only
+     chunks that differ from the SDK's belief. That belief starts empty in
+     every process, so `Camera::setMask()` commits all-blocked and then the
+     target.
+   - `IsBlockingMaskEnabled()` is an SDK flag, not a camera readback.
+9. **Masks are settings-specific and position-specific.** A mask learned at
+   one exposure and threshold is wrong at another, and wrong once its camera
+   moves. (§15)
+10. **Change settings one at a time while streaming.** Re-sending every
+    setting stalls delivery; `Camera::apply()` diffs on purpose. (§14)
+11. **`SendEmptyFrames(true)` in object mode.** Without it, "no blobs" and "no
+    frames" are indistinguishable. (§13)
+12. **`setcap cap_net_raw,cap_net_admin+eip` is stripped on every relink.**
+    Every rebuilt binary needs it again. Don't run tools under sudo. (§18)
+13. **Two OpenCV versions, on purpose.** C++ uses system OpenCV 4.6; Python
+    uses 5.x (`opencv-contrib-python`) in `.venv`. Don't unify them. (§18)
+14. **`lib/detect` builds the board layout itself, by the OpenCV 4.7+
+    rule.** OpenCV 4.6's `create()` always builds the non-legacy layout, and
+    it mislabelled every corner of the old 9×6 board. `legacy_pattern` in
+    `config/charuco_board.yaml` only matters for an even row count; the 12×9
+    board is the same either way. Python (5.x) sets it with
+    `setLegacyPattern()` from the same config and calibrates via
+    `CharucoDetector.detectBoard` + `matchImagePoints` + `calibrateCamera`.
+    **Never trust a corner count without the fit residual**
+    (`layoutResidualPx`, `fit` in `03_detect`). A wrong layout still returns
+    every corner, with a residual of ~200 px against ~1 px. (§7, §9, §19)
+15. **RMS reprojection error is not an acceptance criterion. Zero empty
+    coverage cells (5 × 6 grid) is.** All-fronto-parallel views are a
+    separate failure; aim for 30% or more of captures tilted beyond 20°.
+    (§7, §8)
+16. **Grayscale delivery is bandwidth-bound at 6–8 fps** at any imager rate.
+    It is not a bug. (§5)
+17. **Calibrate with the IR filter IN and the ring at 15.** The filter shifts
+    the focal plane. (§4)
+18. **Gain is free at the grayscale operating point** (jitter 0.0543 px
+    radial median at gain 7 vs 0.0600 px at gain 0, 2026-10-27). (§6)
+19. **Starting a tool right after killing one can hang** while the old
+    sockets are bound. Wait a couple of seconds. (§11)
+
+---
+
+## 3. Exposure ceiling is set by the frame period
+
+**Verified**, camera 33661, setting each rate and reading the range back. It
+corrects an earlier assumption.
 
 | Frame rate | SDK exposure range | `floor(1e6/fps) − 200` |
 |-----------:|-------------------:|-----------------------:|
@@ -36,74 +129,43 @@ Measured on camera 33661, setting each rate and then reading the range back:
 | 60 Hz | 10 – 16466 | 16466 |
 | 30 Hz | 10 – 33133 | 33133 |
 
-Setting exposure to the reported maximum reads back at that maximum in every
-case. Exposure units are microseconds; the constant 200 µs is readout overhead.
+- The SDK re-reports `MinimumExposureValue()` / `MaximumExposureValue()` after
+  every `SetFrameRate()`. Exposure set to the reported maximum reads back at
+  that maximum at every rate. Units are µs; the 200 µs is readout overhead.
+- Two earlier beliefs were wrong, in opposite directions:
+  - "Exposure above ~6000 is clamped at 120 Hz." The 120 Hz ceiling is 8133.
+  - "The ceiling is a hard 8133 at any rate, tested at 120 and 30 Hz." That
+    was the removed tool reading the range once at startup, so its slider
+    stayed at the 120 Hz bound after switching to 30 Hz. The fixed tool then
+    logged `exposure range at 30 Hz: 10..33133`.
+- At 30 Hz there is 4× more headroom than the 8133 µs default uses, so
+  exposure is not the constraint on a dark board.
+- How the code handles it: [ARCHITECTURE §2](ARCHITECTURE.md#2-two-operating-modes).
+  `src/05_identify` still caps its `]` key at 33133 (Open items).
 
-Two earlier beliefs were both wrong, in opposite directions:
+## 4. The IR bandpass filter can stay IN for ChArUco capture
 
-- *"Exposure above ~6000 is clamped at 120 Hz."* Wrong number. The ceiling at
-  120 Hz is 8133.
-- *"The ceiling is a hard 8133 regardless of frame rate, tested at 120 and
-  30 Hz."* This is what the **tool** showed, not what the camera does. Stage 1
-  read the exposure range once at startup and never refreshed it, so the slider
-  stayed pinned to the 120 Hz bound of 8133 even after switching to 30 Hz.
-  Brightness rising all the way to 8133 was consistent with that stale bound
-  and looked like a hard limit. The camera at 30 Hz will in fact go to 33133.
-
-The tool now re-reads the range on every frame rate change and after applying
-the startup defaults. Confirmed live: opening at 30 Hz logs
-`exposure range at 30 Hz: 10..33133`.
-
-*Current code:* `Camera::maxExposure()` (`lib/camera.cpp`) asks the SDK on
-every call instead of caching, and `Camera::apply()` sets the frame rate
-before the exposure so the exposure is not clamped against the old ceiling.
-`src/05_identify` still caps its `]` key at a hardcoded 33133, which is
-correct only at 30 Hz.
-
-**Why it matters:** at 30 Hz there is 4× more exposure headroom available than
-the working default of 8133 uses. If a board is ever too dark at working
-distance, exposure is not the constraint people assumed it was.
-
----
-
-## 2. The IR bandpass filter can stay IN for ChArUco capture
-
-**Verified.**
-
-The Prime 13W has a switchable 850 nm bandpass. With it IN, and the IR ring
-doing the illuminating rather than room light:
+**Verified**, camera 33661, 2026-08-24.
 
 | Setting | Value |
 |---------|-------|
-| IR filter | IN |
+| IR filter | IN (850 nm bandpass) |
 | IR intensity | 15 |
 | Imager gain | 7 |
 | Exposure | 8133 µs |
 | Frame rate | 30 Hz |
 
-Two 20-frame sessions captured this way at ~1.5 m gave **27/27 markers and
-40/40 ChArUco corners in every single frame** (sessions
-`intrinsics_33661_20260824_234853` and `..._235746`).
+- Two 20-frame sessions at ~1.5 m (`intrinsics_33661_20260824_234853` and
+  `..._235746`) gave **27/27 markers and 40/40 corners in every frame**.
+- Calibration then uses the same optical configuration as tracking, so there
+  is no filter-removal focal shift to characterise.
+- With the filter in but the ring off at 400 µs, the frame averages 6/255 and
+  detects zero markers. The filter is only workable with the ring.
 
-**Why it matters:** calibration then happens in the same optical configuration
-the cameras track in. There is no filter-removal focal shift to characterise or
-correct for — the lens never moves between calibrating and operating. This is a
-better position than calibrating with the filter out and hoping the shift is
-negligible.
+## 5. Grayscale delivery is bandwidth-bound
 
-For contrast: with the filter IN but the IR ring off and exposure at 400 µs,
-the frame averages 6/255 and detects zero markers. The filter is only workable
-together with the ring.
-
----
-
-## 3. Grayscale delivery is bandwidth-bound at 6–8 fps
-
-**Verified.**
-
-Full-resolution 1280×1024 grayscale arrives at roughly 8 frames per second, at
-both 120 Hz and 30 Hz imager rates. Measured by counting frames drained from
-the SDK queue over 3-second windows:
+**Verified**, by counting frames drained from the SDK queue over 3 s windows
+at 120 Hz:
 
 ```
 decim=1  received 14.7 fps  1280x1024 | FrameRate()=120 ActualFrameRate()=120  DataRate=10.7 MB/s
@@ -111,397 +173,266 @@ decim=2  received  9.7 fps  1280x1024 | FrameRate()=120 ActualFrameRate()=120  D
 decim=4  received 10.0 fps  1280x1024 | FrameRate()=120 ActualFrameRate()=120  DataRate=10.7 MB/s
 ```
 
-`DataRate()` sits at ~10.7 MB/s across the board — about 8 frames of 1.31 MB.
-`SetGrayscaleDecimation()` has no effect on this camera:
-`GrayscaleDecimation()` stays 0 and the frame size never changes.
+- `DataRate()` sits at ~10.7 MB/s, about 8 frames of 1.31 MB. The text of
+  this finding has always given ~8 fps at both 120 and 30 Hz, and 6–8 fps in
+  the live view.
+- **Inconsistent:** the three logged lines show 9.7–14.7 fps received, above
+  that. The record doesn't say where the 6–8 fps figure was measured
+  (Open items).
+- `ActualFrameRate()` confirms the imager runs at the configured rate; only
+  delivery is limited. The removed GUI showed the two numbers separately; no
+  current tool does.
+- `SetGrayscaleDecimation()` has no effect: `GrayscaleDecimation()` stays 0
+  and the frame size never changes.
+- Harmless for calibration with the board held still; it would matter for
+  anything wanting fast grayscale.
 
-The imager genuinely is running at the configured rate — `ActualFrameRate()`
-confirms it — the *delivery* of full-resolution grayscale is what is limited.
-The removed GUI showed the two numbers separately; no current tool does.
+## 6. Corner jitter, and why gain is free
 
-**Why it matters:** harmless for tripod calibration, where the board is held
-still. It would matter for anything wanting fast grayscale.
+**Verified, 2026-10-27**, camera 33664, calib.io 12×9 board (§19).
 
----
-
-## 4. Imager gain is free at this exposure
-
-**Verified, and re-measured 2026-10-27 on the new board.**
-
-Jitter is static corner repeatability: board and camera fixed, the per-corner
-standard deviation of detected position across frames. It is measured by
-`python/corner_jitter.py` (RUNBOOK §6, "Corner repeatability (jitter)
-session").
-
-- **Radial std** is `sqrt(std_x² + std_y²)`, the RMS distance from the
-  corner's mean position.
-- **Per-axis** is radial / √2, the per-axis sigma of isotropic noise.
-
-**Current measurement**: camera 33664, the calib.io 12×9 board (§17). Both
-sessions were 200 frames at 1–1.5 m, with the board static, centred and
-tilted. Exposure 8133 µs, IR filter in, intensity 15, 30 Hz.
+**Method.** Board and camera fixed; per-corner std of detected position across
+frames, by `python/corner_jitter.py` (RUNBOOK §7). Radial std is
+`sqrt(std_x² + std_y²)`; per-axis is radial / √2. Each session: 200 frames at
+1–1.5 m, board static, centred and tilted; 8133 µs, filter in, intensity 15,
+30 Hz.
 
 | Gain | Session | Frames kept | Fit, median | Radial median | p90 | Max | Per-axis median |
 |-----:|---------|------------:|------------:|--------------:|----:|----:|----------------:|
 | 7 | `intrinsics_33664_20261027_151529` | 200/200 | 0.70 px | **0.0543 px** | 0.0705 | 0.0879 | 0.0384 |
 | 0 | `intrinsics_33664_20261027_152034` | 199/200 (1 rejected for corner count) | 0.70 px | **0.0600 px** | 0.0820 | 0.1052 | 0.0424 |
 
-Every one of the 88 corners was present in every kept frame. Full results,
-including per-corner positions and stds:
-[analysis/jitter/intrinsics_33664_20261027_151529_corner_jitter.json](../analysis/jitter/intrinsics_33664_20261027_151529_corner_jitter.json)
-and
-[analysis/jitter/intrinsics_33664_20261027_152034_corner_jitter.json](../analysis/jitter/intrinsics_33664_20261027_152034_corner_jitter.json).
-Both record commit `da80eec` with `git_dirty: true`: `corner_jitter.py` was not
-yet committed when they ran.
+- All 88 corners were present in every kept frame. Per-corner results:
+  [analysis/jitter/intrinsics_33664_20261027_151529_corner_jitter.json](../analysis/jitter/intrinsics_33664_20261027_151529_corner_jitter.json),
+  [analysis/jitter/intrinsics_33664_20261027_152034_corner_jitter.json](../analysis/jitter/intrinsics_33664_20261027_152034_corner_jitter.json).
+  Both record commit `da80eec` with `git_dirty: true` (`corner_jitter.py` was
+  not yet committed).
+- **Gain is free.** Gain 7 beats gain 0 at the median, p90 and worst corner.
+  The worry that gain amplifies noise into corner uncertainty doesn't show up.
 
-**Gain remains free.** Gain 7 is *better* than gain 0 at the median (0.0543
-vs 0.0600 px), at p90 and at the worst corner. Gain can be used freely to buy
-brightness. The usual worry that gain amplifies sensor noise into corner
-uncertainty does not show up.
-
-**The original figure is reproduced, and was a radial median.** The original
-measurement was two 20-frame sessions on the old 9×6 board, camera 33661, 40
-corners:
+**The original figure is reproduced, and was a radial median.** Original: two
+20-frame sessions, old 9×6 board, camera 33661, 40 corners
+(`intrinsics_33661_20260824_*`; sessions and script are gone):
 
 | Gain | Median | Mean | Worst |
 |-----:|-------:|-----:|------:|
 | 0 | 0.0561 px | 0.0568 px | 0.0820 px |
 | 7 | 0.0540 px | 0.0559 px | 0.0912 px |
 
-- Those sessions (`intrinsics_33661_20260824_*`) and the original script are
-  gone.
-- The new gain 7 radial median agrees with the old figure to 0.6%. The new
-  per-axis median (0.0384) does not. So the old figure was a radial median.
-  *That is inferred from the agreement; the old script's definition is not
-  recorded.*
-- Gain 0 agrees less closely: 0.0600 against 0.0561, 7% higher.
-- The two measurements differ in camera, board, frame count (200 vs 20) and
-  pose. Agreement to within 10% across all of that is the reproduction.
-- Most of the old corners were likely labelled wrongly by the 4.6 C++ path
-  (§7). That doesn't matter for a repeatability figure, since a consistent
-  mislabelling gives the same wrong ID to the same physical point in every
-  frame. The new sessions were detected through the OpenCV 5.x path with
+- The new gain 7 radial median agrees to 0.6%; the per-axis median (0.0384)
+  does not. So the old figure was radial (*inferred*; the old definition is
+  not recorded). Gain 0 agrees less closely: 0.0600 vs 0.0561, 7% higher.
+- Camera, board, frame count (200 vs 20) and pose all differ; agreement
+  within 10% across that is the reproduction.
+- The old corners were likely mislabelled by the 4.6 path (§9). That doesn't
+  affect repeatability, since a consistent mislabelling gives the same wrong
+  ID to the same point in every frame. The new sessions used OpenCV 5.x with
   correct labels (fit 0.70 px).
-- This also matches the previous rig's ~0.05 px static centroid noise,
-  measured independently on different hardware.
+- Matches the previous rig's ~0.05 px static centroid noise, measured
+  independently on different hardware.
 
-**The edge figure is still unmeasured.** In both sessions all 88 corners fell
-in the centre region of the 5×6 coverage grid (none in the outer ring of
-cells). The numbers above are centre-of-frame repeatability only. An edge
-figure needs a session with the board in a corner of the frame (RUNBOOK §6).
+**Edge figure unmeasured.** All 88 corners fell in the centre region of the
+5×6 grid in both sessions. These are centre-of-frame numbers only.
 
 **The accuracy study is conservative by about √2.** `config/study.yaml`
-`noise_px: 0.054` is described as "1-sigma per image axis".
-`python/accuracy_study.py` applies it that way:
-`rng.normal(0, sigma, (k, trials, C, 2))` draws 0.054 px independently on x
-and on y, and `predicted_cov()` takes the same sigma. But 0.054 px is the
-**radial** median. The measured per-axis median at gain 7 is 0.0384 px. The
-study therefore assumes 1.41× the measured per-axis corner noise, about √2.
-Its error figures (§15) are pessimistic by that factor for centre-of-frame
-corners, if errors scale linearly with noise. That scaling is *inferred*; the
-study has not been re-run at 0.0384.
+`noise_px: 0.054` is labelled "1-sigma per image axis", and
+`accuracy_study.py` draws it independently on x and y
+(`rng.normal(0, sigma, (k, trials, C, 2))`, and `predicted_cov()` uses the
+same sigma). But 0.054 is the radial median; per-axis is 0.0384. So §17's
+error figures are pessimistic by ~1.41× for centre-of-frame corners, if error
+scales linearly with noise (*inferred*; not re-run at 0.0384).
 
-## 5. Coverage, not RMS, is what tells you the calibration is sound
+## 7. Coverage, not RMS, says a calibration is sound
 
-**Verified by controlled experiment.**
+**Verified by controlled experiment.** The most important finding here.
 
-This is the most important finding here.
+**Previous rig.** A calibration reported 0.356 px RMS while 6 of 30 frame
+regions had **zero** observations. Later, a blob near the left edge moved
+3.9 px under undistortion while centre points moved 0.02 px. The eight
+rational coefficients were extrapolating at the edges.
 
-On the previous rig a calibration reported a healthy 0.356 px RMS while 6 of 30
-frame regions contained **zero** board observations. The consequence surfaced
-much later: a blob near the left frame edge moved 3.9 px under undistortion
-while centre-frame points moved 0.02 px. The eight rational-model coefficients
-were extrapolating at the edges rather than being measured there.
-
-To confirm the mechanism, two synthetic capture sets were rendered against
-known ground truth (fx = fy = 780, cx = 632, cy = 518, a real radial distortion
-field applied per pixel), then solved with `solve_intrinsics.py` (since
-removed; `python/fit_intrinsics.py` is its replacement):
+**Synthetic test.** Two capture sets rendered against known truth (fx = fy =
+780, cx = 632, cy = 518, a real radial distortion field per pixel), solved
+with `solve_intrinsics.py` (removed; `python/fit_intrinsics.py` replaces it):
 
 | Set | Empty cells (5×6) | RMS | fx recovered | Undistortion error vs truth, outer 20% of field |
 |-----|------------------:|----:|-------------:|------------------------------------------------:|
 | centre-clustered | 18 of 30 | **0.262 px** | 781.3 | **55.96 px** median |
 | edge-covered | 0 of 30 | **0.223 px** | 780.0 | **26.82 px** median |
 
-Read that table twice. **RMS does not distinguish the two sets** — the badly
-sampled one even looks comparable, and its focal length is recovered to 0.2%
-with fx and fy agreeing to 0.013%. Every headline number looks healthy. Yet
-undistortion accuracy across the whole frame differs by 10× (1.563 px vs
-0.147 px median), and at the frame edge by 2×.
+- **RMS does not separate them.** The bad set recovers fx to 0.2%, with fx and
+  fy agreeing to 0.013%. Yet undistortion over the whole frame is 10× worse
+  (1.563 vs 0.147 px median) and 2× worse at the edge.
+- Reprojection error exists only where observations exist, so RMS cannot
+  report a gap. Coverage has to be watched during capture. The Python solve
+  doesn't re-check it.
 
-The reason is structural: reprojection error is only computed where
-observations exist. A region with no data contributes nothing to RMS, so RMS is
-constitutionally incapable of reporting the gap.
+**A full corner count is not an acceptance criterion either.** The 4.6 path
+gave 40/40 with every ID wrong (§9). A board with rows and cols swapped,
+rendered synthetically, gave 54/54 markers, 88/88 corners, every ID in range,
+and a **249 px** fit residual. Correct labels give about 1 px (0.7–1.5 px
+measured, §9, §19); wrong labels give hundreds; distortion raises it somewhat
+near the frame edge. How the residual is computed:
+[ARCHITECTURE §4](ARCHITECTURE.md#4-intrinsics-capture).
 
-**Why it matters:** coverage has to be watched *during* capture. Discovered
-afterwards, it means recapturing. This is why `src/04_capture` draws the
-coverage grid live and turns its status line green only at zero empty cells
-(`lib/coverage.h`, `lib/coverage.cpp`). The Python solve does not re-check
-coverage.
+## 8. Pose variety separates focal length from distance
 
-**The same lesson applies to detection: a full corner count is not an
-acceptance criterion either.** On the old board the 4.6 C++ path reported
-40/40 corners on every frame while every corner carried the wrong ID (§7). A
-board with rows and cols swapped behaves the same way. Rendered synthetically,
-it gave 54/54 markers, 88/88 corners and every ID in range, but a 249 px
-residual. A count says how many corners were found, not whether they are the
-right ones.
+**Verified, in the negative**, on the two 2026-08-24 gain sessions (§6).
 
-What does tell them apart is the **fit residual**: the worst distance between
-the detected corners and a homography fitted from their board coordinates
-(`Detector::layoutResidualPx()` in `lib/detect.cpp`, shown as `fit` by
-`03_detect`). Correct labels give about 1 px (0.7–1.5 px measured, §7 and
-§17); wrong labels give hundreds. Lens distortion raises it somewhat for a
-board near the frame edge.
+- Board on a tripod, deliberately static: tilt min 14.5°, max 14.6°, std
+  **0.02°** over 20 frames; board centre on the same pixel every frame.
+- Solved as calibration data: fx = 154, cx = 736 in one; fx = 554 with fx and
+  fy 4.4% apart in the other; expected ~780. RMS 0.08–0.09 px, *better* than a
+  good calibration.
+- All-fronto-parallel views make focal length and distance ambiguous (a small
+  near board looks like a large far one). The tell is fx drifting from fy.
 
----
+## 9. Board layout: OpenCV 4.6 does not build the legacy layout
 
-## 6. Pose variety separates focal length from distance
+**Verified, 2026-10-27.** Corrects an earlier version that said 4.6 already
+uses the legacy layout.
 
-**Verified, in the negative.**
+- OpenCV ≥ 4.7 `setLegacyPattern()` moves markers to the other colour of
+  square, only for an **even** row count.
+- **4.6 `CharucoBoard::create()` builds the NON-legacy layout.** Checked by
+  dumping marker object points and IDs from 4.6 and from 5.0 with each flag.
+  For the old 9×6 board, 4.6 equals 5.0 non-legacy: marker 0 on square (1, 0)
+  instead of (0, 0).
+- **The old 9×6 board is legacy**, although generated with calib.io's
+  "ChArUco Legacy" box **unchecked**. On frames of
+  `intrinsics_33661_20260925_103705`:
+  - 5.0 with `setLegacyPattern(True)`: 39–40 corners per frame, worst
+    homography residual 1.97 px over 15 frames.
+  - 5.0 without it: no usable view, though `detectMarkers` still finds the
+    markers, so it looks like a detection problem.
+- **So the 4.6 C++ path mislabelled every old-board corner.** It returned
+  40/40 corners and 27/27 markers on every frame tested, but:
+  - homography residual 200–234 px per frame
+  - the same ID landed a median 70 px (max 248 px) from 5.0 legacy's position
+  - positionally most corners sat near a real checker corner (median 0.7 px,
+    worst 45 px); the labels were wrong
+  - the earlier "confirmation" was a 40.0/40 average count
+- **Consequences:** intrinsics are unaffected (the Python solve re-detects
+  with 5.x and the legacy flag; §16 stands). Live tilt and distance in
+  `04_capture` during those captures were unreliable (`solvePnP` on wrong
+  labels); the coverage tally counts positions, so it was largely unaffected
+  (*inferred*).
+- **The fix** (`applyLayout`, [ARCHITECTURE §4](ARCHITECTURE.md#4-intrinsics-capture)):
+  its layout equals 5.0's for 9×6 and 12×9 with both flag values; where the
+  layout is unchanged its tables equal `create()`'s; on the old frames above
+  it gives 40/40 with residual 0.98–1.52 px.
 
-Two 20-frame sessions were captured for the gain comparison with the board on a
-tripod, deliberately static. Tilt across all 20 frames of each: min 14.5°, max
-14.6°, standard deviation **0.02°**. The board centre projected to the same
-pixel in every frame.
-
-Solving those sessions as if they were calibration data returns nonsense:
-fx = 154, cx = 736 in one, fx = 554 with fx and fy 4.4% apart in the other —
-against an expected fx of ~780. RMS was 0.08–0.09 px, *better* than a good
-calibration, because 20 near-identical views are trivially easy to fit.
-
-**Why it matters:** all-fronto-parallel views leave focal length and distance
-mutually ambiguous — a small near board and a large far one produce the same
-image. The tell is fx drifting away from fy. `src/04_capture` estimates board
-tilt per capture via `solvePnP` (assuming f = 780 px, principal point at the
-image centre) and displays the share of captures beyond 20° plus a tilt
-histogram. It shows the number; it does not warn below 30%.
-
----
-
-## 7. Board layout: OpenCV 4.6 does not build the legacy layout
-
-**Verified, 2026-10-27.** This corrects an earlier version of this section,
-which said 4.6's `CharucoBoard` already uses the legacy layout.
-
-OpenCV ≥ 4.7 has `setLegacyPattern()`. The flag moves the markers onto the
-other colour of square, and it only does so for boards with an **even** row
-count. With an odd row count, legacy and non-legacy are the same layout.
-
-**OpenCV 4.6's `CharucoBoard::create()` builds the NON-legacy layout.** This
-was checked by dumping marker object points and IDs from 4.6 `create()` and
-from 5.0 with each flag value. For the old 9×6 board, 4.6 equals 5.0
-non-legacy and differs from 5.0 legacy: marker 0 sits on square (1, 0)
-instead of (0, 0).
-
-**The old 9×6 board has the legacy layout.** It was generated with calib.io's
-"ChArUco Legacy" checkbox **unchecked**, yet it needs the legacy layout. On
-frames from `intrinsics_33661_20260925_103705`:
-
-- 5.0 with `setLegacyPattern(True)` finds 39–40 corners per frame, with a
-  worst homography residual of 1.97 px over 15 frames.
-- 5.0 without it finds no usable view. `detectMarkers` still finds the
-  markers, so the failure looks like a detection problem rather than a layout
-  mismatch.
-
-**So the 4.6 C++ path mislabelled every old-board corner.**
-`interpolateCornersCharuco` returned a full 40/40 corners, with 27/27 markers,
-on every frame tested. But the IDs were attached to the wrong corners:
-
-- A homography fitted from board coordinates to the detected corners left a
-  worst residual of 200–234 px per frame.
-- The same corner ID landed a median 70 px (max 248 px) from where 5.0
-  legacy put it.
-- Positionally, most corners still sat near a real checker corner (median
-  0.7 px, worst 45 px). Their labels were wrong.
-
-The earlier "confirmation" of this section was that 4.6 returned 40.0 of 40
-corners on average. That was a count, and the count was right while the
-labels were not (see the lesson at the end of §5).
-
-**Consequences for the old-board sessions:**
-
-- **Intrinsics are unaffected.** The Python solve re-detects every frame with
-  OpenCV 5.x and `setLegacyPattern(True)`, so it never used the C++ labels
-  (§14 stands).
-- **Live tilt and distance feedback during those captures was unreliable.**
-  `04_capture` estimated pose with `solvePnP` on the mislabelled corners, so
-  the tilt, distance, tilted share and histogram it showed (§6) did not
-  describe the board. The coverage tally counts corner positions, not IDs, so
-  it was largely unaffected (*inferred*).
-
-**Current code.** `lib/detect.cpp` (`applyLayout`) no longer trusts
-`create()`'s layout. It places the markers by the 4.7+ rule for the
-configured `legacy_pattern` and recomputes 4.6's nearest-marker tables:
-
-- Its layout equals 5.0's for 9×6 and 12×9 with both flag values.
-- Where the layout is unchanged, its tables equal `create()`'s.
-- On the old frames above it gives 40/40 corners with a residual of
-  0.98–1.52 px.
-
-The board, including `legacy_pattern`, is defined in
-`config/charuco_board.yaml`. The old board is kept in
-`config/charuco_board_old.yaml` with `legacy_pattern: true`. `session.json`
-records the full board (`lib/session.cpp`). `python/board.py` uses that
-record, or the old-board file for sessions recorded before the board config
-existed, after checking that it matches what the session recorded.
-
-## 8. Device discovery is staggered and can duplicate
+## 10. Device discovery is staggered and can duplicate
 
 **Verified.**
 
-`WaitForNewDevice()`-style waits return as soon as the *first* device
-initialises, well under a second, while a cold camera network takes 4–8 seconds
-to enumerate fully. Anything that trusts the first result sees a fraction of
-the cameras.
+- `WaitForNewDevice()`-style waits return when the *first* device initialises,
+  well under a second. A cold ten-camera network takes 4–8 s to enumerate.
+- `CameraList` can return **the same serial twice**: 33661 appears twice on
+  every enumeration.
+- A 1.5 s stable window (6 polls of 250 ms, tuned for four cameras) reported
+  **5 of 10**: the count plateaus while later cameras initialise. The current
+  window is 20 stable polls (5 s), 30 s cap
+  ([ARCHITECTURE §1](ARCHITECTURE.md#1-discovery-and-the-sdk-frame-model)).
+- `src/02_stream` and `src/03_detect` still use the short window (Open items).
 
-`CameraList` can also return **the same serial more than once** — observed
-consistently on 33661, which appears twice on every enumeration.
+## 11. Other SDK behaviour
 
-The removed tool polled the device list until the count had been stable for
-1.5 s. **That window is too short for ten cameras**: tuned for four (6 stable
-polls of 250 ms), it reported only 5 of 10 ready, because the count plateaus
-while later cameras are still initialising (`lib/camera.cpp`, comment in
-`discover()`). The current `discover()` polls every 250 ms and needs 20 stable
-polls (5 s of no change), capped at 120 polls (30 s). `src/01_discover` uses
-the same window.
+**Verified** against the removed tool.
 
-*Current code:* `src/02_stream` and `src/03_detect` still carry the old
-window (6 stable polls, 40-poll cap). Duplicates are collapsed by serial, but
-`discover()` keeps the **first** entry for a serial and `01_discover` keeps
-the **last**; neither prefers the `Initialized` one.
+- `SetVideoType` is asynchronous. `VideoType()` reports the new mode at once,
+  but queued frames keep the old one, and `GrayscaleData()` on an object
+  frame is null. In practice exactly one object-mode frame arrives after
+  `Start()`.
+- `NextFrame()` returns the **oldest** queued frame as
+  `std::shared_ptr<const Frame>`. One call per loop falls further behind each
+  pass. Dropping the pointer frees the buffer; there is no `Release()`.
+- SDK listener callbacks fire on its discovery thread; calling back into the
+  SDK from one can deadlock. (No current code registers a listener.)
+- Starting an instance right after killing one occasionally hangs in
+  `CameraLibraryStartup()` while the old sockets are bound. A couple of
+  seconds between runs avoids it.
 
----
+## 12. Working distance for intrinsics is 1–1.5 m
 
-## 9. Other SDK behaviour worth knowing
+**Verified by observation**, not a systematic sweep, on the old 9×6 board
+(67 mm markers).
 
-**Verified** against the removed tool. The first two are handled in
-`lib/camera.cpp` (and inline in `src/02_stream`, `src/03_detect`).
+- At 2–3 m the board fills too little of the frame, the marker count
+  fluctuates below 27/27, and corners cluster mid-frame (the §7 failure).
+- At 1–1.5 m the board reaches the frame edges and detection is stable.
+- The 12×9 board (§19) has 45 mm markers on a smaller pattern; its limit is
+  unmeasured and *inferred* to be shorter.
 
-- `SetVideoType` is asynchronous. `VideoType()` reports the new mode
-  immediately, but frames already queued still carry the old one, and
-  `GrayscaleData()` on an object-mode frame returns null. In practice exactly
-  one object-mode frame arrives after `Start()` and must be dropped.
-  `Camera::start()` sets the type, calls `Start()`, then sets it again, and
-  every fetched frame's `FrameType()` is checked.
-- `NextFrame()` returns the **oldest** queued frame, as a
-  `std::shared_ptr<const Frame>`. One call per loop iteration falls further
-  behind on every pass; the queue has to be drained to the end each time.
-  Dropping the `shared_ptr` frees the buffer; there is no manual `Release()`.
-- SDK listener callbacks fire on its own discovery thread. Calling back into
-  the SDK from inside one can deadlock, so callbacks only touch local state.
-  (No current code registers a listener.)
-- Starting a second instance immediately after killing the first occasionally
-  hangs in `CameraLibraryStartup()` while the previous process's sockets are
-  still bound. A couple of seconds between runs avoids it.
+## 13. Object mode is what ten cameras run on
 
----
+**Partly verified.**
 
-## 10. Working distance for intrinsics is 1–1.5 m
-
-**Verified by observation, not yet by a systematic sweep.**
-
-At 2–3 m the board fills too little of the frame, marker count begins
-fluctuating rather than sitting at 27/27, and detected corners cluster
-mid-frame — which is exactly the narrow-data failure described in section 5.
-At 1–1.5 m the board reaches the frame edges and detection is stable.
-
-This was observed with the old 9×6 board (67 mm markers). The 12×9 board
-(§17) has 45 mm markers on a smaller pattern. Its distance limit is not yet
-measured, and is *inferred* to be shorter.
-
----
-
-## 11. Object mode is what ten cameras run on
-
-**Partly verified.** Grayscale is ~1.3 MB per frame and one camera alone
-delivers 6–8 fps (section 3), so ten grayscale streams are not an operating
-mode. In object mode the camera thresholds on board and sends only blob
-centroids, each with the camera's own area and roundness (`lib/camera.h`).
-That is what `src/05_identify` and `src/07_mask` run all ten cameras on.
-
-Object mode is described in the code comments as hardware-synchronised across
-cameras. **Unverified here:** `Camera::diagnostics()` prints the SDK's
-`IsVideoTypeSynchronous(ObjectMode)` answer, but no output is recorded, and no
-synchronised capture has been built (see Open items).
-
-**`SendEmptyFrames(true)` is required for diagnosis.** Without it the camera
-sends nothing when it sees no markers, so "no frames" and "no blobs" are the
-same observation and a dark scene looks like a dead stream. Every object-mode
-tool turns it on. Source: code comment in `lib/camera.h`; no measurement
-recorded.
-
-**The object-mode operating point is not settled.** Two sets of values are
-in use, and nothing in the repo measures one against the other:
+- Grayscale is ~1.3 MB/frame and one camera delivers 6–8 fps (§5), so ten
+  grayscale streams are not an operating mode. `05_identify` and `07_mask` run
+  all ten in object mode.
+- **Hardware sync is unverified here.** `Camera::diagnostics()` prints
+  `IsVideoTypeSynchronous(ObjectMode)`, but no output is recorded and no
+  synchronised capture exists.
+- **`SendEmptyFrames(true)` is needed for diagnosis.** Without it, no markers
+  means no frames, so a dark scene looks like a dead stream. Source: code
+  comment in `lib/camera.h`; no measurement.
+- **The operating point is not settled.** Nothing measures one set against
+  the other:
 
 | Source | Exposure (µs) | Threshold | Gain | Intensity | Rate |
 |--------|--------------:|----------:|-----:|----------:|-----:|
 | `src/05_identify`, `src/07_objdiag` defaults | 500 | 200 | 0 | 15 | 30 Hz |
 | `config/mask.yaml` (masks learned here) | 10 | 40 | 0 | 15 | 30 Hz |
 
-10 µs is the SDK's exposure floor (section 1). The `05_identify` source notes
-that the floor "is not automatically a working value".
+- 10 µs is the exposure floor (§3); the `05_identify` source notes the floor
+  "is not automatically a working value".
+- The camera reports its own threshold limits. Code comments say a value
+  outside them is silently clamped or ignored (*unverified*).
+  `07_objdiag --sweep` measures blob count across that range.
 
-The camera reports its own threshold limits (`MinimumThreshold()` /
-`MaximumThreshold()`). The code comments say a value outside them is silently
-clamped or ignored and reads downstream as "no markers"; this is unverified.
-`src/07_objdiag --sweep` measures the peak blob count across that range.
-
----
-
-## 12. Change one setting at a time while streaming
+## 14. Change one setting at a time while streaming
 
 **Observed, not measured** (code comments in `lib/camera.cpp`).
 
 - Re-sending every setting mid-stream costs a settling period per command,
-  which looks like a stall in frame delivery. `Camera::apply()` sends only
-  the fields that changed since the last call; `setThreshold()` and
-  `setExposure()` send one value. The vendor's own sample app also sets one
-  value per user action.
-- Settings applied while the camera is stopped are not reliably retained, so
-  `Camera::start()` applies them after `Start()`.
-- Reasserting the video type when it has not changed costs a mode-change
-  settling period, so `apply()` only sends it on a real change.
-- Polling `NextFrame()` in a tight loop can starve the SDK's own receive
-  thread and itself look like 0 fps; `src/07_objdiag` sleeps 1 ms between
-  empty polls.
+  which looks like a stall. The vendor sample app also sets one value per
+  action.
+- Settings applied while the camera is stopped are not reliably retained.
+- Reasserting an unchanged video type costs a mode-change settling period.
+- A tight `NextFrame()` poll can starve the SDK's receive thread and look
+  like 0 fps.
+- How the code respects each: [ARCHITECTURE §1–§2](ARCHITECTURE.md#2-two-operating-modes).
 
----
+## 15. Blocking masks
 
-## 13. Blocking masks
+**SDK semantics read from the binary** (`cBlockControlBase` /
+`cBlockControlMask` in `libCameraLibrary.so`), not documentation. `mask
+--probe` exists to confirm them on hardware; **no probe output is recorded**,
+so they are unverified except where noted.
 
-**SDK semantics: read from the SDK binary** (`cBlockControlBase` /
-`cBlockControlMask` in `libCameraLibrary.so`), not from documentation.
-`mask --probe` exists to confirm the behavioural ones on hardware; **no probe
-output is recorded**, so those remain unverified except where noted.
-
-- The mask is a grid of cells, not pixels. `BlockingGrid()` is the cell size
-  in pixels; `BlockingMaskWidth/Height()` are the cell counts,
-  `ceil(1280 / grid)` × `ceil(1024 / grid)`. Pixel (x, y) is in cell
-  (x / grid, y / grid). **Verified:** all ten cameras report **640 × 512
-  cells of 2 px** (`grid` in every `config/masks/<serial>.json`).
-- `SetBitMaskPixel(X, Y)` takes **cell** coordinates despite its name. A
-  pixel coordinate is bounds-checked only against the cell grid, so it masks
-  the wrong cell or is silently ignored. No current code calls it.
-- `AddBlockingRectangle` takes **pixel** coordinates and divides by the grid.
-  No current code calls it.
+- The mask is a grid of cells. `BlockingGrid()` is the cell size in px;
+  `BlockingMaskWidth/Height()` are `ceil(1280 / grid)` × `ceil(1024 / grid)`;
+  pixel (x, y) is in cell (x / grid, y / grid). **Verified:** all ten cameras
+  report **640 × 512 cells of 2 px** (`grid` in every
+  `config/masks/<serial>.json`).
+- `SetBitMaskPixel(X, Y)` takes **cell** coordinates; a pixel coordinate is
+  bounds-checked against the cell grid only, so it masks the wrong cell or is
+  ignored. `AddBlockingRectangle` takes **pixels** and divides by the grid.
+  No current code calls either.
 - `SetBlockingMask` / `GetBlockingMask` take one byte per cell, row-major,
-  and the size must be exactly cols × rows. `SetBlockingMask` with any other
-  size **clears** the staged mask; `GetBlockingMask` does nothing.
-  `Camera::stageMask()` checks the size before calling.
-- Every edit goes into an SDK-side staging copy. Nothing reaches the camera
-  until `UpdateBlockingMask()`, which sends only the chunks that differ from
-  what the SDK believes the camera holds. That belief starts **empty** in
-  every new process, so a mask the camera kept from an earlier run is
-  invisible, and an incremental update on top of it leaves stale cells.
-  `Camera::setMask()` therefore commits all-blocked and then the target,
-  which forces every chunk to be sent whatever the camera held.
-- Whether `ClearBlockingMask()` by itself reaches the camera is unverified.
-- `IsBlockingMaskEnabled()` reports an SDK-side flag, not a camera readback.
+  exactly cols × rows. Any other size: `SetBlockingMask` **clears** the staged
+  mask; `GetBlockingMask` does nothing.
+- Edits go to an SDK-side staging copy. `UpdateBlockingMask()` sends only
+  chunks differing from what the SDK believes the camera holds, and that
+  belief starts **empty** in every process: a retained mask is invisible, and
+  an incremental update leaves stale cells.
+- Whether `ClearBlockingMask()` alone reaches the camera is unverified.
+- `IsBlockingMaskEnabled()` is an SDK flag, not a camera readback.
+- How `07_mask` handles all this: [ARCHITECTURE §3](ARCHITECTURE.md#3-blocking-masks).
 
-**Learn and verify results, 2026-10-17 15:37** (from
-`config/masks/*.json`; all ten cameras at the `mask.yaml` settings in
-section 11):
+**Learn and verify, 2026-10-17 15:37** (`config/masks/*.json`; all ten
+cameras at the `mask.yaml` settings, §13):
 
 | | Range over the ten cameras |
 |---|---|
@@ -511,26 +442,19 @@ section 11):
 | Residual persistent sources after masking | **0 on all ten** |
 | Blobs per frame after masking | 0 on nine; 0.12 on 33276 |
 
-So learn → apply → commit removes the static interference at these settings.
+- So learn → apply → commit removes static interference at these settings.
+- **Masks are settings-specific** (exposure and threshold decide which glare
+  becomes a blob) and valid only while the camera hasn't moved.
+- **The acceptance walk has no recorded pass.** `mask --coverage` passes only
+  if the marker is never seen by fewer than `min_observers` (3). Four logs in
+  `logs/` (2026-10-16 ×3, 2026-10-17 ×1): each has a minimum of 0 observers,
+  with 17%–100% of samples below 3. The logs don't say whether zero-observer
+  samples are the marker outside the volume or a real gap.
 
-**Masks are settings-specific.** Exposure and threshold decide which glare
-becomes a blob, so each saved mask records the settings it was learned
-under and `mask --load` warns if any differ. A mask is also valid only while
-its camera has not moved.
+## 16. Intrinsics of camera 33661
 
-**The acceptance test has no recorded pass.** `mask --coverage` passes only
-if the walked marker is never seen by fewer than `min_observers` (3)
-cameras. Four walk logs are in `logs/`; in each the minimum is 0 observers,
-with 17% to 100% of samples below 3. The logs don't record whether the
-zero-observer samples are the marker outside the volume or a real gap.
-
----
-
-## 14. Intrinsics of camera 33661
-
-**Verified** by `python/fit_intrinsics.py` (OpenCV 5.0.0, Brown-Conrady,
-all frames) on three sessions. The sessions are in `$HOME/panoptes-data/sessions`,
-which is outside the repo:
+**Verified** by `python/fit_intrinsics.py` (OpenCV 5.0.0, Brown-Conrady, all
+frames). Sessions are in `$HOME/panoptes-data/sessions`, outside the repo.
 
 | Session | Views | RMS (px) | fx | fy | cx | cy |
 |---|---:|---:|---:|---:|---:|---:|
@@ -539,34 +463,29 @@ which is outside the repo:
 | `intrinsics_33661_20260925_103705` | 50 | 0.372 | 782.17 | 781.29 | **643.37** | 510.31 |
 | Range | | | 2.48 | 1.05 | **9.40** | 4.26 |
 
-cx is the outlier: 9.4 px across sessions against 2.5 px for fx. The
-`bootstrap_intrinsics.py` docstring explains why cx and cy are the
-weakest-determined parameters. Whether resampling one session reproduces this
-spread has not been recorded (see Open items).
+- **Repeatability.** The same-day 2026-09-25 pair differs by fx 0.23, fy 0.63,
+  cx 2.51, cy 1.51 px. This is the basis of the auto-mode validation rule
+  (RUNBOOK §9).
+- **cx is the outlier**: 9.4 px across all three, against 2.5 px for fx. Why
+  cx/cy are weakest-determined: [ARCHITECTURE §6](ARCHITECTURE.md#6-solve-and-the-distortion-model).
+  Whether resampling one session reproduces the spread is not recorded.
+- `config/layout.yaml` uses fx 782.0, fy 781.6, cx 644.6, cy 511.1, within
+  0.1 px of the mean of the two 2026-09-25 sessions (*inferred* derivation;
+  the file says only "measured on 33661"). Its distortion is an **assumed
+  placeholder**: k2 0.02 against 0.082–0.099 in the three fits.
+- **Model choice.** Brown-Conrady (5) over rational (8), because held-out
+  testing "showed the rational model's three extra coefficients bought nothing
+  at 82 deg" (`fit_intrinsics.py`, `layout.yaml`). `compare_models.py` saves
+  only training RMS: on the 2026-09-24 session BC 0.3756 px, rational
+  0.3746 px, fisheye 181 px (failed fit). **The held-out numbers behind the
+  choice are not recorded**, so the reason is unverified from repo data.
 
-`config/layout.yaml` uses fx 782.0, fy 781.6, cx 644.6, cy 511.1. These match
-the mean of the two 2026-09-25 sessions to within 0.1 px. That derivation is
-inferred; `layout.yaml` says only "measured on 33661". Its distortion
-coefficients are **assumed placeholders**, not these fits. For example,
-`layout.yaml` k2 is 0.02, while the three fits give 0.082–0.099.
+## 17. Synthetic triangulation accuracy, nominal layout
 
-**Model choice.** `fit_intrinsics.py` and `layout.yaml` record Brown-Conrady
-(5 coefficients), chosen over the rational model (8) because held-out testing
-"showed the rational model's three extra coefficients bought nothing at
-82 deg". `compare_models.py` prints held-out error and edge straightness but
-saves only training RMS. On the 2026-09-24 session that file shows
-Brown-Conrady 0.3756 px, rational 0.3746 px, and fisheye 181 px (a failed
-fit). **The held-out numbers behind the choice are not recorded**, so the
-reason is unverified from repo data.
-
----
-
-## 15. Synthetic triangulation accuracy, nominal layout
-
-**Verified as a computation; it is a floor, not a forecast.** Run 2026-10-17
-by `python/accuracy_study.py`. It assumes perfect calibration, static centroid
-noise of 0.054 px, shared 33661 intrinsics with placeholder distortion, and
-geometric visibility only. Full tables, method and assumptions:
+**Verified as a computation; a floor, not a forecast.** Run 2026-10-17 by
+`python/accuracy_study.py`. Assumes perfect calibration, 0.054 px centroid
+noise, shared 33661 intrinsics with placeholder distortion, geometric
+visibility only. Method and full tables:
 [`analysis/README.md`](../analysis/README.md); numbers and provenance:
 `analysis/accuracy_study.json`.
 
@@ -575,55 +494,47 @@ geometric visibility only. Full tables, method and assumptions:
 | Whole volume, RMS 3D error | 0.098 mm | 0.193 mm | 0.82 mm |
 | Perch box (perch ± 12 in), RMS 3D error | 0.077 mm | 0.089 mm | 0.102 mm |
 
-- **19% of the volume cannot be triangulated at all** (80.7% is seen by 2+
-  cameras), and 24.3% is seen by fewer than 3. The gap is the top of the room,
-  above about 90 in. Every camera aims at z = 30 in, so that region falls
-  outside every frustum. Coverage, not accuracy, is the main volume finding.
-- The perch box is fully covered: 96% of its points are seen by all ten, none
-  by fewer than eight.
-- The two camera heights balance the axes. Upper six alone: z is weak (0.105 mm
-  median on the perch box). Lower four alone: y is weak (0.075 mm). All ten:
-  0.043 / 0.047 / 0.043 mm.
-- Any six cameras are worse, up to about 1.8× on the perch box. The worst
-  sixes keep only one lower camera.
+- **19% of the volume can't be triangulated** (80.7% seen by 2+ cameras);
+  24.3% is seen by fewer than 3. The gap is above about 90 in: every camera
+  aims at z = 30 in. Coverage, not accuracy, is the main volume finding.
+- The perch box is fully covered: 96% of points seen by all ten, none by
+  fewer than eight.
+- Camera heights balance the axes. Upper six alone: z weak (0.105 mm median,
+  perch box). Lower four alone: y weak (0.075 mm). All ten: 0.043 / 0.047 /
+  0.043 mm.
+- Any six cameras are worse, up to ~1.8× on the perch box; the worst sixes
+  keep one lower camera.
 - 20 perturbed layouts (±2 in position, 2° aim, ±2° roll) move every headline
-  statistic by at most 9.3%. Tape-measured positions are good enough for these
-  conclusions.
+  by at most 9.3%. Tape-measured positions are good enough.
 - For scale, the previous rig measured 13.8 mm loop closure over a 9 m
-  circuit. The geometry and centroid noise use very little of that budget.
+  circuit.
+- The study overstates noise by ~√2 (§6).
 
----
-
-## 16. Build and host environment
+## 18. Build and host environment
 
 **Verified on this host** except where noted.
 
-- Every binary that talks to the cameras needs
-  `cap_net_raw,cap_net_admin+eip`. Linking writes a new file, which **drops
-  file capabilities**, so `setcap` must be rerun after every relink. (A fresh
-  build on 2026-10-19 showed no capabilities on any binary under `getcap`.)
-- Running a tool under `sudo` instead breaks desktop audio for the session
-  and leaves root-owned files behind. (From the previous RUNBOOK; not
-  re-tested.)
-- The C++ tools link the system OpenCV **4.6** (`libopencv-dev`). The Python
-  scripts use OpenCV **5.x** from `opencv-contrib-python` in `.venv`. The
-  split is deliberate. OpenCV 5 removed the `aruco` calibration path that 4.6
-  uses and added `CharucoDetector` / `matchImagePoints`, and 5.x cannot be
-  loaded into a process already linked to 4.6. The venv also keeps the numpy
-  2.x that the wheel needs away from apt's `python3-matplotlib` and
-  `python3-scipy`, which are built against numpy 1.x.
-- Ubuntu 24.04 marks the system Python as externally managed (PEP 668), so
-  `pip install` outside a venv is refused. `python3.12-venv` is not installed
-  by default.
+- Every camera binary needs `cap_net_raw,cap_net_admin+eip`. Linking writes a
+  new file, which **drops file capabilities**; a fresh build on 2026-10-19
+  showed none on any binary under `getcap`.
+- Running a tool under `sudo` breaks desktop audio for the session and leaves
+  root-owned files (from the previous RUNBOOK; not re-tested).
+- C++ links system OpenCV **4.6** (`libopencv-dev`); Python uses **5.x** from
+  `opencv-contrib-python` in `.venv`. OpenCV 5 removed the `aruco` calibration
+  path 4.6 uses and added `CharucoDetector` / `matchImagePoints`; 5.x can't
+  load into a process already linked to 4.6. The venv also keeps the wheel's
+  numpy 2.x away from apt's `python3-matplotlib` and `python3-scipy` (numpy
+  1.x).
+- Ubuntu 24.04 marks system Python externally managed (PEP 668), so `pip
+  install` outside a venv is refused. `python3.12-venv` is not installed by
+  default.
+- On 2026-10-19 no NetworkManager profile was bound to `enp6s0` (link down).
+  How it was given link-local addressing is not recorded.
 
----
+## 19. The calib.io 12×9 board
 
-## 17. The calib.io 12×9 board
-
-**Verified on hardware, 2026-10-27, camera 33664.**
-
-This board replaced the old 9×6 board for intrinsics. Its definition and
-provenance are in `config/charuco_board.yaml`.
+**Verified on hardware, 2026-10-27, camera 33664.** Replaced the old 9×6
+board for intrinsics. Definition and provenance: `config/charuco_board.yaml`.
 
 | | |
 |---|---|
@@ -631,92 +542,84 @@ provenance are in `config/charuco_board.yaml`.
 | Pattern | 9 rows × 12 cols of 60 mm squares (nominal), 720 × 540 mm |
 | Markers | 45 mm (nominal), `DICT_5X5_100`; 54 markers, IDs 0–53 |
 | Corners | 11 × 8 = 88 interior corners |
-| `legacy_pattern` | `false`. With 9 rows it makes no difference (§7). |
+| `legacy_pattern` | `false`; with 9 rows it makes no difference (§9) |
 
-The measured sizes are the caliper values in the YAML. Nominal sizes are
-never used in their place.
-
-**Hardware detection test.** `03_detect` on camera 33664 gave 54/54
-markers, 88/88 corners, max ID 53 and a fit residual (§5) of 0.7–0.8 px. The
-result was identical with `--legacy` and `--no-legacy`. That matches the
-offline check: with an odd row count, both flag values give the same marker
-layout in `lib/detect` and in 5.0. calib.io's statement that odd-row boards
-are unaffected by the OpenCV layout change therefore holds on this rig.
-
-**The 5×5 dictionaries are nested.** IDs 0–53 have identical bit patterns in
-`DICT_5X5_100`, `_250` and `_1000`, checked in both OpenCV 4.6 and 5.0. A
-board generated in any of them detects in the others. `_100` is used because
-it has the largest error-correction margin: `maxCorrectionBits` 3, against 2
-for `_250` and `_1000`. The old board's sessions record `DICT_5X5_1000`;
-their IDs 0–26 are the same markers.
+- Measured sizes are the caliper values in the YAML; nominal is never used in
+  their place.
+- **Detection test.** `03_detect` on 33664: 54/54 markers, 88/88 corners, max
+  ID 53, fit 0.7–0.8 px, identical with `--legacy` and `--no-legacy`. Matches
+  the offline check (odd row count: both flags give the same layout in
+  `lib/detect` and 5.0), so calib.io's statement that odd-row boards are
+  unaffected holds here.
+- **5×5 dictionaries are nested.** IDs 0–53 have identical bits in
+  `DICT_5X5_100`, `_250` and `_1000` (checked in 4.6 and 5.0). `_100` is used
+  for its larger error-correction margin: `maxCorrectionBits` 3 vs 2. The old
+  board's sessions record `DICT_5X5_1000`; their IDs 0–26 are the same
+  markers.
 
 ---
 
 ## Open items
 
-1. **cx cross-session discrepancy.** 9.4 px across three sessions of the
-   same camera (section 14). Running `bootstrap_intrinsics.py` on one session
-   would show whether pose sampling explains it; that has not been recorded.
-2. **WRONG MODE false alarm.** `05_identify` and `07_mask` print `WRONG MODE`
-   when `modeIsObject()` is false. That flag describes the most recent
-   *fetch*, and `fetch()` resets it when no frame was waiting. A camera
-   streaming object frames normally, with nothing queued at the moment of the
-   report, therefore prints `WRONG MODE`. This is inferred from
-   `lib/camera.cpp` and has not been reproduced deliberately.
-3. **Tools don't report mask state.** Only `07_mask` knows about masks, and
-   it leaves them applied on exit. `05_identify`, `07_objdiag` and
-   `04_capture` neither read nor clear them, and the "blocking mask" line in
-   `diagnostics()` is the SDK flag, not the camera's state. A camera still
-   holding a mask is blind in those cells, which looks like a detection bug.
-   Whether masks survive a process restart or a power cycle is what
-   `mask --probe` step 1 tests; no result is recorded.
+The single open-items list. CLAUDE.md and the other docs link here.
+
+1. **cx cross-session discrepancy.** 9.4 px across three sessions of 33661
+   (§16). Run `bootstrap_intrinsics.py` on one session to see whether pose
+   sampling explains it; not yet recorded.
+2. **WRONG MODE false alarm.** `05_identify` and `07_mask` print it when
+   `modeIsObject()` is false. That flag describes the last *fetch*, which
+   resets it when no frame was waiting, so a healthy camera with nothing
+   queued prints `WRONG MODE`. *Inferred* from `lib/camera.cpp`; not
+   reproduced deliberately.
+3. **Tools don't report mask state.** Only `07_mask` knows about masks, and it
+   leaves them applied. `05_identify`, `07_objdiag` and `04_capture` neither
+   read nor clear them, and `diagnostics()` shows the SDK flag, not the
+   camera's state. A masked camera looks like a detection bug. Whether masks
+   survive a restart or power cycle is `mask --probe` step 1; no result
+   recorded.
 4. **Mask tool's compile-time config path.** `MOCAP_CONFIG_DIR` is the
-   absolute path of `config/` at configure time. Moving or renaming the repo
-   breaks the default. Workaround: rebuild, or pass `--config DIR`.
-5. **Frame sync** across cameras, via `cModuleSync` (the SDK header
-   describes it as "utilized to synchronize frame data"), not `Synchronizer`.
-   Not built; the choice is unverified on hardware.
+   absolute path of `config/` at configure time; moving the repo breaks the
+   default. Workaround: rebuild, or `--config DIR`.
+5. **Frame sync** via `cModuleSync` (SDK header: "utilized to synchronize
+   frame data"), not `Synchronizer`. Not built; unverified on hardware.
 6. **Marker labeling.** Not built.
 7. **Extrinsics: wand and L-frame.** Not built. A wand works in object mode,
    which is synchronised; a board needs grayscale, which is not
    (`src/notes.md`).
 8. **Reference markers.** Not built.
-9. **Object-mode operating point** (section 11). Two settings sets are in
-   use, and masks are valid only for the one they were learned under.
-10. **Mask acceptance test has no recorded pass** (section 13).
-11. **Inconsistencies found while documenting, 2026-10-19:**
+9. **Object-mode operating point** (§13). Two settings sets in use; masks are
+   valid only for the one they were learned under.
+10. **Mask acceptance walk has no recorded PASS** (§15).
+11. **Auto capture (`04_capture --auto`) is unvalidated** on real data. The
+    rule is in RUNBOOK §9: an auto and a manual session, same camera, same
+    day, agreeing within fx/fy ~1 px and cx/cy ~3 px.
+12. **Grayscale fps record is inconsistent** (§5): logged 9.7–14.7 fps against
+    the stated ~8 / 6–8 fps.
+13. **Inconsistencies found 2026-10-19:**
     - `src/02_stream` and `src/03_detect` use the short discovery window
-      that undercounts ten cameras (section 8).
-    - `05_identify` hardcodes the 30 Hz exposure ceiling (section 1).
-    - `session.json`'s `created` field is rewritten on every flush, so it
-      records the last write. The session folder name is local time;
-      `created` is UTC.
-    - `config/cameras.yaml` and `docs/hardware/cameras.md` list six cameras,
-      with 33275 "excluded, defocused". `config/layout.yaml` mounts ten,
+      (6 stable polls, 40-poll cap) that undercounts ten cameras (§10).
+    - `05_identify` hardcodes the 30 Hz exposure ceiling, 33133 (§3).
+    - `session.json`'s `created` is rewritten on every flush, so it records
+      the last write. The folder name is local time; `created` is UTC.
+    - `config/cameras.yaml` and `docs/hardware/cameras.md` list six cameras
+      with 33275 "excluded, defocused"; `config/layout.yaml` mounts ten,
       including 33275 as camera E, and all ten have masks. No code reads
       `cameras.yaml`.
-    - `PyYAML` is in `python/requirements.txt`, but no script imports it;
-      `rig.py` reads YAML through `cv2.FileStorage`.
-    - `layout.yaml` distortion is assumed although fitted coefficients
-      exist (section 14).
-
-## Open questions
-
-- **Does the 2–3 m detection limit matter for extrinsics?** It does not for
-  intrinsics, where the board can simply be brought closer. Extrinsics needs a
-  target visible to several cameras at once across the capture volume, which
-  will put it further away than 1.5 m from at least some of them. Whether the
-  ChArUco board is detectable at usable rates at those distances — or whether
-  extrinsics needs a different target entirely — is untested.
-- **Distortion coefficient interpretability.** (Written when the rational
-  model was in use; the current fit is Brown-Conrady, section 14.)
-  Rational-model coefficients come
-  out large and correlated (k1≈k4, k2≈k5) because the model is a ratio of two
-  polynomials. Recovered geometry is accurate regardless, but there is no
-  established threshold on the coefficients themselves for spotting a bad fit.
-  Comparing undistortion displacement fields between calibrations would be a
-  more direct check, and is not yet built.
-- **Whether 5×6 is the right coverage grid.** 30 cells over 88 corners per view
-  on the current 12×9 board (40 on the old one)
-  means a single well-placed capture can touch many cells at once. A finer grid
-  would be stricter; nothing has been done to establish the right granularity.
+    - `PyYAML` is in `python/requirements.txt` but unused; `rig.py` reads YAML
+      through `cv2.FileStorage`.
+    - `layout.yaml` distortion is assumed although fitted coefficients exist
+      (§16).
+14. **Does the 2–3 m detection limit matter for extrinsics?** Not for
+    intrinsics (bring the board closer). Extrinsics needs a target several
+    cameras see at once across the volume, so beyond 1.5 m for some. Whether
+    the board is detectable there at usable rates, or extrinsics needs a
+    different target, is untested.
+15. **Distortion-coefficient interpretability.** (Written for the rational
+    model; the fit is now Brown-Conrady, §16.) Rational coefficients come out
+    large and correlated (k1≈k4, k2≈k5). Geometry is accurate regardless, but
+    there is no threshold on the coefficients for spotting a bad fit.
+    Comparing undistortion displacement fields between calibrations would be
+    more direct; not built.
+16. **Whether 5×6 is the right coverage grid.** 30 cells against 88 corners
+    per view (40 on the old board) means one capture can touch many cells. A
+    finer grid would be stricter; the right granularity is not established.

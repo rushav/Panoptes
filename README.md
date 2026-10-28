@@ -94,23 +94,22 @@ repo.
 
 ## Documentation
 
-- **[docs/RUNBOOK.md](docs/RUNBOOK.md)**: set up from a clean clone, build,
-  network, every tool's flags and keys, a calibration session, troubleshooting.
+- **[docs/RUNBOOK.md](docs/RUNBOOK.md)**: a command card (§1), then one
+  procedure per task with its own troubleshooting.
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**: how it works and why,
   stage by stage, in data order.
-- **[docs/FINDINGS.md](docs/FINDINGS.md)**: everything measured on this
-  hardware, and the open items.
+- **[docs/FINDINGS.md](docs/FINDINGS.md)**: key numbers, the rules learned,
+  everything measured on this hardware, and the open items.
 
 ## Getting started
 
 You need the OptiTrack Camera SDK at `~/optitrack/CameraSDK`, the system
-packages and venv in [RUNBOOK §1](docs/RUNBOOK.md#1-environment-setup-from-a-clean-clone),
-and the cameras on a dedicated NIC ([RUNBOOK §2](docs/RUNBOOK.md#2-camera-network)).
-Then:
+packages and venv in [RUNBOOK §2](docs/RUNBOOK.md#2-environment-setup),
+and the cameras on a dedicated NIC ([RUNBOOK §4](docs/RUNBOOK.md#4-network-discovery-and-object-mode)).
+Then build and grant capabilities with the block in
+[RUNBOOK §1.2](docs/RUNBOOK.md#12-build--setcap), and run:
 
 ```sh
-for t in src/0*/; do cmake -S "$t" -B "$t/build" && cmake --build "$t/build" -j"$(nproc)" || break; done
-# grant capabilities to each binary (RUNBOOK §3), then:
 src/01_discover/build/discover
 ```
 

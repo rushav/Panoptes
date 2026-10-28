@@ -1,0 +1,53 @@
+%YAML:1.0
+---
+# Accept rules for 04_capture --auto (lib/autocapture). Every value here is
+# copied into session.json, so a session records the rules it was taken
+# under. Tune still_px and the square_px bands with --auto-dry on the real
+# camera before a real session.
+#
+# Read with OpenCV FileStorage. Quote string values that carry a trailing
+# comment.
+
+# Gate 1, full board: every corner found, and the homography fit residual
+# below this. Correct labels give 0.7-1.5 px mid-frame and up to ~3 px near
+# the frame edge from lens distortion; a wrong layout gives ~200 px
+# (FINDINGS 5, 7). Auto mode has to accept edge views, so this sits above
+# corner_jitter.py's 3 px.
+max_fit_px: 5.0
+
+# Gate 2, still: every corner moved less than this since the previous frame.
+# Static jitter is 0.054 px radial median, 0.088 px worst corner (FINDINGS 4),
+# so two frames of a static board differ by roughly 0.15 px at the worst of
+# 88 corners. 0.3 px leaves about 2x margin over that.
+still_px: 0.3
+
+# Spacing between accepts.
+min_interval_ms: 300
+# The board must also have moved at least this far (largest corner
+# displacement, px) from the last ACCEPTED frame. min_interval_ms alone lets
+# a pose held still for longer than the interval be taken twice. 0 disables.
+min_move_px: 20.0
+
+# Gate 3, pose bins: tilt direction x distance band.
+# Tilt: a board within flat_deg of fronto-parallel is "flat"; otherwise its
+# bin is the quadrant given by the signs of its tilt about the camera x and y
+# axes. 20 matches the "tilted" threshold in lib/coverage (FINDINGS 6).
+flat_deg: 20.0
+# Distance band from apparent size: px per board square along the board
+# direction that tilt foreshortens least (lib/autocapture apparentSquarePx),
+# so a tilted board stays in its band. At ~782 px focal length a 60 mm square
+# is about 47 px at 1.0 m, 40 px at 1.17 m, 35 px at 1.33 m, 31 px at 1.5 m.
+#   near: square_px >= near_square_px
+#   far:  square_px <  far_square_px
+#   mid:  between
+near_square_px: 40.0
+far_square_px: 35.0
+
+# Focal length guess used only for the tilt angle, as in lib/coverage. A few
+# percent error barely moves the angle.
+approx_focal_px: 780.0
+
+# Session end: zero empty coverage cells AND at least this many accepts in
+# every pose bin. A bin counts as unfilled, for gate 3, while it holds fewer
+# than this.
+min_per_bin: 2

@@ -61,6 +61,10 @@ public:
     int emptyCells() const;
     int totalCells() const { return gridX_ * gridY_; }
 
+    // Cells, row-major, that are empty now and would gain a corner from
+    // these points. Sorted, each once. Does not record anything.
+    std::vector<int> emptyCellsHit(const std::vector<cv::Point2f>& points) const;
+
     // Fraction of captures with tilt beyond 20 degrees. Below roughly
     // 0.3 the set is too fronto-parallel and focal length will be
     // poorly constrained.

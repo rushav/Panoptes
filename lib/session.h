@@ -13,6 +13,8 @@
 
 #include <opencv2/core.hpp>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace mocap {
 
@@ -22,7 +24,14 @@ public:
     Session(const std::string& root, int serial, const BoardSpec& board);
 
     // Writes frame_NNNN.png and records its settings and corner count.
-    void record(const cv::Mat& gray, const Detection& d, const Settings& actual);
+    // `extraFields`, if given, is appended inside the frame's JSON object
+    // as further "key": value pairs (no braces, no leading comma).
+    void record(const cv::Mat& gray, const Detection& d, const Settings& actual,
+                const std::string& extraFields = "");
+
+    // A top-level "key": <json> entry in session.json, written after the
+    // board record. Setting a key again replaces it.
+    void setExtra(const std::string& key, const std::string& json);
 
     void removeLast();
 
@@ -38,6 +47,7 @@ private:
     BoardSpec board_;
     int count_ = 0;
     std::string json_;      // accumulated per-frame entries
+    std::vector<std::pair<std::string, std::string>> extras_;
 };
 
 }  // namespace mocap

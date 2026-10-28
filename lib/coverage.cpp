@@ -92,6 +92,17 @@ int Coverage::emptyCells() const {
     return (int)std::count(cellCounts_.begin(), cellCounts_.end(), 0);
 }
 
+std::vector<int> Coverage::emptyCellsHit(const std::vector<cv::Point2f>& points) const {
+    std::vector<int> hit;
+    for (auto& p : points) {
+        int i = cellIndex(p);
+        if (cellCounts_[i] == 0) hit.push_back(i);
+    }
+    std::sort(hit.begin(), hit.end());
+    hit.erase(std::unique(hit.begin(), hit.end()), hit.end());
+    return hit;
+}
+
 double Coverage::tiltedFraction(double thresholdDeg) const {
     if (poses_.empty()) return 0.0;
     int n = 0;

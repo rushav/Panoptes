@@ -11,7 +11,8 @@ add_executable(capture
     ../../lib/camera.cpp
     ../../lib/detect.cpp
     ../../lib/coverage.cpp
-    ../../lib/session.cpp)
+    ../../lib/session.cpp
+    ../../lib/autocapture.cpp)
 
 target_include_directories(capture PRIVATE ${SDK_DIR}/include)
 target_link_directories(capture PRIVATE ${SDK_DIR}/lib)

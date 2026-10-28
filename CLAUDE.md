@@ -38,20 +38,22 @@ Docs:
 
 ## Verified SDK and hardware behaviour: do not "fix" these away
 
-Each rule is backed by a FINDINGS section. If code looks redundant or odd
-around one of these, it is deliberate.
+Each rule is backed by a FINDINGS section (§N below means FINDINGS). If code
+looks redundant or odd around one of these, it is deliberate. **This list is
+identical to [FINDINGS §2](docs/FINDINGS.md#2-rules-we-learned); change both
+together, in the same change.**
 
 1. **Discovery is staggered and scales with camera count.** The SDK signals
    ready after the *first* camera. Poll `CameraList` every 250 ms until the
    count is unchanged for 5 s (20 polls), capped at 30 s. A 1.5 s window
-   reported 5 of 10. (§8)
-2. **`CameraList` can repeat a serial.** Collapse by serial. (§8)
+   reported 5 of 10. (§10)
+2. **`CameraList` can repeat a serial.** Collapse by serial. (§10)
 3. **`SetVideoType` is asynchronous.** Set it, `Start()`, set it again, then
    apply settings. Check `FrameType()` on every frame; queued frames keep the
-   old mode, and `GrayscaleData()` on an object frame is null. (§9)
+   old mode, and `GrayscaleData()` on an object frame is null. (§11)
 4. **`NextFrame()` returns the OLDEST frame** as `std::shared_ptr<const Frame>`.
    Drain to the newest every loop. Freeing is by dropping the pointer; there
-   is no manual `Release()`. (§9)
+   is no manual `Release()`. (§11)
 5. **`ImagerWidth()` / `ImagerHeight()` are `double`s, the sensor size in mm.**
    Pixel counts are `PhysicalPixelWidth()` / `PhysicalPixelHeight()`;
    `Width()` / `Height()` describe an ROI. (`lib/camera.cpp`, SDK header)
@@ -59,8 +61,8 @@ around one of these, it is deliberate.
    header)
 7. **The exposure ceiling is `floor(1e6/fps) − 200` µs.** Re-read
    `MaximumExposureValue()` after any frame-rate change, and set the rate
-   before the exposure. (§1)
-8. **The blocking mask is a grid of 640 × 512 cells of 2 px.** (§13)
+   before the exposure. (§3)
+8. **The blocking mask is a grid of 640 × 512 cells of 2 px.** (§15)
    - `SetBitMaskPixel` takes **cells**.
    - `AddBlockingRectangle` takes **pixels**.
    - `SetBlockingMask` needs **exactly cols × rows bytes**; any other size
@@ -72,15 +74,15 @@ around one of these, it is deliberate.
    - `IsBlockingMaskEnabled()` is an SDK flag, not a camera readback.
 9. **Masks are settings-specific and position-specific.** A mask learned at
    one exposure and threshold is wrong at another, and wrong once its camera
-   moves. (§13)
+   moves. (§15)
 10. **Change settings one at a time while streaming.** Re-sending every
-    setting stalls delivery; `Camera::apply()` diffs on purpose. (§12)
+    setting stalls delivery; `Camera::apply()` diffs on purpose. (§14)
 11. **`SendEmptyFrames(true)` in object mode.** Without it, "no blobs" and "no
-    frames" are indistinguishable. (§11)
+    frames" are indistinguishable. (§13)
 12. **`setcap cap_net_raw,cap_net_admin+eip` is stripped on every relink.**
-    Every rebuilt binary needs it again. Don't run tools under sudo. (§16)
+    Every rebuilt binary needs it again. Don't run tools under sudo. (§18)
 13. **Two OpenCV versions, on purpose.** C++ uses system OpenCV 4.6; Python
-    uses 5.x (`opencv-contrib-python`) in `.venv`. Don't unify them. (§16)
+    uses 5.x (`opencv-contrib-python`) in `.venv`. Don't unify them. (§18)
 14. **`lib/detect` builds the board layout itself, by the OpenCV 4.7+
     rule.** OpenCV 4.6's `create()` always builds the non-legacy layout, and
     it mislabelled every corner of the old 9×6 board. `legacy_pattern` in
@@ -90,19 +92,46 @@ around one of these, it is deliberate.
     `CharucoDetector.detectBoard` + `matchImagePoints` + `calibrateCamera`.
     **Never trust a corner count without the fit residual**
     (`layoutResidualPx`, `fit` in `03_detect`). A wrong layout still returns
-    every corner, with a residual of ~200 px against ~1 px. (§5, §7, §17)
+    every corner, with a residual of ~200 px against ~1 px. (§7, §9, §19)
 15. **RMS reprojection error is not an acceptance criterion. Zero empty
     coverage cells (5 × 6 grid) is.** All-fronto-parallel views are a
     separate failure; aim for 30% or more of captures tilted beyond 20°.
-    (§5, §6)
+    (§7, §8)
 16. **Grayscale delivery is bandwidth-bound at 6–8 fps** at any imager rate.
-    It is not a bug. (§3)
+    It is not a bug. (§5)
 17. **Calibrate with the IR filter IN and the ring at 15.** The filter shifts
-    the focal plane. (§2)
-18. **Gain is free at the grayscale operating point** (jitter 0.054 px at
-    gain 7 vs 0.056 at gain 0). (§4)
+    the focal plane. (§4)
+18. **Gain is free at the grayscale operating point** (jitter 0.0543 px
+    radial median at gain 7 vs 0.0600 px at gain 0, 2026-10-27). (§6)
 19. **Starting a tool right after killing one can hang** while the old
-    sockets are bound. Wait a couple of seconds. (§9)
+    sockets are bound. Wait a couple of seconds. (§11)
+
+## Keeping the docs current
+
+A standing rule for every change.
+
+- **Same change, matching doc.** Any change that adds or alters a command,
+  flag, key, config field, measured number or verified behaviour updates the
+  matching doc in the same change:
+  - [RUNBOOK](docs/RUNBOOK.md): commands, flags, keys, config fields an
+    operator sets, expected output. Both the §1 quick reference line and the
+    task's procedure section.
+  - [FINDINGS](docs/FINDINGS.md): measured numbers (the §1 key-numbers line
+    and the topic section) and rules (§2, kept identical to the list above).
+  - [ARCHITECTURE](docs/ARCHITECTURE.md): mechanism, design reasons and the
+    files involved.
+- **Name the sections.** Every summary lists which doc sections were updated,
+  or says that none needed to be and why.
+- **Never put history in RUNBOOK.** It is instructions only; history and
+  past results go to FINDINGS.
+- **Never put mechanism in FINDINGS.** How the code works goes to
+  ARCHITECTURE, linked from FINDINGS.
+- **Never duplicate the open-items list.** It lives only in
+  [FINDINGS → Open items](docs/FINDINGS.md#open-items); everything else links
+  to it.
+- **Flags come from the source.** Copy every flag and default from the code's
+  argument parsing, never from memory.
+- **The build/setcap loop appears once,** in RUNBOOK §1.2.
 
 ## Conventions
 
@@ -123,36 +152,12 @@ around one of these, it is deliberate.
 - **No absolute paths in code or docs.** Use repo-relative paths, `$HOME`, or
   `~`. (`07_mask`'s `MOCAP_CONFIG_DIR` is generated at configure time and is
   an open item.)
-- **Verify a change** with the build loop and `python/triangulate.py` (all 12
-  checks must pass) as in RUNBOOK §3–4. Use a fresh build directory when the
-  build configuration changes.
+- **Verify a change** with the build block in RUNBOOK §1.2 (all eight tools
+  build, and `tests/build/test_autocapture` passes) and
+  `python/triangulate.py` (all 12 checks must pass). Use a fresh build
+  directory when the build configuration changes.
 
 ## Open items
 
-Copied from [FINDINGS.md → Open items](docs/FINDINGS.md#open-items), which is
-authoritative. Update both together.
-
-1. **cx cross-session discrepancy:** 9.4 px across three sessions of camera
-   33661. Run `bootstrap_intrinsics.py` to see whether sampling explains it.
-2. **WRONG MODE false alarm:** `modeIsObject()` reflects the last *poll*, and
-   an empty poll reads as "not object" (inferred from `lib/camera.cpp`).
-3. **Tools don't report mask state:** masks stay on the cameras after
-   `07_mask` exits. Other tools neither read nor clear them, so a masked
-   camera looks like a detection bug.
-4. **Mask tool's compile-time config path:** `MOCAP_CONFIG_DIR` breaks when
-   the repo moves. Rebuild, or use `--config`.
-5. **Frame sync** via `cModuleSync` (not `Synchronizer`): not built.
-6. **Marker labeling:** not built.
-7. **Extrinsics, wand and L-frame:** not built.
-8. **Reference markers:** not built.
-9. **Object-mode operating point** is unsettled: `identify`/`objdiag` use
-   500/200, `mask.yaml` uses 10/40.
-10. **Mask acceptance walk has no recorded PASS.** Every log has a minimum of
-    0 observers.
-11. **Inconsistencies found 2026-10-19:**
-    - `02_stream` and `03_detect` use the short discovery window.
-    - `05_identify` hardcodes the 33133 exposure cap.
-    - `session.json` `created` is rewritten on every flush.
-    - `cameras.yaml` and `cameras.md` list 6 cameras vs 10 in `layout.yaml`.
-    - `PyYAML` is pinned but unused.
-    - `layout.yaml` distortion is assumed, not fitted.
+The single list is [FINDINGS.md → Open items](docs/FINDINGS.md#open-items).
+Don't copy it here.

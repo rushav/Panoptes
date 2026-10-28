@@ -1,154 +1,185 @@
-> **2026-10-19:** the repo root is now what used to be `mocap/` in GIX-TALON (renamed PANOPTES).
-
 # Runbook
 
-An operator guide for someone standing in front of the rig. Every flag and key
-here is taken from the source.
+Commands first (§1), then one procedure per task. Every flag and key here is
+taken from the source's argument parsing. Run everything from the repo root.
 
-- Why things are the way they are: [ARCHITECTURE.md](ARCHITECTURE.md)
-- What was measured: [FINDINGS.md](FINDINGS.md)
-- Camera specs: [hardware/cameras.md](hardware/cameras.md)
+- How it works: [ARCHITECTURE.md](ARCHITECTURE.md)
+- What was measured, the rules, open items: [FINDINGS.md](FINDINGS.md)
+- Camera specs and inventory: [hardware/cameras.md](hardware/cameras.md)
 
-All paths are relative to the repo root. Run commands from the repo root.
+`<serial>` is required; `[serial]` is optional and defaults to **33661**.
+`<session>` is `"$HOME"/panoptes-data/sessions/intrinsics_<serial>_<YYYYmmdd_HHMMSS>`.
 
 ---
 
-## Quick reference
+## 1. Quick reference
 
+### 1.1 Environment setup
+Once per machine, and again after moving the repo (the venv records its path). Details: §2.
 ```sh
-# 1. Build every tool (section 3)
-for t in src/0*/; do cmake -S "$t" -B "$t/build" -DCMAKE_BUILD_TYPE=Release && cmake --build "$t/build" -j"$(nproc)" || break; done
-
-# 2. Grant network capabilities. After EVERY build: relinking strips them (section 3)
-for b in src/01_discover/build/discover src/02_stream/build/stream src/03_detect/build/detect \
-         src/04_capture/build/capture src/05_identify/build/identify src/06_focus/build/focus \
-         src/07_mask/build/mask src/07_objdiag/build/objdiag; do sudo setcap cap_net_raw,cap_net_admin+eip "$b"; done
-
-# 3. List every camera on the network
-src/01_discover/build/discover
-
-# 4. Stream one camera in grayscale; saves one frame to ./frame.png
-src/02_stream/build/stream [serial]
-
-# 5. Open all cameras in object mode, tiled, labelled by serial
-src/05_identify/build/identify [fps] [exposure] [threshold] [gain] [--size WxH]
-
-# 6. Focus assist for one camera
-src/06_focus/build/focus <serial>
-
-# 7. Blocking masks: apply saved masks and verify (empty volume)
-src/07_mask/build/mask --load
-
-# 8. Intrinsics capture with live coverage grid
-src/04_capture/build/capture [serial]
-
-# 9. Solve intrinsics for one or more sessions
-.venv/bin/python python/fit_intrinsics.py "$HOME"/panoptes-data/sessions/intrinsics_<serial>_<timestamp> [...]
-
-# 10. Triangulation self-test, then the synthetic accuracy study
-.venv/bin/python python/triangulate.py && .venv/bin/python python/accuracy_study.py
+sudo apt install build-essential cmake libopencv-dev python3.12-venv tcpdump
+rm -rf .venv && python3 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r python/requirements.txt
+.venv/bin/python -c "import cv2; print(cv2.__version__, hasattr(cv2.aruco,'CharucoDetector'))"
 ```
+expect: the last line prints a 5.x version and `True`.
 
-The default serial is 33661 wherever one is optional (tools 4 and 8).
+### 1.2 Build + setcap
+After every pull or code change; relinking strips capabilities. Fresh build: `rm -rf src/0*/build tests/build` first. Details: §3.
+```sh
+for t in src/0*/; do cmake -S "$t" -B "$t/build" -DCMAKE_BUILD_TYPE=Release && cmake --build "$t/build" -j"$(nproc)" || break; done
+for b in src/01_discover/build/discover src/02_stream/build/stream src/03_detect/build/detect src/04_capture/build/capture src/05_identify/build/identify src/06_focus/build/focus src/07_mask/build/mask src/07_objdiag/build/objdiag; do sudo setcap cap_net_raw,cap_net_admin+eip "$b"; done
+getcap src/*/build/*
+cmake -S tests -B tests/build -DCMAKE_BUILD_TYPE=Release && cmake --build tests/build -j"$(nproc)" && tests/build/test_autocapture
+```
+expect: `[100%] Built target` for all 8 tools; `getcap` lists all 8 with `cap_net_admin,cap_net_raw=eip`; `test_autocapture: 50/50 passed`.
+
+### 1.3 Network, discover, identify
+Start of every session. Details: §4.
+```sh
+ip -brief link show enp6s0
+sudo tcpdump -i enp6s0 -n port 13013
+src/01_discover/build/discover
+src/05_identify/build/identify [fps] [exposure] [threshold] [gain] [--size WxH]
+src/07_objdiag/build/objdiag <serial> [exposure] [threshold] [gain] [fps] [--sweep]
+```
+expect: `UP ... LOWER_UP`; packets from 169.254.x.x; `settled on 10 camera(s)`, every row `Initialized`; every `identify` tile shows fps > 0.
+
+### 1.4 Stream, detect, focus
+One camera in grayscale. Details: §5.
+```sh
+src/02_stream/build/stream [serial]
+src/03_detect/build/detect [serial] [exposure] [gain] [fps] [--board FILE] [--legacy | --no-legacy]
+src/06_focus/build/focus <serial>
+```
+expect: `wrote frame.png`; `detect` at 1–1.5 m reads `markers 54/54   corners 88/88` with `fit` ≈ 1 px (under 3 px near the frame edge); `focus` back at 100% of peak.
+
+### 1.5 Blocking masks
+Learn and `--load` need an **empty** volume; `--coverage` needs one marker. Details: §6.
+```sh
+src/07_mask/build/mask
+src/07_mask/build/mask --load
+src/07_mask/build/mask --show
+src/07_mask/build/mask --coverage
+src/07_mask/build/mask --probe
+src/07_mask/build/mask --clear
+src/07_mask/build/mask --load --config config
+```
+expect: `residual: none. Volume reads empty on every camera.` and no `LEAK`; `--coverage` prints `PASS` (none recorded yet).
+
+### 1.6 Corner jitter session
+Board and camera fixed on tripods, 200 captures. Details: §7.
+```sh
+src/04_capture/build/capture [serial]
+.venv/bin/python python/corner_jitter.py <session> [--max-fit PX] [--out DIR]
+.venv/bin/python python/corner_jitter.py <png_folder> --board config/charuco_board.yaml
+.venv/bin/python python/corner_jitter.py --self-test
+```
+expect: `frames: 200 total, 200 kept`, radial median ≈ 0.054 px at gain 7, no `WARNING: a corner moved`; self-test `9/9 passed`.
+
+### 1.7 Manual intrinsics session
+Focus, check, capture, solve. Details: §8.
+```sh
+src/06_focus/build/focus <serial>
+src/03_detect/build/detect <serial>
+src/04_capture/build/capture [serial] [--board FILE]
+.venv/bin/python python/fit_intrinsics.py <session> [<session> ...]
+```
+expect: `empty cells 0/30` in green with `tilted` ≥ 30%; fx and fy within 1% of each other.
+
+### 1.8 Auto intrinsics session (UNVALIDATED)
+Tune with `--auto-dry` (writes nothing), then run. Not yet validated against manual capture. Details: §9.
+```sh
+src/04_capture/build/capture [serial] --auto-dry [--auto-config FILE] [--board FILE]
+src/04_capture/build/capture [serial] --auto [--auto-config FILE] [--board FILE]
+.venv/bin/python python/fit_intrinsics.py <auto_session> <manual_session>
+```
+expect: `ended: complete: 0 empty cells and every pose bin has >= 2 frames`; validation passes at fx/fy within ~1 px, cx/cy within ~3 px.
+
+### 1.9 Python fits and studies
+venv interpreter only. Details: §10.
+```sh
+.venv/bin/python python/fit_intrinsics.py <session> [<session> ...]
+.venv/bin/python python/compare_models.py <session>
+.venv/bin/python python/bootstrap_intrinsics.py <session> [n_subsets] [subset_size]
+.venv/bin/python python/board.py [board.yaml]
+.venv/bin/python python/triangulate.py [layout.yaml]
+.venv/bin/python python/accuracy_study.py [layout.yaml] [study.yaml]
+```
+expect: `triangulate.py` prints `self-test: 12/12 passed`; the study prints `Wrote .../accuracy_study.json`.
+
+### 1.10 Git
+Changes are left uncommitted for review. Details: §11.
+```sh
+git status
+git diff --stat
+git diff
+git add <files>
+git commit
+git log --oneline -10
+```
+expect: `git status` clean after the commit; no `build/`, `.venv/` or `analysis/*.png` staged.
 
 ---
 
-## 1. Environment setup from a clean clone
-
-### 1.1 System packages
+## 2. Environment setup
 
 ```sh
 sudo apt install build-essential cmake libopencv-dev python3.12-venv tcpdump
-```
-
-- `libopencv-dev` provides OpenCV **4.6**, used by every C++ tool.
-- `python3.12-venv` is **not installed by default on Ubuntu 24.04**. Without it,
-  `python3 -m venv` fails with a confusing error.
-- `tcpdump` is for the network check in section 2.
-
-### 1.2 OptiTrack Camera SDK
-
-The SDK is expected at `~/optitrack/CameraSDK`, outside the repo. Each
-`src/*/CMakeLists.txt` sets `SDK_DIR` to `$ENV{HOME}/optitrack/CameraSDK`. If
-yours is elsewhere, edit it there; there is no command-line override. The
-tools link `CameraLibrary` and `jpeg` from `$SDK_DIR/lib`.
-
-### 1.3 Python venv
-
-Ubuntu 24.04 refuses `pip install` outside a venv (PEP 668), so a venv is
-required. Pinned versions are in `python/requirements.txt`:
-
-```sh
-python3 -m venv .venv
+rm -rf .venv && python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -r python/requirements.txt
-```
-
-**Recreating the venv.** A venv records its absolute path, so it breaks if
-the repo directory is moved or renamed. Delete it and recreate it:
-
-```sh
-rm -rf .venv
-python3 -m venv .venv
-.venv/bin/pip install --upgrade pip
-.venv/bin/pip install -r python/requirements.txt
-```
-
-To refresh the pins after deliberately changing a package:
-`.venv/bin/pip freeze > python/requirements.txt`.
-
-Verify. This must print a 5.x version and `True`:
-
-```sh
 .venv/bin/python -c "import cv2; print(cv2.__version__, hasattr(cv2.aruco,'CharucoDetector'))"
 ```
 
-### 1.4 Two OpenCV versions, on purpose
+1. **System packages.**
+   - `libopencv-dev` is OpenCV **4.6**, for every C++ tool.
+   - `python3.12-venv` is **not installed by default on Ubuntu 24.04**;
+     without it `python3 -m venv` fails confusingly.
+   - `tcpdump` is for the network check (§4).
+2. **OptiTrack Camera SDK** at `~/optitrack/CameraSDK`, outside the repo.
+   Each `src/*/CMakeLists.txt` sets `SDK_DIR` to
+   `$ENV{HOME}/optitrack/CameraSDK`; if yours is elsewhere, edit it there
+   (there is no command-line override). Tools link `CameraLibrary` and
+   `jpeg` from `$SDK_DIR/lib`.
+3. **Python venv.** Required: Ubuntu 24.04 refuses `pip install` outside one.
+   Versions are pinned in `python/requirements.txt`. The `rm -rf .venv` in
+   the block makes the same lines work for a first install and for a rebuild.
+4. **Verify** with the last line: a 5.x version and `True`.
+5. **Keep both OpenCVs.** C++ uses 4.6, Python 5.x; don't unify them
+   (FINDINGS §2 rule 13, §18).
+6. **To refresh the pins** after deliberately changing a package:
+   `.venv/bin/pip freeze > python/requirements.txt`.
 
-C++ uses the system OpenCV 4.6. Python uses OpenCV 5.x from the venv. Don't
-unify them. The calibration solve needs 5.x's `CharucoDetector` /
-`matchImagePoints`, and 5.x can't be loaded into a process already linked to
-4.6. The venv also keeps 5.x's numpy 2.x away from apt's numpy-1.x packages.
-See [FINDINGS §16](FINDINGS.md#16-build-and-host-environment).
+**Troubleshooting**
 
----
-
-## 2. Camera network
-
-The cameras are powered over PoE from a switch connected to the host NIC
-**`enp6s0`**. They self-assign link-local (169.254.x.x) addresses and
-broadcast on UDP 13013. `enp6s0` is dedicated to the camera network and is
-link-local only; internet comes over Wi-Fi.
-
-Check the link, then check that cameras are broadcasting:
-
-```sh
-ip -brief link show enp6s0                    # want: UP ... LOWER_UP
-sudo tcpdump -i enp6s0 -n port 13013          # want: packets from 169.254.x.x
-```
-
-- **`NO-CARRIER`**: nothing is plugged in, or the cameras are unpowered.
-- **Link up but silence on 13013**: the cameras aren't broadcasting.
-  Power-cycle the PoE switch.
-
-**Unverified:** how `enp6s0` was given link-local addressing on this host is
-not recorded. On 2026-10-19 no NetworkManager profile was bound to it, with
-the link down. With NetworkManager, one way is
-`nmcli connection add type ethernet ifname enp6s0 con-name cameras ipv4.method link-local ipv6.method disabled`.
+- **Python scripts fail to start after the repo moved or was renamed.** The
+  venv records its absolute path. Rerun the block (it deletes and recreates
+  `.venv`).
 
 ---
 
 ## 3. Build and setcap
 
-Each tool under `src/` is its own CMake project. There is no top-level
-build. Build all of them:
+The command block is §1.2; it appears only there.
 
-```sh
-for t in src/0*/; do
-  cmake -S "$t" -B "$t/build" -DCMAKE_BUILD_TYPE=Release &&
-  cmake --build "$t/build" -j"$(nproc)" || break
-done
-```
+1. Each tool under `src/` is its own CMake project; there is no top-level
+   build. The first line of §1.2 builds them all; after a change to build
+   configuration, delete `src/0*/build` first.
+2. **setcap after every build.** The camera network needs raw sockets, and
+   **linking strips file capabilities**, so the second line is needed after
+   every relink. `getcap` lists the binaries that have them; a missing one
+   has none.
+3. **Never run the tools under `sudo` instead.** It breaks desktop audio for
+   the session and leaves root-owned files.
+4. **Unit tests** (last line). `tests/` is its own CMake project, outside the
+   `src/0*/` loop, with no camera SDK and no setcap. Run from the repo root;
+   it reads `config/charuco_board.yaml` and `config/autocapture.yaml` and
+   exits 0 only if every check passes. It covers the `--auto` accept logic
+   on synthetic corners and what auto mode writes to `session.json`.
+   `KEEP_TEST_SESSION=1 tests/build/test_autocapture` leaves the test's
+   session folder in the system temp directory, for a `json.load` check.
 
 | Tool | Binary |
 |---|---|
@@ -160,97 +191,294 @@ done
 | 06_focus | `src/06_focus/build/focus` |
 | 07_mask | `src/07_mask/build/mask` |
 | 07_objdiag | `src/07_objdiag/build/objdiag` |
+| tests | `tests/build/test_autocapture` |
 
-**setcap after every build.** The camera network needs raw-socket access.
-**Linking strips file capabilities**, so every rebuild that relinks a binary
-needs this again:
+**Troubleshooting**
 
-```sh
-for b in src/01_discover/build/discover src/02_stream/build/stream \
-         src/03_detect/build/detect src/04_capture/build/capture \
-         src/05_identify/build/identify src/06_focus/build/focus \
-         src/07_mask/build/mask src/07_objdiag/build/objdiag; do
-  sudo setcap cap_net_raw,cap_net_admin+eip "$b"
-done
-getcap src/*/build/*        # a binary missing from this output has no capabilities
-```
-
-Don't run the tools under `sudo` instead. It breaks desktop audio for the
-session and leaves root-owned files.
-
-**`mask` has its config path built in.** `07_mask` compiles in the absolute
-path of `config/` at configure time. If the repo moves, delete
-`src/07_mask/build` and rebuild (then setcap), or pass `--config config`.
+- **`0.0 fps`, `NO FRAMES`, "no cameras opened", or `camera N not found`
+  right after a build.** Run `getcap src/*/build/*`; a binary missing from
+  the output needs the setcap line again.
+- **`mask` can't find its config after the repo moved.** `07_mask` compiles
+  in the absolute path of `config/` at configure time. Delete
+  `src/07_mask/build`, rebuild, setcap; or pass `--config config`.
 
 ---
 
-## 4. Tools
-
-Startup includes discovery, which waits until the camera count has been
-stable for 5 s (up to 30 s). Tools that open every camera repeat that wait
-once per camera, so expect roughly a minute before ten cameras are streaming.
-*That time is inferred from the code, not measured.*
-
-### 01_discover: what is on the network
+## 4. Network, discovery and object mode
 
 ```sh
+ip -brief link show enp6s0
+sudo tcpdump -i enp6s0 -n port 13013
 src/01_discover/build/discover
+src/05_identify/build/identify [fps] [exposure] [threshold] [gain] [--size WxH]
+src/07_objdiag/build/objdiag <serial> [exposure] [threshold] [gain] [fps] [--sweep]
 ```
 
-Takes no arguments. Prints the device count as it grows, then one line per
-unique serial: revision, name, and `Initialized` or `not ready`.
+1. **Link.** The cameras are on PoE from a switch on host NIC **`enp6s0`**,
+   dedicated and link-local only (internet comes over Wi-Fi). Want `UP ...
+   LOWER_UP`. If it isn't configured, one way with NetworkManager is
+   `nmcli connection add type ethernet ifname enp6s0 con-name cameras ipv4.method link-local ipv6.method disabled`
+   (*unverified*: how this host was set up is not recorded).
+2. **Broadcasts.** Cameras self-assign 169.254.x.x and broadcast on UDP
+   13013. Want packets from 169.254.x.x. Ctrl-C to stop.
+3. **`discover`** takes no arguments. It prints the device count as it grows,
+   waits until the count has been stable for 5 s (30 s cap), then prints
+   `settled on N camera(s)` and one line per unique serial: revision, name,
+   `Initialized` or `not ready`.
+4. **`identify`** opens every initialised camera in object mode, tiled five
+   across on the primary monitor (size from `xrandr`; `--size WxH`
+   overrides), each tile labelled with serial, fps and blob count.
+   Positional defaults: fps 30, exposure 500, threshold 200, gain 0. At start
+   it prints each camera's mode: `object` is normal, `NO FRAMES` means
+   nothing arrived, `WRONG MODE` see troubleshooting. Expect about a minute
+   before ten cameras stream: discovery repeats once per camera
+   (*inferred*, not timed). It does not load, clear or report masks.
 
-### 02_stream: one grayscale frame
+   | Key | Action |
+   |---|---|
+   | `g` | Grayscale mode (exposure 8133, gain 7) |
+   | `o` | Object mode (launch exposure, gain 0) |
+   | `+` / `=` | Threshold +10, up to the camera's max |
+   | `-` | Threshold −10, down to the camera's min |
+   | `]` | Exposure +100, capped at 33133 (correct only at 30 Hz) |
+   | `[` | Exposure −100, down to 10 |
+   | `d` | Dump every blob (x, y, area, roundness) to the console |
+   | `q` | Quit |
+
+5. **`objdiag`** is for one camera that shows nothing. Console only.
+   Positional defaults: exposure 500, threshold 200, gain 0, fps 30. Give the
+   positionals in order before `--sweep`. It prints:
+   1. the SDK state after start: mode, every setting with its range, IR ring,
+      blocking-mask flag, sync support
+   2. what was asked against what the camera reports, flagging a threshold
+      outside the camera's range
+   3. per received frame: frame ID, gap since the last (`dF`, dropped
+      frames), `type`, object count, readback threshold and exposure, empty
+      polls between; a summary every 5 s. Ctrl-C to stop.
+
+   `--sweep` instead steps the threshold across the camera's range (13
+   steps, 1.5 s each) and prints the peak object count at each.
+
+**Troubleshooting**
+
+- **`NO-CARRIER`.** Nothing plugged in, or the cameras are unpowered.
+- **Link up, silence on 13013.** The cameras aren't broadcasting.
+  Power-cycle the PoE switch.
+- **Fewer cameras than exist.** Enumeration is staggered. `discover`,
+  `capture`, `identify`, `focus`, `mask` and `objdiag` wait for 5 s of no
+  change; `stream` and `detect` use a 1.5 s window that has undercounted ten
+  cameras, so if either says `camera N not found`, run `discover` first and
+  retry. A serial the SDK lists twice is collapsed automatically.
+- **A tool hangs at start right after another was killed.** Old sockets are
+  still bound. Wait a couple of seconds.
+- **`WRONG MODE`** (`identify`, `mask`). Probably a false alarm: the flag
+  describes the last *poll*, and a poll with no frame waiting reads as "not
+  object" (FINDINGS, Open items #2). Check with `objdiag <serial>`: a `type`
+  column of `Object` means the camera is fine.
+- **`0.0 fps` / `NO FRAMES`.** `getcap` first (§3), then the network
+  (steps 1–2). `objdiag` prints `[no frames at all - not a threshold problem]`
+  in that case.
+- **Frames arrive but 0 blobs.** Lighting, exposure or threshold, not
+  acquisition. Run `objdiag <serial> --sweep`, and check the requested
+  threshold is inside the camera's range (`objdiag` flags it).
+- **A camera is blind in one region.** It may be a blocking mask left from
+  `07_mask`; see §6.
+- **Exposure won't go higher, or reads back lower than asked.** The ceiling is
+  `floor(1e6/fps) − 200` (§12) and changes with the frame rate. `identify`'s
+  `]` is hardcoded to 33133. Compare `asked` with the readback `identify` and
+  `objdiag` print.
+
+---
+
+## 5. Grayscale stream, detection and focus
 
 ```sh
-src/02_stream/build/stream [serial]          # default 33661
-```
-
-Opens one camera in grayscale (exposure 8133, intensity 15, 30 Hz), discards
-stale non-grayscale frames, and writes `frame.png` to the **current
-directory**. It exits 1 if no grayscale frame arrives.
-
-### 03_detect: live ChArUco detection for settings sweeps
-
-```sh
+src/02_stream/build/stream [serial]
 src/03_detect/build/detect [serial] [exposure] [gain] [fps] [--board FILE] [--legacy | --no-legacy]
-# defaults 33661 8133 7 30, board config/charuco_board.yaml, legacy_pattern from the file
+src/06_focus/build/focus <serial>
 ```
 
-It first prints the board it loaded (and any `--legacy` / `--no-legacy`
-override), then shows a live view with markers and corners drawn and
-`markers N/M corners N/C ids>K n (max I) fit F px mean B` overlaid. It prints
-that line about once a second.
+1. **`stream`** opens one camera in grayscale with exposure 8133, intensity
+   15, 30 Hz (set directly, not from `Settings`), discards stale
+   non-grayscale frames, and writes `frame.png` to the **current directory**.
+   Exit 1 if no grayscale frame arrives.
+2. **`detect`** prints the board it loaded (and any `--legacy` /
+   `--no-legacy` override), then shows markers and corners live with
+   `markers N/M   corners N/C   ids>K n (max I)   fit F px   mean B`, also
+   printed about once a second. Positional defaults: serial 33661, exposure
+   8133, gain 7, fps 30; board `config/charuco_board.yaml`, `legacy_pattern`
+   from the file.
+   - `ids>K n`: markers with an ID beyond the board's range (misreads or
+     another target).
+   - `fit`: worst homography residual in px; −1 with fewer than 6 corners. A
+     wrong layout still gives a full corner count; only `fit` shows it: about
+     1 px right, ~200 px wrong (FINDINGS §7).
 
-- `ids>K n`: markers whose ID is beyond the board's range. These are misreads
-  or another target.
-- `fit`: worst residual, in px, of a homography from board coordinates to the
-  detected corners. It reads −1 with fewer than 6 corners. A wrong layout or
-  swapped rows/cols still gives a FULL corner count in OpenCV 4.6, with IDs on
-  the wrong corners. Only `fit` shows it: a few px is right, ~200 px is wrong.
+   | Key | Action |
+   |---|---|
+   | `s` | Save the raw frame to `./detect_frame.png` |
+   | `q` | Quit |
 
-| Key | Action |
-|---|---|
-| `s` | Save the raw frame to `./detect_frame.png` |
-| `q` | Quit |
+3. **`focus`** runs at the grayscale operating point and shows the variance
+   of the Laplacian over the centre half (outlined), its peak, the current
+   value as a percentage of peak, and a history strip. Put the board in the
+   centre rectangle at working distance, twist the lens past the peak and
+   back, lock the ring. Focus with the IR filter in. The number is only for
+   finding the peak; it isn't comparable between cameras or scenes.
 
-### 04_capture: intrinsics capture
+   | Key | Action |
+   |---|---|
+   | `r` | Reset the peak |
+   | `q` | Quit |
+
+**Troubleshooting**
+
+- **Board looks dark in `detect`.** Raise the exposure (the **second**
+  positional, after the serial; up to 33133 at 30 Hz) or the gain (third).
+- **`board config ...: square_mm.measured is missing`** (`detect`,
+  `capture`). Fill in the caliper measurements in
+  `config/charuco_board.yaml`. Nominal is never used in their place.
+- **`camera N not found`.** `stream` and `detect` use the short discovery
+  window; run `discover` first (§4).
+- **Full corner count but `fit` in the hundreds.** Wrong layout or rows/cols
+  swapped in the board file (FINDINGS §9).
+
+---
+
+## 6. Blocking masks
 
 ```sh
-src/04_capture/build/capture [serial] [--board FILE]   # defaults 33661, config/charuco_board.yaml
+src/07_mask/build/mask
+src/07_mask/build/mask --load
+src/07_mask/build/mask --show
+src/07_mask/build/mask --coverage
+src/07_mask/build/mask --probe
+src/07_mask/build/mask --clear
+src/07_mask/build/mask --load --config config
 ```
 
-It prints the board it loaded, and refuses to start if the board file is
-missing or a measured size is blank. The full board record goes into
-`session.json`. Use `--board config/charuco_board_old.yaml` to reproduce an
-old-board session. Starts at the grayscale operating point (section 5). It creates
-`$HOME/panoptes-data/sessions/intrinsics_<serial>_<YYYYmmdd_HHMMSS>/`
+Every mode opens every camera at the `config/mask.yaml` settings (§12).
+`--config DIR` works with any mode.
+
+| Mode | Does | Volume |
+|---|---|---|
+| *(none)* | Learn: clear masks, 5 s countdown, 30 s learn, build, apply, 10 s verify, save to `config/masks/<serial>.json` | **Empty** of markers |
+| `--load` | Apply saved masks, then verify for 10 s | Empty |
+| `--show` | Apply saved masks; tiled view with masked cells tinted red | Any |
+| `--coverage` | Apply saved masks; walk **one** marker through the volume; log to `logs/coverage_<stamp>.csv` | One marker |
+| `--probe` | Measure SDK mask behaviour step by step | Empty |
+| `--clear` | Remove masks from every camera | Any |
+
+1. **Learn** with the volume empty: launch, step out during the 5 s
+   countdown, wait for the save.
+2. **Load** at the start of a tracking session; check the verify table reads
+   `residual: none` with no `LEAK` line.
+3. **Look** with `--show`:
+
+   | Key | Action |
+   |---|---|
+   | `m` | Mask on/off, to see what it hides |
+   | `g` | Grayscale view |
+   | `o` | Object view |
+   | `q` | Quit |
+
+4. **Accept** with `--coverage`: walk one marker through the whole volume,
+   then `q`. It prints PASS or FAIL: FAIL if any moment was seen by fewer
+   than 3 cameras. It also lists, per camera, the losses next to its mask.
+5. **Masks stay on the cameras after `mask` exits.** They're valid only
+   while no camera moves and only at the settings they were learned under.
+
+**Troubleshooting**
+
+- **A camera sees nothing in one region, or loses a marker in one place.**
+  Likely a mask: `identify`, `objdiag` and `capture` don't report them, and
+  `objdiag`'s "blocking mask" line is the SDK flag, not the camera. Compare
+  with `mask --show` and `m`; rule masks out with `mask --clear`.
+- **`error: cannot read .../mask.yaml`.** The repo moved since `mask` was
+  built. Rebuild it (§3) or pass `--config config`.
+- **`REFUSED - saved grid ...`** on `--load`. The saved mask doesn't match the
+  camera's grid. Relearn.
+- **`WARNING settings differ from learn time`.** Relearn, or run at the
+  `config/mask.yaml` settings the masks were learned under.
+- **`<-- TOO MUCH`** during learn. The camera stares at other rings. Downtilt
+  or re-aim it and relearn rather than masking over 10% of its frame.
+
+---
+
+## 7. Corner jitter session
+
+```sh
+src/04_capture/build/capture [serial]
+.venv/bin/python python/corner_jitter.py <session> [--max-fit PX] [--out DIR]
+.venv/bin/python python/corner_jitter.py <png_folder> --board config/charuco_board.yaml
+.venv/bin/python python/corner_jitter.py --self-test
+```
+
+Measures how far a detected corner moves between frames when nothing moves:
+the figure in FINDINGS §6 and the noise the accuracy study assumes. Record it
+with `04_capture`, not `02_stream`: `capture` writes every frame to a session
+with the board and per-frame settings, and only accepts full boards. Each
+capture is a new camera frame (*inferred* from `lib/camera.cpp`), and the
+script also rejects byte-identical frames.
+
+1. **Mount both.** Board on a tripod, camera fixed. Nobody touches either.
+2. **Place** the board at 1–1.5 m, fully in view, roughly centred.
+3. **Tilt about 20°** about the vertical axis. To check: run
+   `capture <serial>`, press space once, read `tilt N deg` in the printed
+   line, `u` to undo; adjust and repeat.
+4. **Operating point.** `capture` starts at gain 7, 8133 µs, intensity 15,
+   30 Hz, filter in. For a gain-0 comparison, start a separate session and
+   press `[` seven times before the first capture. Don't change settings
+   mid-session; the script rejects frames whose settings differ from the
+   majority.
+5. **Capture 200 frames.** Hold or repeat space until `captured 200` (about
+   30 s at 6–8 fps), then `q`.
+6. **Analyse** with the second line. `--max-fit` defaults to 3 px; `--out`
+   defaults to the session folder, where it writes `corner_jitter.json` and
+   `corner_jitter.png`. For a plain PNG folder use the third line.
+7. **Read.** It prints the board, frames kept and rejected with reasons,
+   corners used, the fit of kept frames, and radial and per-axis std
+   (median, p90, max) for all corners, centre and edge cells.
+   - Compare like with like: radial is √2 × per-axis for isotropic noise;
+     FINDINGS §6 quotes radial medians.
+   - The edge rows are empty unless the board reaches the outer ring of
+     cells. For an edge figure, record a second session with the board near a
+     frame corner.
+8. **Record** the result in FINDINGS §6 with the session names.
+
+**Troubleshooting**
+
+- **`WARNING: a corner moved more than 1 px`.** Something moved; it's not a
+  jitter measurement. Re-mount and rerun.
+- **Every frame rejected for `fit`.** The fit is a homography on the
+  distorted image; near the frame edge distortion alone approaches 3 px
+  (2.2–2.9 px in the self-test for an off-centre tilted board). Centre the
+  board, or raise `--max-fit` and say so in the result.
+- **Frames rejected for settings.** Settings changed mid-session. Start a new
+  session.
+
+---
+
+## 8. Manual intrinsics session
+
+```sh
+src/06_focus/build/focus <serial>
+src/03_detect/build/detect <serial>
+src/04_capture/build/capture [serial] [--board FILE]
+.venv/bin/python python/fit_intrinsics.py <session> [<session> ...]
+```
+
+`capture` prints the board it loaded and refuses to start if the board file
+is missing or a measured size is blank. It starts at the grayscale operating
+point (§12), creates `$HOME/panoptes-data/sessions/intrinsics_<serial>_<YYYYmmdd_HHMMSS>/`
 (local time) and prints the path. The overlay shows corners, captures, empty
-cells, exposure against its ceiling, gain, and the tilted share.
+cells, exposure against its ceiling, gain, the tilted share, the coverage grid
+(red = empty) and a tilt histogram (amber = under 20°). Use
+`--board config/charuco_board_old.yaml` to reproduce an old-board session.
 
 | Key | Action |
 |---|---|
-| `space` | Capture. Accepted only with every corner of the board found; otherwise prints `skipped` |
+| `space` | Capture. Only with every corner found; otherwise prints `skipped` |
 | `u` | Undo the last capture, removing the PNG and its coverage |
 | `+` / `=` | Exposure +1000, up to the camera's reported ceiling |
 | `-` | Exposure −1000, down to 10 |
@@ -258,130 +486,213 @@ cells, exposure against its ceiling, gain, and the tilted share.
 | `[` | Gain −1, down to 0 |
 | `q` | Quit; prints the frame count, empty cells and tilted share |
 
-### 05_identify: all cameras, object mode
+1. **Network up**, then `discover`; the serial must read `Initialized` (§4).
+2. **Focus.** `focus <serial>` with the board in the centre rectangle at
+   working distance. Find the peak, lock the ring, `q`.
+3. **Optional check.** `detect <serial>` at 1–1.5 m should read
+   `markers 54/54   corners 88/88` with `fit` about 1 px.
+4. **Capture** with the board at **1–1.5 m**; further away it fills too
+   little of the frame and corners cluster mid-image.
+   - Work the board into the **corners and edges** until `empty cells` is
+     **0/30**; the line turns green.
+   - Keep **tilted** at **30% or more**: tilt 20–40° about both axes, plus
+     some roll and distance changes.
+   - A useful pattern: nine positions (centre, four edges, four corners)
+     fronto-parallel, the same nine tilted about the vertical axis, the same
+     nine about the horizontal axis, then fill what's left.
+   - `u` undoes a bad capture; `q` ends the session and prints its folder.
+5. **Solve** with `fit_intrinsics.py`. It writes `<session>/intrinsics.json`
+   and prints a table; give it several sessions of the same camera to see
+   the spread, which is the real accuracy figure.
+6. **Read the result.**
+   - RMS is **not** the acceptance criterion; zero empty cells (step 4) is.
+   - Look for a bad capture in `per_view_error` in `intrinsics.json`.
+   - fx and fy more than ~1% apart means too little tilt.
+   - Compare with the previous fits in FINDINGS §16.
+7. **Use it** by editing `camera_model` in `config/layout.yaml` by hand;
+   nothing writes it automatically. Record the fit in FINDINGS §16.
 
-```sh
-src/05_identify/build/identify [fps] [exposure] [threshold] [gain] [--size WxH]
-# defaults: 30 500 200 0; --size overrides the detected monitor size
-```
+**Troubleshooting**
 
-Opens every initialised camera in object mode and tiles them five across on
-the primary monitor (found via `xrandr`), each labelled with its serial,
-fps and blob count. At start it prints each camera's mode, read back from
-the camera:
-
-- `object`: normal.
-- `NO FRAMES`: nothing has arrived from that camera.
-- `WRONG MODE`: see section 7 before believing it.
-
-| Key | Action |
-|---|---|
-| `g` | Grayscale mode (exposure 8133, gain 7) |
-| `o` | Object mode (launch exposure, gain 0) |
-| `+` / `=` | Threshold +10, up to the camera's max |
-| `-` | Threshold −10, down to the camera's min |
-| `]` | Exposure +100, capped at 33133, which is correct only at 30 Hz |
-| `[` | Exposure −100, down to 10 |
-| `d` | Dump every blob (x, y, area, roundness) to the console |
-| `q` | Quit |
-
-`identify` does not load, clear or report blocking masks.
-
-### 06_focus: focus assist
-
-```sh
-src/06_focus/build/focus <serial>
-```
-
-Grayscale at the default operating point. It shows the variance of the
-Laplacian over the centre half (outlined), its peak, the current value as a
-percentage of peak, and a history strip. Put the board in the centre
-rectangle and twist the lens past the peak, then back to it. Focus with the
-IR filter in.
-
-The number is not comparable between cameras or scenes; use it only to find
-the peak.
-
-| Key | Action |
-|---|---|
-| `r` | Reset the peak |
-| `q` | Quit |
-
-### 07_mask: blocking masks
-
-```sh
-src/07_mask/build/mask [--load|--show|--coverage|--probe|--clear] [--config DIR]
-```
-
-All modes open every camera at the `config/mask.yaml` settings (section 5).
-
-| Mode | Does | Volume |
-|---|---|---|
-| *(none)* | Learn: clear masks, 5 s countdown, 30 s learn, build, apply, 10 s verify, save to `config/masks/<serial>.json` | **Empty** of markers |
-| `--load` | Apply saved masks, then verify for 10 s | Empty |
-| `--show` | Apply saved masks; tile view with masked cells tinted red | Any |
-| `--coverage` | Apply saved masks; walk **one** marker through the volume; logs to `logs/coverage_<stamp>.csv` | One marker |
-| `--probe` | Measure SDK mask behaviour step by step | Empty |
-| `--clear` | Remove masks from every camera | Any |
-
-`--show` keys:
-
-| Key | Action |
-|---|---|
-| `m` | Mask on/off, to see what the mask hides |
-| `g` | Grayscale view |
-| `o` | Object view |
-| `q` | Quit |
-
-`--coverage` stops on `q` and prints PASS or FAIL. It fails if any moment of
-the walk was seen by fewer than 3 cameras. It also lists, for each camera,
-how many losses happened next to its mask.
-
-**Masks stay applied on the cameras after `mask` exits.** They are valid only
-while no camera moves and only at the settings they were learned under.
-`--load` warns on a settings change and refuses a grid mismatch.
-
-### 07_objdiag: why does a camera show nothing?
-
-```sh
-src/07_objdiag/build/objdiag <serial> [exposure] [threshold] [gain] [fps] [--sweep]
-# defaults: 500 200 0 30
-```
-
-Console only.
-
-1. It prints the SDK state after start: mode, every setting with its range,
-   IR ring, blocking-mask flag, sync support.
-2. It prints what was asked against what the camera reports, and flags a
-   threshold outside the camera's range.
-3. Then, for every received frame, it prints the frame ID, the gap since the
-   last frame (`dF`, dropped frames), the frame type, the object count, the
-   readback threshold and exposure, and the empty polls in between. Every 5 s
-   it prints a summary.
-
-`--sweep` instead steps the threshold across the camera's range (13 steps,
-1.5 s each) and reports the peak object count at each step. Stop the
-per-frame log with Ctrl-C.
-
-### Python
-
-Run from the repo root with the venv interpreter.
-
-| Command | Does |
-|---|---|
-| `.venv/bin/python python/fit_intrinsics.py <session> [<session> ...]` | Brown-Conrady fit on all frames. Writes `<session>/intrinsics.json`, prints a table, and with several sessions prints the spread across them |
-| `.venv/bin/python python/compare_models.py <session>` | Brown-Conrady vs rational vs fisheye: held-out error and edge straightness. Writes `<session>/model_comparison.json` (training RMS only) |
-| `.venv/bin/python python/bootstrap_intrinsics.py <session> [n_subsets] [subset_size]` | Refit random subsets (defaults 20 of 50) to see whether pose sampling explains a cross-session difference |
-| `.venv/bin/python python/corner_jitter.py <session> [--max-fit PX] [--out DIR]` | Static corner repeatability (section 6). Writes `corner_jitter.json` and `corner_jitter.png` into the session folder. For a plain PNG folder add `--board FILE`. `--self-test` runs 9 checks on synthetic noise |
-| `.venv/bin/python python/triangulate.py [layout.yaml]` | Triangulation self-test, 12 checks. Exit 0 only if all pass |
-| `.venv/bin/python python/accuracy_study.py [layout.yaml] [study.yaml]` | Synthetic study. Writes `analysis/` PNGs, `accuracy_study.json` and `.npz`. Refuses to run if the self-test fails |
+- **`skipped: only N/88 corners`.** The board is partly out of frame or too
+  far. Move it closer than 1.5 m.
+- **Board config errors at start.** See §5.
+- **Python finds 0 corners on every frame.** See §10.
 
 ---
 
-## 5. Operating points
+## 9. Auto intrinsics session
 
-**Grayscale, for calibration.** These are the `Settings` defaults in
-`lib/camera.h`, used by `capture`, `focus` and `stream`:
+```sh
+src/04_capture/build/capture [serial] --auto-dry [--auto-config FILE] [--board FILE]
+src/04_capture/build/capture [serial] --auto [--auto-config FILE] [--board FILE]
+.venv/bin/python python/fit_intrinsics.py <auto_session> <manual_session>
+```
+
+> **Auto mode is UNVALIDATED.** Its intrinsics have not yet been compared
+> with a manual session's on real data (step 6). Until that check has passed
+> and is recorded in FINDINGS, use manual sessions for any intrinsics that
+> matter and treat auto sessions as experiments.
+
+The operator moves the board slowly; the tool keeps the frames it judges
+useful. Rules and thresholds are in `config/autocapture.yaml`
+(`--auto-config` overrides) and are copied into `session.json`. How the gates
+work: [ARCHITECTURE §5](ARCHITECTURE.md#5-automatic-frame-selection).
+
+**Rejection reasons**, in the order checked:
+
+| # | Reason | Passes when |
+|--:|---|---|
+| 1 | `not_full`, `bad_fit` | all 88 corners found, fit under `max_fit_px` |
+| 2 | `no_reference`, `moving` | every corner moved less than `still_px` since the previous frame, which itself passed 1 |
+| 3 | `redundant` | it reaches an empty coverage cell, **or** its pose bin has fewer than `min_per_bin` frames |
+| 4 | `settings_changed` | exposure, gain, intensity, rate and filter match the first frame |
+| 5 | `too_soon` | at least `min_interval_ms` since the last accept |
+| 6 | `same_pose` | some corner moved at least `min_move_px` since the last accept |
+
+**Pose bins:** 5 tilt directions × 3 distance bands = 15.
+`flat` is within `flat_deg` of fronto-parallel; otherwise `+x+y`, `+x-y`,
+`-x+y` or `-x-y`, where `+x` = board faces image-down (bottom edge further
+away) and `+y` = faces image-right. Each quadrant needs a **compound** tilt; a
+single-axis tilt sits on a boundary and lands by the small other angle.
+Bands `near` / `mid` / `far` come from `size` (px per square) against
+`near_square_px` and `far_square_px`.
+
+**Live view**, on top of the manual overlay:
+
+- every frame's verdict (`ACCEPT` and reason, or `reject:` and reason), and
+  `ACCEPT #N` for 1.5 s after each accept
+- a large **HOLD STILL** when gate 2 fails; **SETTINGS CHANGED** while gate 4
+  holds
+- `motion` and `size`, and the bin table bottom right (red under
+  `min_per_bin`, green at or above, current bin outlined)
+- a terminal bell and one printed line per accept
+
+| Key | Action |
+|---|---|
+| `+` `=` `-` `]` `[` | As in manual mode (§8); any change pauses accepting until restored |
+| `q` | Quit |
+| `space`, `u` | Disabled |
+
+1. **Do steps 1–3 of §8** (network, focus, optional check).
+2. **Tune with `--auto-dry`.** Same loop, every frame's verdict printed with
+   `motion`, `size` and `bin`; nothing written, no session folder.
+   1. Hold the board still: `motion` should sit well under `still_px`
+      (around 0.15 px or below if FINDINGS §6 holds hand-held). Move it at
+      your working pace: it should read `moving`. If a hand-held board never
+      gets under 0.3 px, record that rather than quietly raising `still_px`
+      past the blur it exists to stop.
+   2. Hold the board at 1.0, 1.25 and 1.5 m and read `size`. Set
+      `near_square_px` and `far_square_px` so those land in `near`, `mid`,
+      `far`. Tilting must not change the band.
+   3. Save any change in `config/autocapture.yaml`; the session copies the
+      values it ran with.
+3. **Run `--auto`.** Work through the volume as in §8 step 4, slowly, pausing
+   in each pose until the bell. Use the bin table to find what's missing. It
+   ends by itself at **0 empty cells and every bin at `min_per_bin`**, or on
+   `q`, and prints which, with the bin table and every verdict's count.
+4. **Solve and read** as in §8 steps 5–6.
+5. **What the session holds** (auto only): each frame has an `auto` object
+   (accept reason `cells` / `bin`, `motion_px`, fit, size, tilt);
+   `autocapture` holds the config, bin counts, verdict counts and reference
+   settings; `autocapture_end` says why it ended. Rejected frames are never
+   written.
+6. **Validation rule: do this before trusting auto mode.**
+   1. On one camera, the same day, lens untouched: one `--auto` session and
+      one manual session.
+   2. Fit both together (third line of the block).
+   3. **Pass** if **fx and fy agree within ~1 px and cx and cy within
+      ~3 px**. Source: the same-day 2026-09-25 manual pair in FINDINGS §16
+      (fx 0.23, fy 0.63, cx 2.51, cy 1.51 px). The three-session range there
+      is wider (fx 2.48, cx 9.40 px; Open items #1), so a cx/cy failure
+      alone may not be auto mode's fault: record a second manual session the
+      same day and check the two manual ones agree first.
+   4. Record the result, pass or fail, in FINDINGS with both session names.
+      Only on a pass, remove the UNVALIDATED notes here and in §1.8, and
+      close Open items #11.
+
+**Troubleshooting**
+
+- **Never accepts.** Read the reason on screen or in the `--auto-dry`
+  output:
+  - `moving` every frame: never still enough (gate 2).
+  - `redundant`: what's in view is filled; check the bin table and the red
+    coverage cells.
+  - `settings_changed`: undo the `+ - [ ]` presses.
+  - `same_pose`: move on to a new pose.
+- **`autocapture config ...: <field> is missing`.** `config/autocapture.yaml`
+  must set every field; there are no defaults.
+- **A bin never fills.** Some poses may be unreachable (e.g. far and steeply
+  tilted). End with `q`; the printout gives every bin's count and how many
+  are short.
+
+---
+
+## 10. Python fits and studies
+
+```sh
+.venv/bin/python python/fit_intrinsics.py <session> [<session> ...]
+.venv/bin/python python/compare_models.py <session>
+.venv/bin/python python/bootstrap_intrinsics.py <session> [n_subsets] [subset_size]
+.venv/bin/python python/board.py [board.yaml]
+.venv/bin/python python/triangulate.py [layout.yaml]
+.venv/bin/python python/accuracy_study.py [layout.yaml] [study.yaml]
+```
+
+| Command | Does |
+|---|---|
+| `fit_intrinsics.py` | Brown-Conrady on all frames; writes `<session>/intrinsics.json`, prints a table, and with several sessions the spread across them |
+| `compare_models.py` | Brown-Conrady vs rational vs fisheye: held-out error and edge straightness printed; writes `<session>/model_comparison.json` (training RMS only) |
+| `bootstrap_intrinsics.py` | Refits random subsets (defaults 20 subsets of 50) to see whether pose sampling explains a cross-session difference |
+| `board.py` | Prints the board a yaml describes (default `config/charuco_board.yaml`), or the error |
+| `triangulate.py` | Triangulation self-test, 12 checks; exit 0 only if all pass |
+| `accuracy_study.py` | Synthetic study (defaults `config/layout.yaml`, `config/study.yaml`); writes `analysis/` PNGs, `accuracy_study.json` and `.npz`; refuses to run if the self-test fails |
+
+1. Run from the repo root with `.venv/bin/python` only. Each script prints the
+   board it resolved: from the session's `session.json`, or
+   `config/charuco_board_old.yaml` for sessions recorded before the board
+   config existed.
+2. After changing anything in `python/` or `config/layout.yaml`, run
+   `triangulate.py`; all 12 checks must pass.
+3. `analysis/*.png` and `.npz` are regenerated and gitignored;
+   `analysis/accuracy_study.json` is tracked. Record new numbers in FINDINGS.
+
+**Troubleshooting**
+
+- **0 corners on every frame.** The board's `legacy_pattern` doesn't match
+  the physical board (FINDINGS §9). Check the board each script prints.
+- **`accuracy_study.py` exits with "self-test failed".** Run `triangulate.py`
+  alone and read which check failed. The study refuses to report numbers from
+  a broken triangulator.
+
+---
+
+## 11. Git
+
+```sh
+git status
+git diff --stat
+git diff
+git add <files>
+git commit
+git log --oneline -10
+```
+
+1. Claude Code leaves its changes in the working tree; review with `git diff`
+   and commit yourself.
+2. Commit the doc updates in the same commit as the change they describe
+   (CLAUDE.md, "Keeping the docs current").
+3. Don't stage generated files: `build/`, `.venv/`, `analysis/*.png`,
+   `*.npz`. `logs/coverage_*.csv` are currently tracked.
+
+---
+
+## 12. Operating points (reference)
+
+**Grayscale, for calibration:** the `Settings` defaults in `lib/camera.h`,
+used by `capture` and `focus` (`stream` sets the same exposure, intensity
+and rate directly). Expect 54/54 markers and 88/88 corners at 1–1.5 m
+(FINDINGS §19) and a live view of 6–8 fps; that rate is normal (FINDINGS §5).
 
 | Setting | Value |
 |---|---|
@@ -391,22 +702,16 @@ Run from the repo root with the venv interpreter.
 | Exposure | 8133 µs |
 | Frame rate | 30 Hz |
 
-Expect every marker and corner (27/27 and 40/40 on the old 9 × 6 board; the
-12 × 9 board gives 54/54 and 88/88, FINDINGS §17) at
-1–1.5 m, and a live view of 6–8 fps; that rate is normal. The reasons are in
-[ARCHITECTURE §2](ARCHITECTURE.md#2-two-operating-modes).
-
-**Object mode, for tracking.** This is **not settled**. Two sets are in use
-(FINDINGS §11):
+**Object mode, for tracking: not settled** (FINDINGS §13). A mask is valid
+only at the settings it was learned under.
 
 | Used by | Exposure | Threshold | Gain | Intensity | Rate |
 |---|---:|---:|---:|---:|---:|
 | `identify`, `objdiag` defaults | 500 | 200 | 0 | 15 | 30 Hz |
-| `mask` (`config/mask.yaml`); the saved masks were learned here | 10 | 40 | 0 | 15 | 30 Hz |
+| `mask` (`config/mask.yaml`); saved masks learned here | 10 | 40 | 0 | 15 | 30 Hz |
 
-A mask is only valid at the settings it was learned under.
-
-**The exposure ceiling depends on the frame rate:** `floor(1e6 / fps) − 200`.
+**Exposure ceiling:** `floor(1e6 / fps) − 200`. Read it back after any rate
+change rather than assuming it.
 
 | Rate | Ceiling |
 |---:|---:|
@@ -414,185 +719,3 @@ A mask is only valid at the settings it was learned under.
 | 60 Hz | 16466 |
 | 120 Hz | 8133 |
 | 240 Hz | 3966 |
-
-After any rate change, read the ceiling back instead of assuming it.
-
----
-
-## 6. Calibration session walkthrough
-
-For one camera's intrinsics:
-
-1. **Network up** (section 2), then `discover`. Confirm the serial is
-   listed as `Initialized`.
-2. **Focus.** Run `focus <serial>`, with the board in the centre rectangle at
-   working distance. Find the peak, lock the lens ring, then `q`.
-3. **Optional check.** Run `detect <serial>`. At 1–1.5 m it should read
-   `markers 54/54 corners 88/88` with `fit` at a few px (12 × 9 board). If it
-   is dark, raise the exposure (third
-   argument, up to 33133 at 30 Hz) or the gain.
-4. **Capture.** Run `capture <serial>` with the board at **1–1.5 m**. Further
-   than that, the board fills too little of the frame and corners cluster
-   mid-image.
-   - Work the board into the **corners and edges** of the frame until
-     `empty cells` reaches **0/30**. The line turns green.
-   - At the same time, keep the **tilted** share at **30% or more**: tilt 20–40°
-     about both axes, plus some roll and distance changes. Watch the tilt
-     histogram; the amber bars are under 20°.
-   - A useful pattern is nine positions (centre, four edges, four corners)
-     fronto-parallel, the same nine tilted about the vertical axis, the same
-     nine tilted about the horizontal axis, then fill what's left.
-   - `u` undoes a bad capture. `q` ends the session and prints its folder.
-5. **Solve.** Run `fit_intrinsics.py` on the session folder. Give it several
-   sessions of the same camera to see the spread, which is the real accuracy
-   figure.
-6. **Read the result.**
-   - **RMS is not the acceptance criterion.** Zero empty cells, step 4, is.
-   - Look at `per_view_error` in `intrinsics.json` for a bad capture.
-   - fx and fy more than ~1% apart points at too little tilt.
-   - Compare with the previous fits in
-     [FINDINGS §14](FINDINGS.md#14-intrinsics-of-camera-33661).
-7. **To use the result**, edit `camera_model` in `config/layout.yaml` by
-   hand. Nothing writes it automatically.
-
-### Corner repeatability (jitter) session
-
-This measures how much a detected corner moves between frames when nothing
-moves. It is the figure in FINDINGS §4, and the corner noise the accuracy
-study assumes.
-
-**Record it with `04_capture`, not `02_stream`.**
-
-- `02_stream` saves one frame to `./frame.png` and exits.
-- `04_capture` writes every capture to a session folder, with a
-  `session.json` that records the board and each frame's exposure, gain,
-  intensity, rate and filter state.
-- It only accepts frames with every corner found, which a jitter set needs
-  anyway.
-- Each capture is a new camera frame: the frame fetch returns nothing when no
-  new frame has arrived (*inferred from `lib/camera.cpp`*). The script also
-  rejects byte-identical frames.
-
-Steps:
-
-1. **Mount both.** Board on a tripod, camera fixed. Nobody touches or leans on
-   either during the run.
-2. **Distance and position.** Board at 1–1.5 m, fully in view, roughly
-   centred.
-3. **Tilt about 20°** about the vertical axis. To check it:
-   - start `capture <serial>` and press space once
-   - read `tilt N deg` in the printed line
-   - `u` to undo, adjust, repeat
-4. **Operating point.** `capture` starts at the grayscale operating point
-   (section 5): gain 7, 8133 µs, intensity 15, 30 Hz, filter in. For a gain-0
-   comparison, start a separate session and press `[` seven times before the
-   first capture. Don't change settings mid-session; the script rejects
-   frames whose settings differ from the majority.
-5. **Capture 200 frames.** Hold space, or press it repeatedly, until
-   `captured 200` (about 30 s at 6–8 fps). Then `q`.
-6. **Analyse.**
-   ```sh
-   .venv/bin/python python/corner_jitter.py "$HOME"/panoptes-data/sessions/intrinsics_<serial>_<timestamp>
-   ```
-7. **Read the output.** It prints:
-   - the board, frames kept and rejected (with reasons), corners used
-   - the fit residual of the kept frames
-   - radial and per-axis std (median, p90, max) for all corners, centre and
-     edge cells
-
-**What to look for:**
-
-- **Compare like with like.** Radial std is √2 × per-axis std for isotropic
-  noise. The reference figures in FINDINGS §4 are radial medians.
-- **"WARNING: a corner moved more than 1 px"** means something moved; the
-  run is not a jitter measurement.
-- **Every frame rejected for `fit`.** The fit is a homography on the
-  distorted image. Near the frame edge, lens distortion alone can approach
-  3 px (2.2–2.9 px in the self-test for an off-centre tilted board). Keep the
-  board centred, or raise `--max-fit` and say so in the result.
-- **The edge region is empty** unless the board reaches the outer ring of
-  coverage cells. One static pose measures one region. Record a second
-  session with the board near a corner for an edge figure.
-
----
-
-## 7. Troubleshooting
-
-**`discover` or a tool reports fewer cameras than exist.**
-
-- Enumeration is staggered and slow with ten cameras. `discover`, `capture`,
-  `identify`, `focus`, `mask` and `objdiag` wait for 5 s of no change (30 s cap).
-- `stream` and `detect` still use a 1.5 s window, which has undercounted ten
-  cameras. If either says `camera N not found`, run `discover` first and
-  retry.
-- Check the link and the 13013 broadcasts (section 2).
-- If a tool was just killed, wait a couple of seconds before starting the
-  next. A new instance can hang while the old sockets are still bound.
-- A serial listed twice by the SDK is collapsed automatically.
-
-**`WRONG MODE` on startup** (`identify`, `mask`). This is probably a false
-alarm. The flag describes the most recent *poll*, and a poll that found no
-frame waiting reads as "not object" (FINDINGS, Open items #2). To be sure,
-run `objdiag <serial>`. If its `type` column reads `Object`, the camera is
-fine.
-
-**A camera sees nothing in one region, or loses a marker in one place.** This
-looks like a detection bug, but it may be a **blocking mask**. Masks stay on
-the camera after `mask` exits, and `identify`, `objdiag` and `capture` don't
-report them. The "blocking mask" line in `objdiag` is the SDK's flag, not the
-camera's state.
-
-- To see the masks: `mask --show`, and press `m` to compare.
-- To rule them out: `mask --clear`.
-
-**`0.0 fps` / `NO FRAMES` / "no cameras opened".**
-
-- Check `getcap` first: setcap is missing after every relink (section 3).
-- Then check the network (section 2).
-- `objdiag` prints `[no frames at all - not a threshold problem]` when that
-  is the case.
-
-**Frames arrive (fps > 0) but 0 blobs.** This is a lighting, exposure or
-threshold problem, not acquisition.
-
-- Run `objdiag <serial> --sweep` to see the blob count across the camera's
-  whole threshold range.
-- Check the requested threshold is inside the camera's range; `objdiag`
-  flags it.
-
-**The exposure won't go higher, or it reads back lower than you asked.** The
-ceiling is `floor(1e6/fps) − 200` (section 5). After a frame-rate change,
-the old ceiling is wrong. `capture` reads the ceiling from the camera;
-`identify`'s `]` key is hardcoded to 33133, the 30 Hz value. Compare
-`asked` with the readback that `identify` and `objdiag` print.
-
-**`capture` prints `skipped: only N/88 corners`.** The board is partly out
-of frame or too far away. Move it closer than 1.5 m.
-
-**`mask` prints `error: cannot read .../mask.yaml`.** The repo has moved
-since `mask` was built. Rebuild it, or pass `--config config`.
-
-**`mask --load` prints `REFUSED - saved grid ...`.** The saved mask doesn't
-match the camera's grid. Relearn.
-
-**`mask --load` prints `WARNING settings differ from learn time`.** Either
-relearn, or run at the settings in `config/mask.yaml` that the masks were
-learned under.
-
-**`mask` learn reports `<-- TOO MUCH`.** The camera is looking straight at
-other rings. Downtilt or re-aim it and relearn, rather than masking more than
-10% of its frame.
-
-**Python finds 0 corners on every frame.** The board's `legacy_pattern` is
-wrong for the physical board (FINDINGS §7). Python takes it from the
-session's `session.json` board record, or from
-`config/charuco_board_old.yaml` for sessions recorded before the board
-config existed. Each script prints the board it resolved.
-
-**A tool prints `board config ...: square_mm.measured is missing`.** Fill in
-the caliper measurements in `config/charuco_board.yaml`. Nominal sizes are
-never used in their place.
-
-**`accuracy_study.py` exits with "self-test failed".** Run
-`python/triangulate.py` alone and read which check failed. The study refuses
-to report numbers from a broken triangulator.
