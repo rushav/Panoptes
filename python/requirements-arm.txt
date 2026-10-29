@@ -1,0 +1,18 @@
+# Kinova Kortex Python API, for python/arm.py. Separate from
+# requirements.txt so the camera side never depends on it.
+#
+# Install with --no-deps (RUNBOOK §13):
+#   .venv/bin/pip install --no-deps -r python/requirements-arm.txt
+#
+# The wheel pins protobuf==3.5.1, which installs on Python 3.12 but fails on
+# import (collections.MutableMapping, removed in 3.10). 3.20.3 is the last
+# protobuf that loads the wheel's generated code; 4.x refuses it ("Descriptors
+# cannot be created directly"). --no-deps skips the pin; pip check will report
+# the mismatch, and that is expected. FINDINGS §20.
+#
+# Wheel from the Kinovarobotics/kortex release links (Artifactory); the
+# sha256 fragment makes pip verify the download.
+https://artifactory.kinovaapps.com/artifactory/generic-public/kortex/API/2.6.0/kortex_api-2.6.0.post3-py3-none-any.whl#sha256=22863493b89ae0ef5270afd58881842cc1814df75736e8ceb0f0d79b869dbbe9
+protobuf==3.20.3
+deprecated==1.2.7
+wrapt==1.17.3

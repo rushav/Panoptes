@@ -30,6 +30,10 @@ static void check(bool ok, const std::string& what) {
 
 static const cv::Size kImage(1280, 1024);
 static const double kFocal = 780.0;
+// Measured static corner jitter is 0.054 px RADIAL median (FINDINGS §6).
+// project() draws noise per axis; a 2-D Gaussian of per-axis sigma s has
+// radial median s * sqrt(2 ln 2), so this sigma reproduces 0.054 radial.
+static const double kJitterAxisPx = 0.054 / std::sqrt(2 * std::log(2.0));
 
 // The board's interior corners projected from a pose: tilted rxDeg about
 // the camera x axis and ryDeg about y, its centre at image point `at` and
@@ -76,6 +80,7 @@ static AutoConfig testConfig() {
     c.source = "test";
     c.maxFitPx = 5.0;
     c.stillPx = 0.3;
+    c.stillMaxPx = 1.5;
     c.minIntervalMs = 300;
     c.minMovePx = 20.0;
     c.flatDeg = 20.0;
@@ -96,18 +101,34 @@ int main(int argc, char** argv) {
     printf("config\n");
     {
         AutoConfig c = loadAutoConfig(kAutoConfig);
-        check(c.stillPx > 0 && c.minPerBin >= 1 && c.farSquarePx <= c.nearSquarePx,
+        check(c.stillPx > 0 && c.stillMaxPx >= c.stillPx && c.minPerBin >= 1 &&
+              c.farSquarePx <= c.nearSquarePx,
               "config/autocapture.yaml loads and is self-consistent");
 
         fs::path dir = fs::temp_directory_path() / ("panoptes_test_" + std::to_string(getpid()));
         fs::create_directories(dir);
-        std::ofstream(dir / "bad.yaml") << "%YAML:1.0\n---\nmax_fit_px: 5.0\nstill_px: 0.3\n";
+        std::ofstream(dir / "bad.yaml")
+            << "%YAML:1.0\n---\nmax_fit_px: 5.0\nstill_px: 0.3\nstill_max_px: 1.5\n";
         bool threw = false;
         std::string msg;
         try { loadAutoConfig((dir / "bad.yaml").string()); }
         catch (const std::runtime_error& e) { threw = true; msg = e.what(); }
         check(threw && msg.find("min_interval_ms") != std::string::npos,
               "a missing field is refused and named (" + msg + ")");
+
+        // A full config with the max bound below the median bound.
+        std::ifstream src(kAutoConfig);
+        std::stringstream text;
+        text << src.rdbuf();
+        std::string y = text.str();
+        size_t at = y.find("still_max_px: ");
+        y.replace(at, y.find('\n', at) - at, "still_max_px: 0.2");
+        std::ofstream(dir / "inverted.yaml") << y;
+        threw = false;
+        try { loadAutoConfig((dir / "inverted.yaml").string()); }
+        catch (const std::runtime_error& e) { threw = true; msg = e.what(); }
+        check(threw && msg.find("still_max_px must not be below still_px") != std::string::npos,
+              "still_max_px below still_px is refused (" + msg + ")");
         fs::remove_all(dir);
     }
 
@@ -146,29 +167,32 @@ int main(int argc, char** argv) {
         Detection a = project(board, 0, 0, 1200, {640, 512}, 0.03, 1);
 
         Decision dec = ac.evaluate(a, S, 0, cov);
-        check(dec.verdict == Verdict::NoReference && dec.motionPx < 0,
+        check(dec.verdict == Verdict::NoReference && dec.motionMedPx < 0 && dec.motionMaxPx < 0,
               "first full frame -> no_reference");
 
         Detection moved = shifted(a, 0.5f, 0);
         dec = ac.evaluate(moved, S, 140, cov);
-        check(dec.verdict == Verdict::Moving && std::fabs(dec.motionPx - 0.5) < 1e-3,
-              "every corner 0.5 px -> moving, motion 0.500 (" + std::to_string(dec.motionPx) + ")");
+        check(dec.verdict == Verdict::Moving && std::fabs(dec.motionMedPx - 0.5) < 1e-3 &&
+              std::fabs(dec.motionMaxPx - 0.5) < 1e-3,
+              "every corner 0.5 px -> moving, median and max 0.500 (" +
+              dec.describe(testConfig()) + ")");
 
-        // One corner moving is enough: the gate is on the worst corner.
+        // One corner past still_max_px is enough, whatever the median.
         Detection oneCorner = moved;
-        oneCorner.corners[40].x += 0.35f;
+        oneCorner.corners[40].x += 2.0f;
         dec = ac.evaluate(oneCorner, S, 280, cov);
-        check(dec.verdict == Verdict::Moving && dec.motionPx > 0.3,
-              "one corner 0.35 px, rest still -> moving");
+        check(dec.verdict == Verdict::Moving && dec.motionMedPx < 0.01 && dec.motionMaxPx > 1.5,
+              "one corner 2.0 px, rest still -> moving on the max (" +
+              dec.describe(testConfig()) + ")");
 
         // The reference is the PREVIOUS frame, so stopping is enough.
         Detection stopped = project(board, 0, 0, 1200, {640, 512}, 0.03, 2);
         stopped = shifted(stopped, 0.5f, 0);
         stopped.corners[40] = oneCorner.corners[40];
         dec = ac.evaluate(stopped, S, 420, cov);
-        check(dec.verdict == Verdict::Accept && dec.motionPx < 0.3,
-              "same pose again with 0.03 px noise -> accept (motion " +
-              std::to_string(dec.motionPx) + ")");
+        check(dec.verdict == Verdict::Accept && dec.motionMedPx < 0.3,
+              "same pose again with 0.03 px noise -> accept (median " +
+              std::to_string(dec.motionMedPx) + ")");
 
         Detection partial = a;
         partial.corners.pop_back();
@@ -182,6 +206,32 @@ int main(int argc, char** argv) {
         ac.evaluate(bad, S, 840, cov);
         dec = ac.evaluate(a, S, 980, cov);
         check(dec.verdict == Verdict::NoReference, "full frame after a bad_fit one -> no_reference");
+    }
+    {
+        // A static board at the measured jitter, two independent frames,
+        // plus one corner off by 0.5 px. The old max-over-corners test at
+        // 0.3 px rejected this; median + max must pass it.
+        AutoCapture ac(testConfig(), detector, kImage);
+        Coverage cov(kImage);
+        Detection a = project(board, 0, 0, 1200, {640, 512}, kJitterAxisPx, 31);
+        Detection b = project(board, 0, 0, 1200, {640, 512}, kJitterAxisPx, 32);
+        b.corners[17].x += 0.5f;
+        ac.evaluate(a, S, 0, cov);
+        Decision dec = ac.evaluate(b, S, 140, cov);
+        check(dec.verdict == Verdict::Accept && (int)b.corners.size() == 88 &&
+              dec.motionMedPx < 0.15 && dec.motionMaxPx >= 0.5 && dec.motionMaxPx < 1.5,
+              cv::format("88 corners at 0.054 px jitter + one 0.5 px outlier -> accept "
+                         "(median %.3f, max %.3f)", dec.motionMedPx, dec.motionMaxPx));
+
+        // The same jittered board moved 0.4 px as a whole.
+        AutoCapture ac2(testConfig(), detector, kImage);
+        Coverage cov2(kImage);
+        Detection c = shifted(project(board, 0, 0, 1200, {640, 512}, kJitterAxisPx, 33), 0.4f, 0);
+        ac2.evaluate(a, S, 0, cov2);
+        dec = ac2.evaluate(c, S, 140, cov2);
+        check(dec.verdict == Verdict::Moving && dec.motionMedPx >= 0.3 && dec.motionMaxPx < 1.5,
+              cv::format("0.4 px uniform shift at 0.054 px jitter -> moving on the median "
+                         "(median %.3f, max %.3f)", dec.motionMedPx, dec.motionMaxPx));
     }
 
     // ------------------------------------------------------------ gate 3
@@ -466,7 +516,9 @@ int main(int argc, char** argv) {
         check(count("\"autocapture_end\"") == 1 && count("\"complete\"") == 1,
               "setExtra replaces a key");
         check(count("\"auto\": {") == 1 && count("\"still_px\"") == 1 &&
-              count("\"verdicts\"") == 1, "frame reason, config and tally are written");
+              count("\"still_max_px\"") == 1 && count("\"motion_median_px\"") == 1 &&
+              count("\"motion_max_px\"") == 1 && count("\"verdicts\"") == 1,
+              "frame reason, motion median and max, config and tally are written");
         check(count("{") == count("}") && count("[") == count("]"), "braces balance");
         printf("    written to %s (python json.load check is in RUNBOOK)\n", s.path().c_str());
         if (getenv("KEEP_TEST_SESSION") == nullptr) fs::remove_all(root);

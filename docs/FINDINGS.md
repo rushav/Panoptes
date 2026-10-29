@@ -42,6 +42,7 @@ this repo.
 - **Grayscale delivery:** ~10.7 MB/s, 6–8 fps whatever the imager rate; camera and date not recorded. §5
 - **Pose variety:** 20 static views at tilt std 0.02° solve to fx = 154 and fx = 554 against ~780, RMS 0.08–0.09 px; 2026-08-24 gain sessions. §8
 - **Working distance:** 1–1.5 m for intrinsics (old 9×6 board), observation only. §12
+- **Kortex API on Python 3.12:** wheel 2.6.0.post3 imports with protobuf 3.20.3 (`--no-deps`), not with its pinned 3.5.1 or with 4.25.8; 2026-10-28, `.venv`. Never yet connected to the arm. §20
 - **IMU parameters:** not in this repo. No IMU document, config or measurement exists to link.
 
 ---
@@ -114,6 +115,10 @@ change both together.**
     radial median at gain 7 vs 0.0600 px at gain 0, 2026-10-27). (§6)
 19. **Starting a tool right after killing one can hang** while the old
     sockets are bound. Wait a couple of seconds. (§11)
+20. **The Kortex wheel pins `protobuf==3.5.1`, which cannot import on
+    Python 3.12.** Install `python/requirements-arm.txt` with `--no-deps`
+    (protobuf 3.20.3). protobuf 4.x refuses the wheel's generated code.
+    `pip check` reporting the pin mismatch is expected. (§20)
 
 ---
 
@@ -241,6 +246,18 @@ frames, by `python/corner_jitter.py` (RUNBOOK §7). Radial std is
 same sigma). But 0.054 is the radial median; per-axis is 0.0384. So §17's
 error figures are pessimistic by ~1.41× for centre-of-frame corners, if error
 scales linearly with noise (*inferred*; not re-run at 0.0384).
+
+**Consequence for auto capture's still gate** (operator report, 2026-10-28;
+no session recorded). With the board static, `04_capture --auto` showed HOLD
+STILL intermittently. Gate 2 then tested the largest of 88 frame-to-frame
+corner moves against 0.3 px. A static corner moves ~√2 × 0.054 ≈ 0.08 px
+between frames (*inferred* from the jitter above, not measured as a
+frame difference), so a max over 88 corners trips on the tail. The gate
+now tests the median against `still_px` (0.3) and the max against
+`still_max_px` (1.5); mechanism in
+[ARCHITECTURE §5](ARCHITECTURE.md#5-automatic-frame-selection). The new
+gate is checked on synthetic corners only (`tests/test_autocapture`), not
+yet on the camera.
 
 ## 7. Coverage, not RMS, says a calibration is sound
 
@@ -559,6 +576,41 @@ board for intrinsics. Definition and provenance: `config/charuco_board.yaml`.
 
 ---
 
+## 20. Kinova Gen3 arm and the Kortex Python API
+
+**Arm, as stated by the operator** (not yet read back by this repo): Kinova
+Gen3 at 192.168.1.10, Kortex TCP port 10000, firmware 2.8.0-5, 6 DOF, no
+gripper, reached from `enp6s0` at 192.168.1.11/24 alongside the cameras'
+link-local address. `python/arm.py status` prints the arm's own values for
+each; until it has been run, none is verified (Open items).
+
+**Kortex API install, verified 2026-10-28** on this host, Python 3.12.3.
+
+- Wheel `kortex_api-2.6.0.post3-py3-none-any.whl` from Kinova's Artifactory
+  (`.../generic-public/kortex/API/2.6.0/`), sha256
+  `22863493b89ae0ef5270afd58881842cc1814df75736e8ceb0f0d79b869dbbe9`, built
+  2023-04-28. Its metadata: `Requires-Dist: protobuf (==3.5.1)`,
+  `deprecated (==1.2.7)`. An exact pin, so no newer protobuf satisfies it.
+
+| protobuf | Installs | Imports `kortex_api` |
+|---|---|---|
+| 3.5.1 (the pin) | yes | **no**: `AttributeError: module 'collections' has no attribute 'MutableMapping'` (removed in Python 3.10) |
+| 3.20.3 (last 3.x) | yes, with `--no-deps` | **yes**; pure-Python implementation; messages round-trip |
+| 4.25.8 | yes, with `--no-deps` | **no**: `Descriptors cannot be created directly` (unless `PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python`) |
+
+- **Warnings with 3.20.3.** None under the default filters. With
+  `-W always`: 101 `DeprecationWarning`s on import, 98 `EnumValueDescriptor()`
+  and one each `EnumDescriptor()`, `FileDescriptor()` ("Create unlinked
+  descriptors is going to go away") and `datetime.utcfromtimestamp()`.
+  Harmless today; they mark why 4.x fails.
+- `pip check` reports
+  `kortex-api 2.6.0.post3 has requirement protobuf==3.5.1, but you have protobuf 3.20.3`.
+- Installed into `.venv` alongside numpy 2.5.2 and opencv-contrib-python
+  5.0.0.93; both still import.
+- API 2.6 against firmware 2.8 has not been exercised. Kinova versions them
+  separately; whether every call `arm.py` uses answers on 2.8.0-5 is
+  unverified.
+
 ## Open items
 
 The single open-items list. CLAUDE.md and the other docs link here.
@@ -623,3 +675,7 @@ The single open-items list. CLAUDE.md and the other docs link here.
 16. **Whether 5×6 is the right coverage grid.** 30 cells against 88 corners
     per view (40 on the old board) means one capture can touch many cells. A
     finer grid would be stricter; the right granularity is not established.
+17. **Arm first contact not run.** `python/arm.py status` has never reached
+    the arm (§20). Record its output here: firmware, serial, DOF and end
+    effector against the stated values, and whether each Kortex call
+    answers on firmware 2.8.0-5.

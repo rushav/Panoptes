@@ -17,8 +17,11 @@
 //
 // A frame is accepted only if, in this order:
 //   1. full board: every corner found, fit residual below max_fit_px
-//   2. still: every corner moved less than still_px since the previous
-//      frame, which must itself have passed gate 1
+//   2. still: since the previous frame, which must itself have passed
+//      gate 1, the MEDIAN corner moved less than still_px and the LARGEST
+//      move is under still_max_px. The median measures the board; the max
+//      only catches a gross outlier. A max-only test at still_px tripped on
+//      the jitter tail of 88 corners with the board static.
 //   3. novel: fills an empty coverage cell, or lands in a pose bin holding
 //      fewer than min_per_bin accepts
 //   4. camera settings equal those at the first evaluated frame
@@ -47,7 +50,8 @@ namespace mocap {
 struct AutoConfig {
     std::string source;
     double maxFitPx      = 0;
-    double stillPx       = 0;
+    double stillPx       = 0;     // median corner move
+    double stillMaxPx    = 0;     // largest corner move
     int    minIntervalMs = 0;
     double minMovePx     = 0;
     double flatDeg       = 0;
@@ -71,7 +75,7 @@ enum class Verdict {
     NotFull,          // gate 1: corners missing
     BadFit,           // gate 1: fit residual too high, or not computable
     NoReference,      // gate 2: previous frame did not pass gate 1
-    Moving,           // gate 2: a corner moved still_px or more
+    Moving,           // gate 2: median >= still_px, or max >= still_max_px
     Redundant,        // gate 3: no empty cell, no unfilled bin
     SettingsChanged,  // gate 4
     TooSoon,          // gate 5
@@ -125,7 +129,8 @@ struct Decision {
 
     int    corners  = 0;
     double fitPx    = -1;     // -1: not computed
-    double motionPx = -1;     // largest corner move since previous frame; -1: none
+    double motionMedPx = -1;  // median corner move since previous frame; -1: none
+    double motionMaxPx = -1;  // largest corner move since previous frame; -1: none
     double movePx   = -1;     // largest corner move since last accept; -1: none
     PoseBin bin;
     std::vector<int> newCells;   // empty coverage cells this frame fills

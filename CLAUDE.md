@@ -105,6 +105,10 @@ together, in the same change.**
     radial median at gain 7 vs 0.0600 px at gain 0, 2026-10-27). (§6)
 19. **Starting a tool right after killing one can hang** while the old
     sockets are bound. Wait a couple of seconds. (§11)
+20. **The Kortex wheel pins `protobuf==3.5.1`, which cannot import on
+    Python 3.12.** Install `python/requirements-arm.txt` with `--no-deps`
+    (protobuf 3.20.3). protobuf 4.x refuses the wheel's generated code.
+    `pip check` reporting the pin mismatch is expected. (§20)
 
 ## Keeping the docs current
 

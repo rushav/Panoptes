@@ -55,10 +55,12 @@ int main(int argc, char** argv) {
             fprintf(stderr, "%s\n", e.what());
             return 1;
         }
-        printf("auto%s: %s  max_fit %.2f px  still %.2f px  interval %d ms  move %.1f px\n"
+        printf("auto%s: %s  max_fit %.2f px  still median < %.2f max < %.2f px  interval %d ms"
+               "  move %.1f px\n"
                "  flat < %.0f deg  near >= %.1f px/sq  far < %.1f px/sq  min_per_bin %d\n\n",
                dryRun ? " DRY RUN" : "", autoCfg.source.c_str(), autoCfg.maxFitPx,
-               autoCfg.stillPx, autoCfg.minIntervalMs, autoCfg.minMovePx, autoCfg.flatDeg,
+               autoCfg.stillPx, autoCfg.stillMaxPx, autoCfg.minIntervalMs, autoCfg.minMovePx,
+               autoCfg.flatDeg,
                autoCfg.nearSquarePx, autoCfg.farSquarePx, autoCfg.minPerBin);
     }
 
@@ -266,17 +268,19 @@ static int runAuto(mocap::Camera& cam, mocap::Settings settings,
             }
             lastAccept = dec.acceptReason();
             lastAcceptMs = tMs;
-            printf("\a%s %3d  %-28s motion %.3f px  fit %.2f px  %4.1f px/sq  "
+            printf("\a%s %3d  %-28s motion median %.3f max %.3f px  fit %.2f px  %4.1f px/sq  "
                    "tilt %2.0f (x %+3.0f y %+3.0f)  empty cells %d  bins short %d\n",
                    dry ? "would accept" : "accepted", coverage.captureCount(),
-                   lastAccept.c_str(), dec.motionPx, dec.fitPx, dec.bin.squarePx,
+                   lastAccept.c_str(), dec.motionMedPx, dec.motionMaxPx, dec.fitPx,
+                   dec.bin.squarePx,
                    dec.bin.tiltDeg, dec.bin.tiltXDeg, dec.bin.tiltYDeg,
                    coverage.emptyCells(), ac.binsShort());
             fflush(stdout);
         } else if (dry) {
-            printf("  %8.0f ms  %-50s motion %s  size %s  bin %s\n", tMs,
+            printf("  %8.0f ms  %-50s motion median %s max %s  size %s  bin %s\n", tMs,
                    dec.describe(cfg).c_str(),
-                   dec.motionPx < 0 ? "  -  " : cv::format("%.3f", dec.motionPx).c_str(),
+                   dec.motionMedPx < 0 ? "  -  " : cv::format("%.3f", dec.motionMedPx).c_str(),
+                   dec.motionMaxPx < 0 ? "  -  " : cv::format("%.3f", dec.motionMaxPx).c_str(),
                    dec.bin.valid ? cv::format("%.1f", dec.bin.squarePx).c_str() : "-",
                    dec.bin.name().c_str());
         }
@@ -298,9 +302,11 @@ static int runAuto(mocap::Camera& cam, mocap::Settings settings,
         snprintf(line3, sizeof(line3), "%s %s", dec.accepted() ? "" : "reject:",
                  dec.describe(cfg).c_str());
         snprintf(line4, sizeof(line4),
-                 "motion %s px (still < %.2f)   size %s px/sq   bin %s",
-                 dec.motionPx < 0 ? "-" : cv::format("%.3f", dec.motionPx).c_str(),
+                 "motion median %s < %.2f  max %s < %.2f px   size %s px/sq   bin %s",
+                 dec.motionMedPx < 0 ? "-" : cv::format("%.3f", dec.motionMedPx).c_str(),
                  cfg.stillPx,
+                 dec.motionMaxPx < 0 ? "-" : cv::format("%.3f", dec.motionMaxPx).c_str(),
+                 cfg.stillMaxPx,
                  dec.bin.valid ? cv::format("%.1f", dec.bin.squarePx).c_str() : "-",
                  dec.bin.name().c_str());
 

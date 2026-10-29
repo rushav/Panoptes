@@ -39,6 +39,7 @@ AutoConfig loadAutoConfig(const std::string& path) {
     c.source        = path;
     c.maxFitPx      = number("max_fit_px", 0.01, 1000);
     c.stillPx       = number("still_px", 0.001, 100);
+    c.stillMaxPx    = number("still_max_px", 0.001, 100);
     c.minIntervalMs = (int)number("min_interval_ms", 0, 60000);
     c.minMovePx     = number("min_move_px", 0, 10000);
     c.flatDeg       = number("flat_deg", 0.1, 89);
@@ -48,6 +49,8 @@ AutoConfig loadAutoConfig(const std::string& path) {
     c.minPerBin     = (int)number("min_per_bin", 1, 1000);
     if (c.farSquarePx > c.nearSquarePx)
         throw fail("far_square_px must not exceed near_square_px");
+    if (c.stillMaxPx < c.stillPx)
+        throw fail("still_max_px must not be below still_px");
     return c;
 }
 
@@ -57,6 +60,7 @@ std::string AutoConfig::toJson(const std::string& in) const {
        << in << "  \"source\": \"" << source << "\",\n"
        << in << "  \"max_fit_px\": " << maxFitPx << ",\n"
        << in << "  \"still_px\": " << stillPx << ",\n"
+       << in << "  \"still_max_px\": " << stillMaxPx << ",\n"
        << in << "  \"min_interval_ms\": " << minIntervalMs << ",\n"
        << in << "  \"min_move_px\": " << minMovePx << ",\n"
        << in << "  \"flat_deg\": " << flatDeg << ",\n"
@@ -220,7 +224,9 @@ std::string Decision::describe(const AutoConfig& c) const {
         case Verdict::NoReference:
             return "no_reference (previous frame not full)";
         case Verdict::Moving:
-            return "moving " + fixed(motionPx, 2) + " >= " + fixed(c.stillPx, 2) + " px";
+            return motionMedPx >= c.stillPx
+                 ? "moving median " + fixed(motionMedPx, 2) + " >= " + fixed(c.stillPx, 2) + " px"
+                 : "moving max " + fixed(motionMaxPx, 2) + " >= " + fixed(c.stillMaxPx, 2) + " px";
         case Verdict::Redundant:
             return "redundant (no empty cell, bin " + bin.name() + " filled)";
         case Verdict::SettingsChanged:
@@ -244,7 +250,8 @@ std::string Decision::jsonFields() const {
     for (size_t i = 0; i < newCells.size(); ++i) os << (i ? ", " : "") << newCells[i];
     os << "], \"bin\": \"" << bin.name() << "\""
        << ", \"bin_unfilled\": " << (binUnfilled ? "true" : "false")
-       << ", \"motion_px\": " << numOrNull(motionPx, 4)
+       << ", \"motion_median_px\": " << numOrNull(motionMedPx, 4)
+       << ", \"motion_max_px\": " << numOrNull(motionMaxPx, 4)
        << ", \"move_since_accept_px\": " << numOrNull(movePx, 2)
        << ", \"fit_px\": " << numOrNull(fitPx, 3)
        << ", \"square_px\": " << fixed(bin.squarePx, 2)
@@ -282,17 +289,30 @@ std::string AutoCapture::settingsDiff(const Settings& s) const {
     return out;
 }
 
-// Largest distance between this frame's corners and a reference set,
-// matched by corner ID. -1 if no ID is in both.
-static double largestMove(const Detection& d, const std::vector<cv::Point2f>& ref,
-                          const std::vector<char>& seen) {
-    double worst = -1;
+// Distance each of this frame's corners moved from a reference set, matched
+// by corner ID. Empty if no ID is in both.
+static std::vector<double> cornerMoves(const Detection& d, const std::vector<cv::Point2f>& ref,
+                                       const std::vector<char>& seen) {
+    std::vector<double> moves;
     for (size_t i = 0; i < d.cornerIds.size(); ++i) {
         int id = d.cornerIds[i];
         if (id < 0 || id >= (int)ref.size() || !seen[id]) continue;
-        worst = std::max(worst, (double)cv::norm(d.corners[i] - ref[id]));
+        moves.push_back(cv::norm(d.corners[i] - ref[id]));
     }
-    return worst;
+    return moves;
+}
+
+// -1 for an empty set.
+static double largest(const std::vector<double>& x) {
+    return x.empty() ? -1 : *std::max_element(x.begin(), x.end());
+}
+
+static double median(std::vector<double> x) {
+    if (x.empty()) return -1;
+    const size_t n = x.size(), m = n / 2;
+    std::nth_element(x.begin(), x.begin() + m, x.end());
+    if (n % 2) return x[m];
+    return (x[m] + *std::max_element(x.begin(), x.begin() + m)) / 2;
 }
 
 Decision AutoCapture::evaluate(const Detection& d, const Settings& actual, double tMs,
@@ -318,14 +338,18 @@ Decision AutoCapture::evaluate(const Detection& d, const Settings& actual, doubl
     const bool hadPrev = havePrev_;
     std::vector<char> seen(total, 0);
     if (gate1) {
-        if (hadPrev) dec.motionPx = largestMove(d, prev_, prevSeen_);
+        if (hadPrev) {
+            std::vector<double> moves = cornerMoves(d, prev_, prevSeen_);
+            dec.motionMedPx = median(moves);
+            dec.motionMaxPx = largest(moves);
+        }
         dec.bin = poseBin(d, board, imageSize_, cfg_);
         dec.newCells = coverage.emptyCellsHit(d.corners);
         dec.binUnfilled = dec.bin.valid &&
                           binCount(dec.bin.tilt, dec.bin.band) < cfg_.minPerBin;
         if (haveAccept_) {
             std::vector<char> all(total, 1);
-            dec.movePx = largestMove(d, lastAccept_, all);
+            dec.movePx = largest(cornerMoves(d, lastAccept_, all));
         }
     }
 
@@ -349,8 +373,9 @@ Decision AutoCapture::evaluate(const Detection& d, const Settings& actual, doubl
     if (!full)  return decide(Verdict::NotFull);
     if (!gate1) return decide(Verdict::BadFit);
 
-    if (!hadPrev || dec.motionPx < 0) return decide(Verdict::NoReference);
-    if (dec.motionPx >= cfg_.stillPx) return decide(Verdict::Moving);
+    if (!hadPrev || dec.motionMaxPx < 0) return decide(Verdict::NoReference);
+    if (dec.motionMedPx >= cfg_.stillPx || dec.motionMaxPx >= cfg_.stillMaxPx)
+        return decide(Verdict::Moving);
 
     if (dec.newCells.empty() && !dec.binUnfilled) return decide(Verdict::Redundant);
 

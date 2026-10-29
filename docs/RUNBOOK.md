@@ -33,7 +33,7 @@ for b in src/01_discover/build/discover src/02_stream/build/stream src/03_detect
 getcap src/*/build/*
 cmake -S tests -B tests/build -DCMAKE_BUILD_TYPE=Release && cmake --build tests/build -j"$(nproc)" && tests/build/test_autocapture
 ```
-expect: `[100%] Built target` for all 8 tools; `getcap` lists all 8 with `cap_net_admin,cap_net_raw=eip`; `test_autocapture: 50/50 passed`.
+expect: `[100%] Built target` for all 8 tools; `getcap` lists all 8 with `cap_net_admin,cap_net_raw=eip`; `test_autocapture: 53/53 passed`.
 
 ### 1.3 Network, discover, identify
 Start of every session. Details: §4.
@@ -120,6 +120,15 @@ git commit
 git log --oneline -10
 ```
 expect: `git status` clean after the commit; no `build/`, `.venv/` or `analysis/*.png` staged.
+
+### 1.11 Arm (Kinova Gen3, read-only)
+E-stop pendant in reach first. Install once; `status` reads and never moves. Details: §13.
+```sh
+.venv/bin/pip install --no-deps -r python/requirements-arm.txt
+ip -brief addr show enp6s0
+.venv/bin/python python/arm.py status [--ip IP] [--port PORT] [--username U] [--password P]
+```
+expect: `pip` ends `Successfully installed`; `enp6s0` lists `192.168.1.11/24` and a `169.254.x.x` address; `status` prints firmware, serial, pose, joints and servoing mode, then `session closed`.
 
 ---
 
@@ -544,7 +553,7 @@ work: [ARCHITECTURE §5](ARCHITECTURE.md#5-automatic-frame-selection).
 | # | Reason | Passes when |
 |--:|---|---|
 | 1 | `not_full`, `bad_fit` | all 88 corners found, fit under `max_fit_px` |
-| 2 | `no_reference`, `moving` | every corner moved less than `still_px` since the previous frame, which itself passed 1 |
+| 2 | `no_reference`, `moving` | since the previous frame (which itself passed 1), the median corner moved less than `still_px` **and** the largest move is under `still_max_px` |
 | 3 | `redundant` | it reaches an empty coverage cell, **or** its pose bin has fewer than `min_per_bin` frames |
 | 4 | `settings_changed` | exposure, gain, intensity, rate and filter match the first frame |
 | 5 | `too_soon` | at least `min_interval_ms` since the last accept |
@@ -564,7 +573,8 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
   `ACCEPT #N` for 1.5 s after each accept
 - a large **HOLD STILL** when gate 2 fails; **SETTINGS CHANGED** while gate 4
   holds
-- `motion` and `size`, and the bin table bottom right (red under
+- `motion median` and `max` against `still_px` / `still_max_px`, and
+  `size`, and the bin table bottom right (red under
   `min_per_bin`, green at or above, current bin outlined)
 - a terminal bell and one printed line per accept
 
@@ -576,12 +586,15 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
 
 1. **Do steps 1–3 of §8** (network, focus, optional check).
 2. **Tune with `--auto-dry`.** Same loop, every frame's verdict printed with
-   `motion`, `size` and `bin`; nothing written, no session folder.
-   1. Hold the board still: `motion` should sit well under `still_px`
-      (around 0.15 px or below if FINDINGS §6 holds hand-held). Move it at
-      your working pace: it should read `moving`. If a hand-held board never
-      gets under 0.3 px, record that rather than quietly raising `still_px`
-      past the blur it exists to stop.
+   `motion median`, `max`, `size` and `bin`; nothing written, no session
+   folder.
+   1. Hold the board still: `motion median` should sit well under
+      `still_px` (around 0.08 px if FINDINGS §6 holds hand-held) and `max`
+      well under `still_max_px`. Move it at your working pace: it should
+      read `moving median`. If a hand-held board never gets under 0.3 px,
+      record that rather than quietly raising `still_px` past the blur it
+      exists to stop. `still_max_px` is an outlier bound, not the stillness
+      threshold; don't tighten it to make the gate stricter.
    2. Hold the board at 1.0, 1.25 and 1.5 m and read `size`. Set
       `near_square_px` and `far_square_px` so those land in `near`, `mid`,
       `far`. Tilting must not change the band.
@@ -593,7 +606,8 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
    `q`, and prints which, with the bin table and every verdict's count.
 4. **Solve and read** as in §8 steps 5–6.
 5. **What the session holds** (auto only): each frame has an `auto` object
-   (accept reason `cells` / `bin`, `motion_px`, fit, size, tilt);
+   (accept reason `cells` / `bin`, `motion_median_px`, `motion_max_px`,
+   fit, size, tilt);
    `autocapture` holds the config, bin counts, verdict counts and reference
    settings; `autocapture_end` says why it ended. Rejected frames are never
    written.
@@ -615,7 +629,9 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
 
 - **Never accepts.** Read the reason on screen or in the `--auto-dry`
   output:
-  - `moving` every frame: never still enough (gate 2).
+  - `moving median` every frame: never still enough (gate 2).
+  - `moving max` with a low median: one corner jumps. Look for a corner
+    detected badly (glare, the board edge) or the board flexing.
   - `redundant`: what's in view is filled; check the bin table and the red
     coverage cells.
   - `settings_changed`: undo the `+ - [ ]` presses.
@@ -719,3 +735,66 @@ change rather than assuming it.
 | 60 Hz | 16466 |
 | 120 Hz | 8133 |
 | 240 Hz | 3966 |
+
+---
+
+## 13. Arm (Kinova Gen3, read-only)
+
+```sh
+.venv/bin/pip install --no-deps -r python/requirements-arm.txt
+ip -brief addr show enp6s0
+.venv/bin/python python/arm.py status [--ip IP] [--port PORT] [--username U] [--password P]
+```
+
+> **Safety: the E-stop pendant must be within reach whenever anything in
+> this repo talks to the arm.** That includes read-only commands like
+> `status`.
+
+`arm.py status` connects, opens a Kortex session, prints the arm's state and
+closes. It sends **no motion command**; `arm.py` refuses any Kortex call not
+on its read-only allow-list (ARCHITECTURE §9).
+
+| Flag | Default |
+|---|---|
+| `--ip` | `192.168.1.10` |
+| `--port` | `10000` (Kortex TCP) |
+| `--username` | `admin` |
+| `--password` | `admin` |
+
+1. **Network: already done.** `enp6s0` carries both the cameras and the arm:
+   a second static address, `192.168.1.11/24`, alongside the link-local
+   address the cameras use, which stays. Check with the second line: both
+   addresses listed.
+2. **Install the Kortex API, once per venv** (and again after the venv is
+   rebuilt, §2). `--no-deps` is required: the wheel pins `protobuf==3.5.1`,
+   which cannot import on Python 3.12, and the file pins 3.20.3 instead
+   (FINDINGS §20). Afterwards `pip check` reports
+   `kortex-api 2.6.0.post3 has requirement protobuf==3.5.1`; that is
+   expected.
+3. **E-stop pendant in reach.**
+4. **Run `status`.** Prints, in order:
+   - `firmware`: the main bundle version, then each component's version
+   - `serial`: the base's serial number
+   - `build`: degrees of freedom and end effector as the arm reports them
+     (expect 6 DOF, `END_EFFECTOR_TYPE_NOT_INSTALLED`)
+   - `devices`: every device the base lists, by type and id
+   - `pose`: measured Cartesian pose, x y z in m, theta_x/y/z in deg
+   - `joints`: measured joint angles, deg, by joint id
+   - `servoing`: the current servoing mode, e.g. `SINGLE_LEVEL_SERVOING`
+   - `session closed` on exit
+
+**Troubleshooting**
+
+- **`arm: cannot reach 192.168.1.10:10000 (timed out)`.** `192.168.1.11/24`
+  is missing from `enp6s0`, or the arm is off or still booting. Check
+  `ip -brief addr show enp6s0`, then `ping -c 3 192.168.1.10`.
+- **`arm: session refused`.** Check the credentials first. If they are
+  right, close other clients (e.g. the Kinova Web App) and retry.
+- **`TypeError: Descriptors cannot be created directly`.** protobuf 4.x or
+  later got installed; reinstall with the first line.
+- **`AttributeError: module 'collections' has no attribute
+  'MutableMapping'`.** protobuf 3.5.1 got installed (a plain `pip install`
+  of the wheel pulls it); reinstall with the first line.
+- **Reconnect refused right after a crashed script.** The arm drops the
+  dead session by itself 10 s after its last keep-alive; wait that long
+  and retry.

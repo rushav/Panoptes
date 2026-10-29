@@ -15,11 +15,18 @@
 # corner_jitter.py's 3 px.
 max_fit_px: 5.0
 
-# Gate 2, still: every corner moved less than this since the previous frame.
+# Gate 2, still, against the previous frame: the MEDIAN corner moved less
+# than still_px AND the LARGEST corner move is under still_max_px.
 # Static jitter is 0.054 px radial median, 0.088 px worst corner (FINDINGS 4),
-# so two frames of a static board differ by roughly 0.15 px at the worst of
-# 88 corners. 0.3 px leaves about 2x margin over that.
+# so a corner of a static board moves ~0.08 px between frames (difference of
+# two jittered positions, about sqrt(2) x 0.054). A test on the largest of 88
+# corners at 0.3 px tripped on that tail with the board static ("hold still"
+# intermittently), so the median carries the stillness test. 0.3 px is ~4x
+# that static median.
 still_px: 0.3
+# Outlier bound only: one badly placed corner, or a board flexing or turning
+# about one edge. Not a stillness threshold.
+still_max_px: 1.5
 
 # Spacing between accepts.
 min_interval_ms: 300

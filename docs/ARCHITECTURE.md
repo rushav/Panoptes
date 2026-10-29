@@ -45,7 +45,7 @@ discover ─► open/start ─┬─► grayscale ─► ChArUco detect ─► c
 |---|---|---|
 | `lib/` | `camera` (SDK wrapper), `detect` (ChArUco), `coverage` (acceptance grid), `autocapture` (frame selection), `session` (capture output) | No UI code. Every SDK quirk is handled here, once. |
 | `src/NN_name/` | One small program per task, each its own CMake project that compiles the `lib/` sources it needs | Thin: parse arguments, loop, draw, call `lib/`. |
-| `python/` | Calibration solve, rig model, triangulation, synthetic study | Separate runtime (OpenCV 5.x in `.venv`); shares only file formats with the C++ side. |
+| `python/` | Calibration solve, rig model, triangulation, synthetic study; read-only Kinova arm client (`arm.py`, §9) | Separate runtime (OpenCV 5.x in `.venv`); shares only file formats with the C++ side. |
 | `tests/` | Unit tests for `lib/` logic that needs no camera (`test_autocapture`) | Own CMake project; links OpenCV only, no SDK. |
 
 **Why the split exists.** `lib/camera.cpp` carries the reason in a comment.
@@ -408,10 +408,12 @@ wand/extrinsics stage can reuse them.
 1. **Full board.** All corners found, and `layoutResidualPx()` under
    `max_fit_px` (default 5: correct labels give about 1 px mid-frame and up
    to ~3 px at the edge; wrong labels ~200 px; FINDINGS §7, §9).
-2. **Still.** Every corner moved less than `still_px` since the previous
-   frame, matched by corner ID. The previous frame must itself have passed
-   gate 1, or the verdict is `no_reference`. The reference updates on every
-   evaluated frame, accepted or not.
+2. **Still.** Corner moves since the previous frame, matched by corner ID:
+   the **median** must be under `still_px` and the **largest** under
+   `still_max_px`. The previous frame must itself have passed gate 1, or the
+   verdict is `no_reference`. The reference updates on every evaluated
+   frame, accepted or not. `describe()` names which bound failed
+   (`moving median ...` or `moving max ...`).
 3. **Novel.** `Coverage::emptyCellsHit()` finds an empty cell, or the frame's
    pose bin holds fewer than `min_per_bin`. A bin counts as unfilled below
    `min_per_bin`, not only at zero; otherwise the session-end condition could
@@ -434,9 +436,16 @@ and its bin, and refuses one that was not accepted.
 (~2 mm/px) smears a corner by ~0.8 px, 15× the 0.054 px static jitter
 (FINDINGS §6). Neither the corner count nor the fit residual shows blur.
 Movement between consecutive frames stands in for motion during the
-exposure; it is not a measurement of it. The default `still_px` of 0.3 is
-about 2× the expected worst-corner difference between two frames of a still
-board (~0.15 px).
+exposure; it is not a measurement of it.
+
+**Why median plus max.** Gate 2 was a single test, the largest of 88 corner
+moves against `still_px` 0.3. A static corner moves ~0.08 px between frames
+(two draws of the 0.054 px jitter, FINDINGS §6), but the largest of 88 such
+moves has a tail, and with the board static the operator saw HOLD STILL
+intermittently. A board that is actually moving moves every corner, so the
+median measures it and ignores the tail; 0.3 px is ~4× the static median.
+The max is kept, at a looser `still_max_px` (1.5), only to reject a single
+gross outlier or a board flexing about one edge, which the median would hide.
 
 **Pose bins:** 5 tilt directions × 3 distance bands.
 
@@ -463,7 +472,9 @@ operator's `q`.
 before, apart from `created`):
 
 - per accepted frame, an `auto` object: reason (`cells`, `bin`),
-  `motion_px`, distance moved since the last accept, fit, size, tilt, time
+  `motion_median_px` and `motion_max_px`, distance moved since the last
+  accept, fit, size, tilt, time. Sessions written before 2026-10-28 have a
+  single `motion_px` (the max) instead.
 - `autocapture`: the config, bin counts, every verdict's count, and the
   reference settings
 - `autocapture_end`: why the session ended
@@ -656,6 +667,46 @@ layout triangulate a marker, and where?
 error adds directly to these numbers, so they are a **floor, not a
 forecast**. For scale, the previous rig measured 13.8 mm loop closure over a
 9 m circuit.
+
+---
+
+## 9. Kinova Gen3 arm (read-only)
+
+`python/arm.py` talks to a Kinova Gen3 (6 DOF, no gripper) over Kinova's
+Kortex Python API. **It only reads.** No motion command is called, and none
+can be without an edit: the Kortex `BaseClient` stub carries reads and
+motion commands side by side, so `Arm` never exposes it. Each stub is
+wrapped in `_ReadOnly`, which raises on any method name not in the module's
+allow-lists (`BASE_READS`, `DEVICE_CONFIG_READS`, `DEVICE_MANAGER_READS`).
+
+**Connection.** TCP to port 10000, then a Kortex session (`SessionManager`).
+`Arm` is a context manager: `__exit__` closes the session and the transport,
+also on an exception. Before Kortex connects, a plain socket connect with a
+3 s timeout checks reachability, because `TCPTransport.connect()` has no
+timeout and blocks for the OS TCP timeout on an unreachable host. Each RPC
+gets a 3 s timeout (Kortex default 10 s).
+
+**Session timeout: a crashed script releases the arm.** `CreateSessionInfo`
+asks the arm to drop the session after 10 s with no traffic
+(`session_inactivity_timeout`; `connection_inactivity_timeout` 2 s), the
+values in Kinova's `examples/utilities.py`. While the process lives,
+`SessionManager`'s background thread sends `KeepAlive` every 150 ms. If the
+process dies, the keep-alives stop and the arm closes the session on its own.
+
+**Device routing.** Serial number comes from `DeviceConfigClient` addressed
+to the BASE's device id, found with `DeviceManagerClient.ReadAllDevices()`;
+the same pattern as Kinova's `100-Overview/01-devices_routing.py`. Firmware
+is `BaseClient.GetFirmwareBundleVersions()`, whose `main_bundle_version` is
+a string; the `uint32` from `DeviceConfig.GetFirmwareVersion()` is not
+decoded.
+
+**Dependencies.** Separate from the camera side, in
+`python/requirements-arm.txt`, installed with `--no-deps` because the wheel
+pins a protobuf that cannot import on Python 3.12 (FINDINGS §20).
+
+**Network.** The arm shares `enp6s0` with the cameras: a second static
+address, 192.168.1.11/24, next to the cameras' link-local one
+(RUNBOOK §13).
 
 ---
 
