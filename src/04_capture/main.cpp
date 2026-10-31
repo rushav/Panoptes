@@ -5,13 +5,16 @@
 //
 // Manual mode: space captures. --auto: the operator moves the board slowly
 // and lib/autocapture decides which frames to keep. --auto-dry: the same
-// loop and decisions, printed, with nothing written.
+// loop and decisions, printed, with nothing written. --status-file PATH
+// (auto modes only) rewrites a JSON status after every frame, for another
+// process to read (lib/capture_status.h).
 
 #include "../../lib/camera.h"
 #include "../../lib/detect.h"
 #include "../../lib/coverage.h"
 #include "../../lib/session.h"
 #include "../../lib/autocapture.h"
+#include "../../lib/capture_status.h"
 
 #include <opencv2/opencv.hpp>
 #include <chrono>
@@ -22,19 +25,27 @@
 
 static int runAuto(mocap::Camera& cam, mocap::Settings settings,
                    const mocap::Detector& detector, mocap::Coverage& coverage,
-                   mocap::Session* session, const mocap::AutoConfig& cfg);
+                   mocap::Session* session, const mocap::AutoConfig& cfg,
+                   const std::string& statusPath, int serial);
 
 int main(int argc, char** argv) {
     int serial = 33661;
     std::string boardPath = mocap::kBoardConfig;
     std::string autoPath = mocap::kAutoConfig;
+    std::string statusPath;
     bool autoMode = false, dryRun = false;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--board") && i + 1 < argc) boardPath = argv[++i];
         else if (!strcmp(argv[i], "--auto-config") && i + 1 < argc) autoPath = argv[++i];
         else if (!strcmp(argv[i], "--auto")) autoMode = true;
         else if (!strcmp(argv[i], "--auto-dry")) autoMode = dryRun = true;
+        else if (!strcmp(argv[i], "--status-file") && i + 1 < argc) statusPath = argv[++i];
         else serial = std::stoi(argv[i]);
+    }
+
+    if (!statusPath.empty() && !autoMode) {
+        fprintf(stderr, "--status-file needs --auto or --auto-dry\n");
+        return 1;
     }
 
     mocap::BoardSpec board;
@@ -83,7 +94,7 @@ int main(int argc, char** argv) {
 
     if (autoMode)
         return runAuto(cam, settings, detector, coverage,
-                       session ? &*session : nullptr, autoCfg);
+                       session ? &*session : nullptr, autoCfg, statusPath, serial);
 
     printf("  space  capture      u  undo last\n");
     printf("  + -    exposure     [ ]  gain\n");
@@ -215,10 +226,13 @@ static void bigText(cv::Mat& display, const std::string& text, int y, cv::Scalar
 
 static int runAuto(mocap::Camera& cam, mocap::Settings settings,
                    const mocap::Detector& detector, mocap::Coverage& coverage,
-                   mocap::Session* session, const mocap::AutoConfig& cfg) {
+                   mocap::Session* session, const mocap::AutoConfig& cfg,
+                   const std::string& statusPath, int serial) {
     const mocap::BoardSpec& board = detector.spec();
     const bool dry = session == nullptr;
     mocap::AutoCapture ac(cfg, detector, cv::Size(cam.width(), cam.height()));
+    if (!statusPath.empty()) printf("status file: %s (rewritten every frame)\n", statusPath.c_str());
+    bool statusFailed = false;
 
     printf("  move the board SLOWLY; hold each pose until it is taken\n");
     printf("  + -    exposure     [ ]  gain   (any change pauses accepting)\n");
@@ -283,6 +297,27 @@ static int runAuto(mocap::Camera& cam, mocap::Settings settings,
                    dec.motionMaxPx < 0 ? "  -  " : cv::format("%.3f", dec.motionMaxPx).c_str(),
                    dec.bin.valid ? cv::format("%.1f", dec.bin.squarePx).c_str() : "-",
                    dec.bin.name().c_str());
+        }
+
+        if (!statusPath.empty()) {
+            mocap::StatusMeta meta;
+            meta.frame = ac.evaluated();
+            meta.tMs = tMs;
+            meta.utc = mocap::utcNowIso();
+            meta.serial = serial;
+            meta.dryRun = dry;
+            if (session) meta.sessionPath = session->path();
+            try {
+                mocap::writeFileAtomic(statusPath, mocap::captureStatusJson(
+                    meta, actual, d, board, dec, ac, coverage));
+                if (statusFailed) printf("status file: writing again\n");
+                statusFailed = false;
+            } catch (const std::exception& e) {
+                // Once per failure run, not every frame. A reader sees the
+                // file go stale and must stop trusting it.
+                if (!statusFailed) fprintf(stderr, "%s\n", e.what());
+                statusFailed = true;
+            }
         }
 
         // ---- display: manual mode's overlay, plus the auto status

@@ -107,7 +107,7 @@ std::string PoseBin::name() const {
 
 // ---------------------------------------------------------------- pose
 
-double apparentSquarePx(const Detection& d, const BoardSpec& board) {
+bool boardSteps(const Detection& d, const BoardSpec& board, cv::Point2d& h, cv::Point2d& v) {
     const int cx = board.squaresX - 1, cy = board.squaresY - 1;
     std::vector<cv::Point2f> at(cx * cy);
     std::vector<char> seen(cx * cy, 0);
@@ -118,8 +118,6 @@ double apparentSquarePx(const Detection& d, const BoardSpec& board) {
         seen[id] = 1;
     }
 
-    // One board square along x (h) and along y (v), as image vectors:
-    // the component-wise median over neighbouring corner pairs.
     std::vector<double> hx, hy, vx, vy;
     for (int id = 0; id < cx * cy; ++id) {
         if (!seen[id]) continue;
@@ -133,12 +131,20 @@ double apparentSquarePx(const Detection& d, const BoardSpec& board) {
             vy.push_back(at[id + cx].y - at[id].y);
         }
     }
-    if (hx.empty() || vx.empty()) return 0;
+    if (hx.empty() || vx.empty()) return false;
     auto median = [](std::vector<double>& x) {
         std::nth_element(x.begin(), x.begin() + x.size() / 2, x.end());
         return x[x.size() / 2];
     };
-    double a = median(hx), b = median(vx), c = median(hy), e = median(vy);
+    h = {median(hx), median(hy)};
+    v = {median(vx), median(vy)};
+    return true;
+}
+
+double apparentSquarePx(const Detection& d, const BoardSpec& board) {
+    cv::Point2d h, v;
+    if (!boardSteps(d, board, h, v)) return 0;
+    double a = h.x, b = v.x, c = h.y, e = v.y;
 
     // Tilt foreshortens the image across the tilt axis, never along it, and
     // with compound tilt neither board axis is the tilt axis: both shrink.
@@ -146,6 +152,12 @@ double apparentSquarePx(const Detection& d, const BoardSpec& board) {
     // foreshortened board direction, which is the tilt axis.
     double t = a * a + b * b + c * c + e * e, det = a * e - b * c;
     return std::sqrt((t + std::sqrt(std::max(0.0, t * t - 4 * det * det))) / 2);
+}
+
+double boardRollDeg(const Detection& d, const BoardSpec& board) {
+    cv::Point2d h, v;
+    if (!boardSteps(d, board, h, v)) return std::nan("");
+    return std::atan2(h.y, h.x) * 180.0 / CV_PI;
 }
 
 PoseBin poseBin(const Detection& d, const BoardSpec& board, cv::Size imageSize,

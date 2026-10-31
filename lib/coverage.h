@@ -60,6 +60,12 @@ public:
     // stop capturing when it reaches zero.
     int emptyCells() const;
     int totalCells() const { return gridX_ * gridY_; }
+    // Ids of the empty cells, ascending. Cell id = row * gridX + col; col
+    // runs along image x, row along image y, each cell imageSize / grid.
+    std::vector<int> emptyCellIds() const;
+    int gridX() const { return gridX_; }
+    int gridY() const { return gridY_; }
+    cv::Size imageSize() const { return imageSize_; }
 
     // Cells, row-major, that are empty now and would gain a corner from
     // these points. Sorted, each once. Does not record anything.

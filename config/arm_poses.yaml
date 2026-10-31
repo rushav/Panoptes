@@ -1,0 +1,47 @@
+%YAML:1.0
+---
+# Saved arm poses, written by python/arm.py save-pose (RUNBOOK §13). joints_deg
+# is what goto-pose moves to; pose is the Cartesian pose measured with it
+# (x y z m, theta_x/y/z deg). square_px: the board's apparent square size,
+# from arm_capture.py teach. Valid for one camera setup.
+poses:
+   near_left_high:
+      joints_deg: [ 159.498, 289.865, 312.696, 182.278, 297.782, 87.840 ]
+      pose: [ 0.75372, 0.26333, 0.73219, 85.79557, -2.30688, 108.28800 ]
+      saved_utc: "2026-10-30T21:59:14Z"
+      square_px: 48.193
+   near_right_high:
+      joints_deg: [ 191.802, 289.865, 312.696, 182.278, 297.782, 87.840 ]
+      pose: [ 0.77801, -0.17786, 0.73272, 85.75461, -2.12732, 75.98734 ]
+      saved_utc: "2026-10-30T22:00:49Z"
+      square_px: 46.225
+   near_left_low:
+      joints_deg: [ 160.851, 300.600, 90.966, 178.760, 71.219, 87.910 ]
+      pose: [ 0.75455, 0.24257, 0.26646, 79.91604, -3.94447, 106.69324 ]
+      saved_utc: "2026-10-30T22:06:33Z"
+      square_px: 49.600
+   near_right_low:
+      joints_deg: [ 190.830, 289.696, 95.351, 178.760, 86.214, 87.910 ]
+      pose: [ 0.73092, -0.15816, 0.16412, 80.12829, -3.18192, 76.45758 ]
+      saved_utc: "2026-10-30T22:08:41Z"
+      square_px: 45.882
+   far_left_high:
+      joints_deg: [ 161.491, 340.674, 63.600, 178.760, 357.382, 87.910 ]
+      pose: [ 0.70262, 0.22699, 0.72613, 86.29546, -5.17086, 108.12003 ]
+      saved_utc: "2026-10-30T22:10:18Z"
+      square_px: 44.715
+   far_right_high:
+      joints_deg: [ 195.570, 340.674, 63.600, 178.760, 357.382, 87.910 ]
+      pose: [ 0.70940, -0.20325, 0.72674, 86.24834, -4.98452, 74.04669 ]
+      saved_utc: "2026-10-30T22:10:44Z"
+      square_px: 44.028
+   far_left_low:
+      joints_deg: [ 147.077, 82.668, 135.032, 185.284, 331.270, 87.910 ]
+      pose: [ 0.11298, 0.06073, 0.57075, 81.46611, 0.77960, 120.44006 ]
+      saved_utc: "2026-10-30T22:18:00Z"
+      square_px: 29.867
+   far_right_low:
+      joints_deg: [ 201.783, 82.668, 135.032, 185.284, 331.270, 87.910 ]
+      pose: [ 0.11569, -0.05435, 0.57092, 81.40110, 1.05639, 65.73473 ]
+      saved_utc: "2026-10-30T22:18:34Z"
+      square_px: 30.826

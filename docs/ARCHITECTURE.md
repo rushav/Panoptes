@@ -43,9 +43,9 @@ discover ─► open/start ─┬─► grayscale ─► ChArUco detect ─► c
 
 | | Contents | Rule |
 |---|---|---|
-| `lib/` | `camera` (SDK wrapper), `detect` (ChArUco), `coverage` (acceptance grid), `autocapture` (frame selection), `session` (capture output) | No UI code. Every SDK quirk is handled here, once. |
+| `lib/` | `camera` (SDK wrapper), `detect` (ChArUco), `coverage` (acceptance grid), `autocapture` (frame selection), `capture_status` (live status file), `session` (capture output) | No UI code. Every SDK quirk is handled here, once. |
 | `src/NN_name/` | One small program per task, each its own CMake project that compiles the `lib/` sources it needs | Thin: parse arguments, loop, draw, call `lib/`. |
-| `python/` | Calibration solve, rig model, triangulation, synthetic study; read-only Kinova arm client (`arm.py`, §9) | Separate runtime (OpenCV 5.x in `.venv`); shares only file formats with the C++ side. |
+| `python/` | Calibration solve, rig model, triangulation, synthetic study; Kinova arm client, status and boxed moves (`arm.py`, §9) | Separate runtime (OpenCV 5.x in `.venv`); shares only file formats with the C++ side. |
 | `tests/` | Unit tests for `lib/` logic that needs no camera (`test_autocapture`) | Own CMake project; links OpenCV only, no SDK. |
 
 **Why the split exists.** `lib/camera.cpp` carries the reason in a comment.
@@ -482,6 +482,53 @@ before, apart from `created`):
 Rejected frames are never written. `--auto-dry` runs the same loop with no
 `Session` at all, because the `Session` constructor creates the folder.
 
+**Live status file.** With `--status-file PATH`, `04_capture` rewrites one
+JSON file after every evaluated frame, so another process can follow the
+capture without sharing the camera (the arm probe, §9). The JSON is
+built by `captureStatusJson()` in `lib/capture_status.cpp`.
+`writeFileAtomic()` writes `PATH.tmp` and `rename()`s it over `PATH`. On
+one filesystem a reader sees the old file or the new one, never part of
+one. `python/capture_status.py` still retries an unparseable read once
+(after 50 ms) before refusing, for a network filesystem or a hand edit. A
+failed write prints once and the capture carries on; the file goes stale,
+and readers treat a file older than 2 s as dead. The `schema` string is the
+version: change it whenever a field changes meaning or is removed.
+
+`panoptes.capture_status/1`. `null` means not measured on this frame.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `schema` | string | `"panoptes.capture_status/1"` |
+| `timestamp_utc` | string | wall clock at write, `YYYY-MM-DDTHH:MM:SS.mmmZ` |
+| `t_ms` | number | monotonic ms since the capture started |
+| `frame` | int | frames evaluated so far, 1-based; strictly increasing |
+| `camera_serial` | int | |
+| `dry_run` | bool | `--auto-dry` (nothing is being written) |
+| `session_path` | string/null | capture's session folder; null in `--auto-dry` |
+| `settings` | object | `exposure`, `gain`, `intensity`, `frame_rate`, `ir_filter`: `Camera::actual()` |
+| `image` | object | `width`, `height`, px |
+| `markers` | object | `found`, `total` (54) |
+| `corners` | object | `found`, `total` (88), `complete` |
+| `fit_px` | number/null | layout fit residual (gate 1); null if not a full board |
+| `board` | object/null | null with no corners. Otherwise from the corners found; on a partial board, the visible part only: |
+| `board.centroid_px` | [x, y] | mean of the detected corners |
+| `board.bbox_px` | [x0, y0, x1, y1] | corner extent; not the plate's |
+| `board.square_px` | number/null | `apparentSquarePx()`: px per board square along the least foreshortened direction; larger is closer |
+| `board.roll_deg` | number/null | `boardRollDeg()`: image angle of the board's x step, atan2(h.y, h.x); image y is down, so positive is clockwise on screen; wraps at ±180 |
+| `motion` | object | `median_px`, `max_px` (null before a reference), `still_px`, `still_max_px`, and `still`: gate 2 passed on this frame |
+| `decision` | object | `verdict` (`verdictName()`), `reason` (`Decision::describe()`), `bin` |
+| `coverage` | object | `grid` {`cols` 5, `rows` 6, `cell_width_px`, `cell_height_px`, `id`: `"row * cols + col"`}, `empty_cells` (ids, ascending), `empty_count`, `total_cells` |
+| `pose_bins` | object | `min_per_bin`, `counts` {"near/flat": n, ...: 15 bins}, `short` |
+| `accepted` | int | frames accepted (`--auto-dry`: would have been) |
+| `complete` | bool | session end condition met (0 empty cells, every bin at `min_per_bin`) |
+
+`still` is true only for verdicts past gate 2 (`redundant`, `too_soon`,
+`same_pose`, `settings_changed`, `accept`), never for `not_full`, `bad_fit`,
+`no_reference` or `moving`. The fixture `tests/fixtures/capture_status.json`
+is written by the C++ test (`PANOPTES_STATUS_FIXTURE=PATH
+tests/build/test_autocapture`), so the Python reader is tested against the
+writer's actual output.
+
 **Status.** `tests/test_autocapture` checks the gates on synthetic corner
 sets: the real board projected through a pinhole camera, with seeded noise.
 **Unvalidated on real data** (FINDINGS, Open items). The validation rule is
@@ -670,14 +717,345 @@ forecast**. For scale, the previous rig measured 13.8 mm loop closure over a
 
 ---
 
-## 9. Kinova Gen3 arm (read-only)
+## 9. Kinova Gen3 arm
 
 `python/arm.py` talks to a Kinova Gen3 (6 DOF, no gripper) over Kinova's
-Kortex Python API. **It only reads.** No motion command is called, and none
-can be without an edit: the Kortex `BaseClient` stub carries reads and
-motion commands side by side, so `Arm` never exposes it. Each stub is
-wrapped in `_ReadOnly`, which raises on any method name not in the module's
-allow-lists (`BASE_READS`, `DEVICE_CONFIG_READS`, `DEVICE_MANAGER_READS`).
+Kortex Python API. It reads state, and makes small Cartesian moves and
+joint-space moves whose end points are inside a box. Nothing in it reads PANOPTES output.
+
+**Allow-lists.** The Kortex `BaseClient` stub carries reads and motion
+commands side by side, so `Arm` never exposes it. Each use wraps it in
+`_ReadOnly`, which raises on any method name not on the list it was built
+with:
+
+| List | Calls | Used by |
+|---|---|---|
+| `BASE_READS` | `GetFirmwareBundleVersions`, `GetProductConfiguration`, `GetMeasuredCartesianPose`, `GetMeasuredJointAngles`, `GetServoingMode`, `ComputeForwardKinematics`, `ComputeInverseKinematics` | every command |
+| `DEVICE_CONFIG_READS` | `GetSerialNumber` | `status` |
+| `DEVICE_MANAGER_READS` | `ReadAllDevices` | `status` |
+| `MOTION_CALLS` | `OnNotificationActionTopic`, `ExecuteAction`, `Unsubscribe`, `Stop` | `Arm._execute()`: `reach_pose()` and `reach_joints()` with `--yes`, after every check |
+| `STOP_CALLS` | `Stop` | `stop` |
+
+`ExecuteAction` accepts any Kortex `Action` (twist, wrench, software
+e-stop, sequences), so being on the list is not enough. `reach_pose()` and
+`reach_joints()` build the two actions sent, each with a speed constraint,
+and `_execute()`, the only caller of `ExecuteAction`, checks
+`WhichOneof("action_parameters")` is one of those two before sending.
+
+**One `BaseClient` per router.** Every `BaseClient` registers itself with
+the router as *the* receiver of Base notifications:
+`RouterClient.notificationService` is a class-level dict keyed by service
+id, so the last instance created wins. A second `BaseClient` for motion
+would take the `ACTION_END` the first is waiting for. `Arm` makes one, in
+`connect()`, and every wrapper shares it. (*Inferred* from the wheel's
+source; not exercised on the arm.)
+
+**A move,** following Kinova's `102-Movement_high_level` example:
+
+1. `load_limits()` reads `config/arm.yaml` with `cv2.FileStorage`. Every
+   field is required; speeds and timeout are capped in code (0.20 m/s,
+   30 deg/s, 300 s), so a typo in the file can't ask for a fast move.
+2. Measured pose, then the target. `move` adds to the measured pose; Euler
+   angles are wrapped to (−180, 180].
+3. Checks, before anything is sent: current pose **and** target inside the
+   box; estimated time (larger of distance / translation speed and largest
+   angle / rotation speed) within `move_timeout_s`; servoing mode
+   `SINGLE_LEVEL_SERVOING`. `arm.py` refuses a wrong mode rather than
+   setting it, so it never sends `SetServoingMode`.
+4. Without `--yes`, stop here.
+5. `reach_pose()` checks the box again, subscribes with
+   `OnNotificationActionTopic`, sends `ExecuteAction`, and waits on a
+   `threading.Event` that the callback sets on `ACTION_END` or
+   `ACTION_ABORT`. Subscribing first means a fast `ACTION_END` can't be
+   missed. On timeout or Ctrl-C it sends `Stop`. `Unsubscribe` runs in
+   `finally`.
+6. Measured pose again, and the error to target. The angle error is a
+   per-axis Euler difference, wrapped. Near theta_y = ±90° one orientation
+   has several Euler triples, so it can look large while the orientation
+   matches.
+
+**A joint move** (`joints`, `goto-pose`, `session --from-pose`) has the same
+shape, through `check_joint_move()` and `reach_joints()`. It exists because
+`reach_joint_angles` skips the Cartesian planner, which rejects a path from or
+across a singularity (FINDINGS §20).
+
+- **The box** applies to `ComputeForwardKinematics` of the target, on the
+  arm, the same pose the arm would report there, and the current pose must be
+  inside too. `reach_joints()` repeats the check. Between the end points the
+  tool follows an arc in joint space, which nothing checks.
+- **Other checks:** six angles, actuators 2, 3 and 5 inside
+  `JOINT_LIMITS_DEG`, servoing mode. Angles are sent in [0, 360), as the arm
+  reports them.
+- **Time and speed.** The estimate is the largest wrapped joint change over
+  `max_rotation_dps`, and the action carries `JOINT_CONSTRAINT_SPEED` at that
+  value. The wait, timeout and Ctrl-C are `_execute()`, shared with
+  `reach_pose()`.
+
+**Saved poses.** `config/arm_poses.yaml` holds, per name, the measured joints,
+the Cartesian pose and the time, plus `square_px` from `teach`. An existing
+name is overwritten only with `--force`. `write_poses()` writes the text itself,
+through a temporary file and `os.replace`, as `FileStorage` would write
+matrices. `goto-pose` moves to the joints; the Cartesian pose is shown and
+checked by the session, not sent.
+
+**Wrist check.** `wrist_singular()` wraps actuator 5 to ±180 and flags it
+within 10° of 0 or 180: there actuators 4 and 6 line up. 180 is past the
+±120.3° guide limit, so only 0 can occur on this arm. `run_session()` checks
+the measured joints. With `from_pose`, `go_to_saved_pose()` checks the saved
+joints and its distance from the probe's start pose first, makes the joint
+move, waits for a settled board, and the normal start checks then run from
+there. Without `--yes` it stops at that move unless every joint is within 0.5°
+of the pose, because the plan is built from the arm's pose and the status
+file's board.
+
+**Taught viewpoints** (`build_taught()`, `run_teach()`). The orbit is computed
+from an estimated board position, and most of it fell outside the box
+(FINDINGS §20). Taught poses are reachable by construction, and the operator
+sees the board at each. Orbit stays behind `--orbit`.
+
+- **Teach.** One Arm session per pose, opened only after Enter, so nothing is
+  connected while the Web App jogs. There is no direct read of who holds the
+  arm: "free" means `CreateSession` and `Base.Stop` succeed and the servoing
+  mode is single-level. `settled_reading()` then gives the square size,
+  stored as `square_px` with the pose. `joint_margin()` wants 10° from the
+  limits in `JOINT_LIMITS_DEG`.
+- **Grid.** `unwrapped()` puts each joint within half a turn of the first
+  corner, so continuous joints take the short way, and `trilinear()` blends
+  the eight vectors. A blend stays within the corners' range on each joint, so
+  the margin holds on all viewpoints. `square_px` blends the same way, only to
+  predict the capture band. `MAX_SPREAD_DEG` refuses a spread near half a
+  turn, where "short way" stops meaning anything.
+- **Order.** `serpentine()`: the left-right index reverses each row, high-low
+  each layer, so each step changes one index by one.
+- **Viewpoint moves.** `_Session.move_joints()` and `_reach_joints()`. A failed
+  viewpoint isn't recovered from, because the next one is a joint move and
+  needs nothing from this one; three aborts in a row still end it. Cell pans are
+  unchanged, Cartesian, from the pose reached.
+- **Speed.** `reach_joint_angles` carries one joint speed, so
+  `check_joint_move(viewpoint=True)` converts: `viewpoint_rotation_dps`,
+  lowered to `largest joint change × viewpoint_translation_mps / tool chord`.
+  That bounds the average along the chord, not the tool's peak on the arc.
+- **Gains.** The probe's rotation gains and camera axes come from one pose and
+  are used at all of them. The camera axes are fixed in the tool, so those
+  carry; the px/deg and its f are not exact away from P0, and the pan's
+  correction step takes up the difference.
+
+**Probe: tool motion to image motion** (`python/arm_capture.py`). The
+camera is on the arm and the board is on an easel. The session needs to know
+which tool motion moves the board which way in the image. The probe measures
+it rather than deriving it from a hand-eye calibration that doesn't exist
+yet, so it doesn't depend on how the camera is mounted.
+
+- **Tool-frame targets.** Kortex poses are x-y-z extrinsic Euler angles,
+  R = Rz(θz)·Ry(θy)·Rx(θx) (Gen3 user guide, "Cartesian reference
+  frames"). A rotation by δ about tool axis k is R·R_k(δ), post-multiplied;
+  a translation along tool axis k adds s·R[:, k] to the position. The result
+  is converted back to Euler angles. Adding δ to θx directly happens to equal
+  the tool-x rotation; adding to θz rotates about base z, and adding to θy
+  is neither. So `arm.py move --dt*` is not a tool-frame motion. The probe
+  refuses |θy| > 80°, near the Euler singularity.
+- **Moves.** All twelve targets (six probes, six returns to P0) pass
+  `arm.check_move()` before any is sent. Each move is then checked again
+  from the freshly measured pose and sent with `Arm.reach_pose()`. Returns go
+  to the measured start pose P0, not "−2°", so errors don't accumulate.
+- **Readings.** After `ACTION_END`, the probe skips 3 new frames, then
+  averages 3 distinct frames that are full (88/88) and still (status
+  `motion.still`). A frame that isn't starts the count over; 15 s without a
+  reading stops the probe. Status older than 2 s is refused.
+- **Return check.** The centroid after each return must be within 3 px of
+  the reading before the probe. More means the camera moved in its mount,
+  the easel moved, or the arm didn't return, and the result would mix two
+  configurations.
+- **Mapping.** Effects are scaled to per degree or per metre. For image x,
+  image y and roll, the axis with the largest |effect| among the three
+  rotations is chosen, and for x, y and size among the three translations,
+  with its sign. `second_best_ratio` records how close the runner-up is.
+- **Output.** `config/arm_camera.yaml`, FileStorage-readable, written via
+  a temp file and rename. It holds the full sensitivity table, raw effects,
+  return errors, start pose and board, and the mapping.
+
+**Session: closed loop on the status file** (`arm_capture.py session`).
+`capture --auto` decides which frames to keep. The session only moves the
+camera and reads the status file, so a session driven by the arm is
+recorded exactly like one held by hand. Mechanism, in `run_session()`:
+
+- **Gains.** `load_gains()` reads `config/arm_camera.yaml`. It takes the two
+  rotation axes the probe found move the board right and down, which need
+  not be θy and θx, and forms J_rot, their 2×2 px/deg block. J_rot must be
+  well conditioned and the two axes distinct. It also takes J_trans (px/m,
+  all three translations) and the "closer" axis. The per-axis focal length
+  is |J_rot row| × 180/π. It is an aiming gain, not the lens's focal length:
+  the rotation is about the TCP, not the camera (FINDINGS §20).
+- **Camera axes** (`camera_axes()`). The tool is not aligned with the
+  camera, so the session needs the camera's axes in the tool frame. The size
+  gains point at the centred board, so they are the optical axis z. A
+  rotation about camera x moves the board +f in image y, and about camera y
+  −f in image x, so the rotation gains' image-y column gives x, made
+  orthogonal to z, and y = z × x. Needs nothing beyond the probe's file.
+  The camera's *position* in the tool frame is not found.
+- **Aiming** (`rotation_for_aim()`, `_Session._aim()`). The rays through
+  `now` and `aim` are ((px − c)/f, 1). The camera turns by the angle between
+  them, about their common normal, mapped to tool axes by the camera axes,
+  about the TCP. For a centred board that angle is atan(dpx/f). Starting
+  off centre, the two rays are what's correct; atan(dpx/f) from there
+  overshoots by 1 + tan²θ, which is what the second leg of a long aim
+  would do. Each aim starts from the live centroid and pose. A target over
+  `two_move_px` from it takes two moves: `first_move_fraction` of the
+  rotation, a re-read, then what's left, so the second leg corrects the first
+  whatever its error. The total from the viewpoint's base pose is capped at
+  `max_rotation_deg`. A last move that misses by over `centre_tol_px` gets one
+  correction, composed from where the arm is. If it loses the board, the
+  session goes back to the last good pose. Every move's error goes in the
+  entry's `aim_error` and on an `aim` log line.
+- **Refitting the aim** (`refit_aim()`). After the first of two moves, each
+  bbox side's reach from the centroid is extrapolated along the move from how
+  it grew so far, and the aim is moved in to keep that inside
+  `edge_margin_px`. A tilted board is asymmetric about its centroid and its
+  near edge grows fastest, which `aim_for_cell()` can't see from the base
+  view. A refit is recorded as `aim_refit_px`.
+- **Keeping the board in view** (`aim_for_cell()`). An off-axis board looks
+  bigger. A pinhole camera magnifies a point at angle θ off axis by
+  ~1 + tan²θ (`growth()`), and a tilted board's near edge grows more again.
+  The board's half-size at the base, de-magnified to the centre, is
+  re-magnified at the aim and padded by `FIT_SAFETY` (1.15). The aim starts
+  at the cell centre and moves toward the image centre (bisection) until the
+  board fits inside `edge_margin_px`. It is refused if the board that fits
+  no longer overlaps the cell. Without this, corner targets lost the board
+  on most tries in simulation.
+- **Board estimate** (`estimate_board()`). Depth = f·square/`square_px`, with
+  f the geometric mean of the two gains and square the board's `measured`
+  size, along the ray through the centroid, into the tool frame by the camera
+  axes, into the base frame by P0. The camera is taken to be at the TCP.
+  That error is second order for the orbit, because the point is rigid
+  with the tool at P0 and the orbit turns the tool about it: the true board
+  stays near the optical axis at every viewpoint. `size_gain_distance_m`,
+  `square_px`/|size gains|, needs no focal length and is printed beside it.
+- **Orbit** (`orbit_viewpoints()`, `build_orbit()`). The viewpoints are
+  `orbit_radii_m` × elevation × azimuth, as one nearest-first walk. Azimuth
+  is about base z through the board, elevation about the horizontal axis
+  across P0's line of sight. P0's orientation is first turned so its optical
+  axis lands exactly on the board, then each viewpoint rotates that with the
+  position, then adds any roll about the line of sight. So the optical axis,
+  not tool z, points at the board (`pointing_error_deg()`), and image roll
+  changes only by the commanded roll. Each viewpoint's size is
+  `square_px`·r0/r. A viewpoint is visited while any bin of its capture band
+  is short, even with no cell wanted, because the viewpoint is itself a new
+  tilt. The box and `ik_check()` from P0 clip the cap; `cap` in the record
+  and the `cap` line give requested, reachable, per radius, and the cause.
+- **Lateral variants** (`build_variants()`, `lateral_variants: 1`). 3 depths along **tool z** (0,
+  ±`depth_m`) × {0, ±lateral on each lateral axis}. The lateral axes are
+  the probe's "right" and "down" translations; a lateral axis that is z is
+  dropped. Each variant gets the compensating rotation
+  −J_rot⁻¹·J_trans·t, so the board starts where it was. Its square size is
+  predicted from P0's plus the probe's size gains (`square_per_m`·t).
+- **Two bands per variant.** The *planner's* band names it: relative to
+  P0's square size, mid within ±`mid_band_fraction`, near above, far below
+  (`_band_of()`). The *capture* band is what `poseBin()` will call it, from
+  `config/autocapture.yaml`'s fixed thresholds (`capture_band()`). Bin
+  seeking and futility use the capture band, because capture's bins are
+  what get filled. The two agree only if those thresholds are set to P0
+  ±`mid_band_fraction`; the dry run prints the values. `depth_sanity()`
+  warns if near and far differ by no more than `band_spread_min` of P0's
+  size, or if every depth falls in mid, and gives the `depth_m` that would
+  fix each. For the orbit the warning is that the radii don't reach all three
+  capture bands.
+- **What's wanted.** Fixed when a variant starts: the cells empty then,
+  plus seekers for its capture band. Seekers are the four corner cells while
+  its quadrant bins are short, and the two centre cells while its flat bin
+  is short (about 85 px from a centred base, enough for capture's 20 px
+  same-pose gate). Before each target the set is filtered against the
+  status file, so cells filled meanwhile drop out; nothing is added. A
+  corner view that capture bins into another band marks that band *futile*
+  for corner seeking (see the band limit below). The next target is the
+  nearest remaining cell to where the board is now.
+- **IK validation** (`ik_check()`). After the box check and before
+  anything is sent, the arm's own IK (`Arm.inverse_kinematics()`, Kortex
+  `Base.ComputeInverseKinematics`) runs at `IK_SAMPLES` (4) points along
+  the path: `interpolate()` gives linear position and the shortest-arc
+  rotation. The first is seeded with the measured joints, each later one
+  with the previous solution. Rejected:
+  - no solution;
+  - any joint with a limit (Gen3 6 DoF, user guide Table 45: joint 2
+    ±128.9°, 3 ±147.8°, 5 ±120.3°; `arm.JOINT_LIMITS_DEG`) within
+    `IK_JOINT_MARGIN_DEG` (5°) of it, after wrapping to ±180° (Kortex
+    reports 0–360°; *inferred* from its docs);
+  - any joint changing by more than `IK_JUMP_DEG` (45°) between samples,
+    a branch change near a singularity.
+
+  The reason is logged, the entry is `unreachable`, and nothing is sent. The
+  IK only approximates the controller's trajectory; it does not prove the
+  move will run. Joint order is taken as actuators 1–6 (*inferred*).
+- **Each target** (`_Session.visit()`). Every move first passes
+  `arm.check_move()` from the freshly measured pose (box, time estimate,
+  servoing mode) and then `ik_check()`; a failure of either is logged and
+  skipped. After `ACTION_END` the
+  session skips 3 frames, then waits for full and still. Three consecutive
+  frames under 88/88 mean the board left the view: one step to
+  `halfway()` (mean position, half the relative rotation), then back to the
+  last good pose. It waits `min_interval_ms` and up to 4 frames for
+  `accepted` to rise.
+- **Aborts.** `ACTION_ABORT`, or a refused `ExecuteAction`
+  (`arm.ActionRefused`), on a validated move raises `TargetAborted`.
+  `visit()` logs the entry `aborted: <reason>` with the joints read after
+  it. `recover()` then moves back to the last reached pose, validated the
+  same way, and the session continues with the next target. The count of
+  consecutive aborts includes aborted returns, and only a reached *target*
+  resets it. At `MAX_CONSECUTIVE_ABORTS` (3) the session raises a fatal
+  `ArmError`. A move timeout stays fatal: `Base.Stop` has been sent and the
+  arm's state is unknown.
+- **Timing.** Each entry accumulates `ik_s` (validation), `move_s`
+  (`ExecuteAction` to the end notification), `still_s` (waiting for a full,
+  still board) and `decide_s` (`min_interval_ms` plus waiting for an
+  accept). `timing_breakdown()` sums them, gives the remainder as other,
+  and the time per move. Records from schema 1 have `settle_s` for
+  `still_s`.
+- **Endings.** `SessionStop`, from completion, an exhausted list, `q`
+  (polled between moves; the terminal is in cbreak mode), Ctrl-C (raw, or
+  `arm.ArmInterrupted` from a move, after `Base.Stop`) or a stale status
+  file, returns to P0. A stale file whose last word was `complete: true` is
+  a normal end, since capture exits on completion. A fatal `arm.ArmError`
+  (three consecutive aborts, a move timeout, a failed return after an
+  abort) ends the session without another move.
+- **Record.** `session_arm.json`, schema `panoptes.session_arm/4`, in the
+  capture's session folder (`session_path` from the status file), rewritten
+  atomically after every target. It holds:
+  - P0 and its joints;
+  - the config used, including the IK parameters;
+  - the gains' source and axes, `f_px` and `cam_axes_in_tool`;
+  - `mode` (`taught`, `orbit` or `lateral`) and `taught_poses`, by name and
+    value (null otherwise);
+  - `board_estimate` and `cap` (null for a taught session);
+  - the viewpoints or variants, with both bands (viewpoints also `orbit`, or
+    `grid` and `joints_deg`);
+  - every target: kind (`variant`, `cell`, `back`, `return`), variant,
+    cell, aim, outcome, the measured pose, capture's verdict, bin and
+    accept, and the timers. Each commanded pose carries its absolute and
+    `rel_p0` forms (translation and rotation vector in P0's tool frame), the
+    joints before it, the IK solution, and whether it was `sent`; a joint
+    move has `joints_deg` and `joint_speed_dps` instead of the IK solution. Aimed
+    entries carry `aim_error` (leg, centroid, error, miss) and any
+    `aim_refit_px`. Aborted entries also carry `joints_after_abort_deg`.
+
+  The summary is stored too: `accepted` is capture's own count delta;
+  `timing` is `timing_breakdown()`. Schema 1 (2026-10-28) lacks joints, IK,
+  `sent` and the timers; schema 2 lacks the board estimate, the cap and the
+  aim errors; schema 3 lacks `mode` and `taught_poses`.
+
+**Band limit (inferred, not measured).** `poseBin()` bands by
+`apparentSquarePx()`, which is size-in-image. A camera aimed so the board
+sits at a frame corner sees it ~1.3–1.5× bigger at the same distance, so
+corner views from a mid or far P0 are binned a band closer. In simulation
+(pinhole, no distortion), the mid and far quadrant bins never filled from
+inside the box. The real lens's barrel distortion shrinks the effect by an
+unknown amount. On the first hardware session a top-right view was binned
+mid while P0 reads far (FINDINGS §20). Banding by the solvePnP distance `poseBin()` already
+computes would remove it; that changes capture, so it is an open item.
+
+**Why both ends in the box.** This holds for `reach_pose` only; a joint move
+is an arc. If the tool moves in a straight line, a box
+being convex means both ends inside keeps the whole path inside. Kinova's
+user guide does not say a `reach_pose` path is straight (*inferred*, not
+verified). The box bounds only the tool point; the links can leave it.
 
 **Connection.** TCP to port 10000, then a Kortex session (`SessionManager`).
 `Arm` is a context manager: `__exit__` closes the session and the transport,
@@ -692,6 +1070,9 @@ asks the arm to drop the session after 10 s with no traffic
 values in Kinova's `examples/utilities.py`. While the process lives,
 `SessionManager`'s background thread sends `KeepAlive` every 150 ms. If the
 process dies, the keep-alives stop and the arm closes the session on its own.
+**Whether closing the session also stops a move in progress is not known**:
+the user guide doesn't say and it hasn't been tried. Don't count on it; the
+E-stop is the stop (RUNBOOK §13).
 
 **Device routing.** Serial number comes from `DeviceConfigClient` addressed
 to the BASE's device id, found with `DeviceManagerClient.ReadAllDevices()`;

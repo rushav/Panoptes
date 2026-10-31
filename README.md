@@ -83,7 +83,9 @@ positions and serials: [config/layout.yaml](config/layout.yaml).
 lib/       C++ library: SDK wrapper, ChArUco detection, coverage, session output. No UI.
 src/       One small tool per task (01_discover ... 07_mask), each its own CMake project
 python/    Intrinsics solve, rig model, triangulation, synthetic accuracy study,
-           read-only Kinova Gen3 arm client (arm.py)
+           Kinova Gen3 arm client: status, boxed Cartesian moves (arm.py),
+           tool-to-image probe and arm-driven sessions (arm_capture.py),
+           capture status reader
 config/    Camera layout, mask and study settings, saved per-camera masks
 docs/      Runbook, architecture, measured findings, hardware
 analysis/  Accuracy study outputs (PNGs regenerated; JSON summary tracked)

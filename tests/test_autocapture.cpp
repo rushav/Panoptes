@@ -6,8 +6,13 @@
 //
 // Run from the repo root:  tests/build/test_autocapture [board.yaml]
 // Exit 0 only if every check passes.
+//
+// PANOPTES_STATUS_FIXTURE=PATH also writes the status-file test's JSON to
+// PATH, with a fixed timestamp: that is how tests/fixtures/capture_status.json
+// (python/capture_status.py --self-test) is regenerated.
 
 #include "../lib/autocapture.h"
+#include "../lib/capture_status.h"
 #include "../lib/session.h"
 
 #include <opencv2/calib3d.hpp>
@@ -72,6 +77,16 @@ static Detection project(const BoardSpec& b, double rxDeg, double ryDeg, double 
 
 static Detection shifted(Detection d, float dx, float dy) {
     for (auto& p : d.corners) p += cv::Point2f(dx, dy);
+    return d;
+}
+
+// Rotated in the image about `c` by `deg`, clockwise on screen (y down).
+static Detection rolled(Detection d, cv::Point2f c, double deg) {
+    double a = deg * CV_PI / 180, ca = std::cos(a), sa = std::sin(a);
+    for (auto& p : d.corners) {
+        cv::Point2f q = p - c;
+        p = c + cv::Point2f(float(q.x * ca - q.y * sa), float(q.x * sa + q.y * ca));
+    }
     return d;
 }
 
@@ -522,6 +537,91 @@ int main(int argc, char** argv) {
         check(count("{") == count("}") && count("[") == count("]"), "braces balance");
         printf("    written to %s (python json.load check is in RUNBOOK)\n", s.path().c_str());
         if (getenv("KEEP_TEST_SESSION") == nullptr) fs::remove_all(root);
+    }
+
+    // ------------------------------------------------------------ status file
+    printf("\nstatus file\n");
+    {
+        AutoCapture ac(testConfig(), detector, kImage);
+        Coverage cov(kImage);
+        Detection a = project(board, 0, 0, 1200, {640, 512}, 0.03, 1);
+        Detection a2 = project(board, 0, 0, 1200, {640, 512}, 0.03, 2);
+        a.markersFound = a2.markersFound = board.totalMarkers();
+        ac.evaluate(a, S, 0, cov);
+        Decision dec = ac.evaluate(a2, S, 140, cov);
+        ac.commit(dec, a2, cov);
+
+        StatusMeta meta;
+        meta.frame = ac.evaluated();
+        meta.tMs = 140;
+        meta.utc = "2026-10-28T18:00:00.000Z";
+        meta.serial = 33664;
+        meta.dryRun = true;
+        std::string j = captureStatusJson(meta, S, a2, board, dec, ac, cov);
+
+        auto has = [&](const std::string& k) { return j.find(k) != std::string::npos; };
+        auto count = [&](const std::string& k) {
+            size_t n = 0, pos = 0;
+            while ((pos = j.find(k, pos)) != std::string::npos) { ++n; pos += k.size(); }
+            return n;
+        };
+        check(has("\"schema\": \"panoptes.capture_status/1\"") && has("\"frame\": 2,") &&
+              has("\"corners\": {\"found\": 88, \"total\": 88, \"complete\": true}") &&
+              has("\"markers\": {\"found\": 54, \"total\": 54}") &&
+              has("\"verdict\": \"accept\"") && has("\"still\": true") &&
+              has("\"accepted\": 1,") && has("\"complete\": false") &&
+              has("\"session_path\": null,"),
+              "fields: schema, frame, 88/88, 54/54, accept, still, accepted 1, session_path null");
+        meta.sessionPath = "/data/s \"1\"";
+        check(captureStatusJson(meta, S, a2, board, dec, ac, cov)
+                  .find("\"session_path\": \"/data/s \\\"1\\\"\",") != std::string::npos,
+              "session_path is quoted and escaped");
+        meta.sessionPath.clear();
+        check(count("{") == count("}") && count("[") == count("]"), "braces balance");
+
+        // Geometry on a clean, centred, fronto-parallel board.
+        Detection clean = project(board, 0, 0, 1200, {640, 512});
+        cv::Point2d h, v;
+        bool steps = boardSteps(clean, board, h, v);
+        check(steps && std::fabs(boardRollDeg(clean, board)) < 0.01 &&
+              std::fabs(h.x - 39.0) < 0.1 && std::fabs(v.y - 39.0) < 0.1,
+              cv::format("board steps h (%.2f, %.2f) v (%.2f, %.2f), roll 0", h.x, h.y, v.x, v.y));
+        double r = boardRollDeg(rolled(clean, {640, 512}, 10.0), board);
+        check(std::fabs(r - 10.0) < 0.01,
+              cv::format("rolled 10 deg clockwise on screen -> roll_deg %+.3f", r));
+        std::string jc = captureStatusJson(meta, S, clean, board, dec, ac, cov);
+        check(jc.find("\"centroid_px\": [640.00, 512.00]") != std::string::npos &&
+              jc.find("\"bbox_px\": [445.00, 375.50, 835.00, 648.50]") != std::string::npos,
+              "centroid (640, 512); bbox 10 x 7 squares of 39 px around it");
+
+        Detection none;
+        Decision decNone = ac.evaluate(none, S, 280, cov);
+        std::string jn = captureStatusJson(meta, S, none, board, decNone, ac, cov);
+        check(jn.find("\"board\": null") != std::string::npos &&
+              jn.find("\"fit_px\": null") != std::string::npos &&
+              jn.find("\"still\": false") != std::string::npos,
+              "no board -> board null, fit null, still false");
+
+        fs::path dir = fs::temp_directory_path() / ("panoptes_test_" + std::to_string(getpid()));
+        fs::create_directories(dir);
+        std::string path = (dir / "status.json").string();
+        writeFileAtomic(path, j);
+        writeFileAtomic(path, jn);                    // replaces, not appends
+        std::ifstream in(path);
+        std::stringstream back;
+        back << in.rdbuf();
+        check(back.str() == jn && !fs::exists(path + ".tmp"),
+              "atomic write: second write replaces the first, no .tmp left");
+        bool threw = false;
+        try { writeFileAtomic((dir / "missing" / "status.json").string(), j); }
+        catch (const std::runtime_error&) { threw = true; }
+        check(threw, "unwritable path throws");
+        fs::remove_all(dir);
+
+        if (const char* fixture = getenv("PANOPTES_STATUS_FIXTURE")) {
+            std::ofstream(fixture) << j;
+            printf("    fixture written to %s\n", fixture);
+        }
     }
 
     printf("\ntest_autocapture: %d/%d passed\n", passed, passed + failed);

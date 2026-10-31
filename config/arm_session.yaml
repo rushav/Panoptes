@@ -1,0 +1,69 @@
+%YAML:1.0
+---
+# Parameters for python/arm_capture.py session (RUNBOOK §13). Every field is
+# required. Safety limits (box, speeds, move timeout) are NOT here: they are
+# config/arm.yaml, and apply to every move the session makes.
+#
+# Read with OpenCV FileStorage. Quote string values that carry a trailing
+# comment.
+
+# Taught session (the default; RUNBOOK §13): viewpoints are this grid over the
+# eight poses from arm_capture.py teach, corners included: left-right x
+# high-low x near-far. Each at least 2.
+n_lr: 3
+n_hl: 3
+n_nf: 3
+
+# session --orbit, viewpoints: a spherical cap around the board centre
+# estimated at the start.
+# Each of orbit_radii_m (added to P0's distance) x orbit_angles_deg of
+# elevation x orbit_angles_deg of azimuth. Each pose points the optical axis
+# at the board. Clipped to the box and the IK check; the dry run reports how
+# much of the cap was reachable.
+orbit_angles_deg: [ 0, 12, -12, 24, -24 ]
+orbit_radii_m: [ 0, 0.20, -0.20 ]
+# Every orbit_roll_every-th off-centre viewpoint takes the next non-zero roll
+# about the optical axis.
+orbit_rolls_deg: [ 0, 15, -15 ]
+orbit_roll_every: 3
+
+# 1: use the old lateral variants below instead of the orbit. 0: orbit.
+lateral_variants: 0
+# Lateral variants: each depth (P0, +-depth_m) x {no offset, +-lateral_m along the
+# tool axis that moves the board right, +-lateral_m along the one that moves
+# it down}.
+# A lateral offset comes with a rotation that brings the board back to where
+# it was in the image. At ~1.2 m, 0.12 m changes the view angle by only ~6
+# deg: most tilt comes from pointing the camera at the frame corners.
+lateral_m: 0.12
+# Depth variants: this far along TOOL z from P0, each way.
+depth_m: 0.15
+
+# How the planner names variants, relative to P0's apparent square size: mid
+# within +-mid_band_fraction of it, near above, far below. Capture still bins
+# by its own fixed thresholds (config/autocapture.yaml); the dry run prints
+# the values that would make them agree.
+mid_band_fraction: 0.08
+# Warn if the near and far depth variants differ in square size by no more
+# than this fraction of P0's.
+band_spread_min: 0.15
+
+# Wait this long for a full, still board after a move before giving up on
+# the target.
+still_timeout_s: 10.0
+# A cell target's rotation is capped at this, deg (combined, about the two
+# tool axes the probe found move the board right and down).
+max_rotation_deg: 35.0
+# A target further than two_move_px from the current centroid takes two moves:
+# first_move_fraction of the rotation, re-read the centroid, then the rest.
+two_move_px: 300.0
+first_move_fraction: 0.6
+# After the last move, if the board centroid is further than this from where
+# it was aimed, make one correcting move.
+centre_tol_px: 40.0
+# Aim the board so its bounding box stays at least this far inside the image.
+edge_margin_px: 40.0
+# Refuse to start if the arm is further than this from the probe's start pose:
+# its gains were measured there.
+p0_tolerance_m: 0.05
+p0_tolerance_deg: 10.0

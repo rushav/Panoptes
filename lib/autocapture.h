@@ -123,6 +123,16 @@ PoseBin poseBin(const Detection& d, const BoardSpec& board, cv::Size imageSize,
 // compound tilt. 0 if no neighbouring corners were found.
 double apparentSquarePx(const Detection& d, const BoardSpec& board);
 
+// One board square along the board's x (h) and y (v) directions, as image
+// vectors: the component-wise median over neighbouring corner pairs. Works
+// on a partial board. False if no neighbouring pair exists along either.
+bool boardSteps(const Detection& d, const BoardSpec& board, cv::Point2d& h, cv::Point2d& v);
+
+// Apparent in-plane rotation of the board: the image angle of h, degrees,
+// atan2(h.y, h.x). Image y points down, so positive is clockwise on screen.
+// NaN if boardSteps() fails.
+double boardRollDeg(const Detection& d, const BoardSpec& board);
+
 struct Decision {
     Verdict verdict = Verdict::NotFull;
     bool accepted() const { return verdict == Verdict::Accept; }

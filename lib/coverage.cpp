@@ -92,6 +92,13 @@ int Coverage::emptyCells() const {
     return (int)std::count(cellCounts_.begin(), cellCounts_.end(), 0);
 }
 
+std::vector<int> Coverage::emptyCellIds() const {
+    std::vector<int> ids;
+    for (int i = 0; i < (int)cellCounts_.size(); ++i)
+        if (cellCounts_[i] == 0) ids.push_back(i);
+    return ids;
+}
+
 std::vector<int> Coverage::emptyCellsHit(const std::vector<cv::Point2f>& points) const {
     std::vector<int> hit;
     for (auto& p : points) {

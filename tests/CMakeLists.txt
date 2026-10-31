@@ -9,6 +9,7 @@ find_package(OpenCV REQUIRED)
 add_executable(test_autocapture
     test_autocapture.cpp
     ../lib/autocapture.cpp
+    ../lib/capture_status.cpp
     ../lib/coverage.cpp
     ../lib/detect.cpp
     ../lib/session.cpp)

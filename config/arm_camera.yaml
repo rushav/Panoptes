@@ -1,0 +1,52 @@
+%YAML:1.0
+---
+# Written by python/arm_capture.py probe (RUNBOOK §13). Rerun the probe
+# rather than editing: it is valid only for this camera, this camera
+# position, this grip of the board, and the arm pose it started from.
+#
+# Tool frame. Rotations are about the tool axes through the TCP, angles in
+# deg; translations along the tool axes, in m. Kortex Euler angles are
+# x-y-z extrinsic: R = Rz(theta_z) Ry(theta_y) Rx(theta_x) (Gen3 user guide).
+# Image: x right, y down, px; roll positive = clockwise on screen; square_px
+# = apparent size of one board square, larger = closer.
+created_utc: "2026-10-30T21:34:42Z"
+camera_serial: 33664
+start_pose: [ 0.54440, 0.03477, 0.47396, 81.02814, -2.32617, 93.35377 ]   # x y z m, theta_x/y/z deg
+probe_angle_deg: 2.0
+probe_step_m: 0.03
+start_board: { centroid_px: [ 628.75, 540.79 ], square_px: 36.068, roll_deg: -86.890 }
+
+# Image change per unit tool motion: rotation rows per deg, translation rows per m.
+sensitivity:
+  theta_x: { dx_px: 0.0950, dy_px: -13.3383, droll_deg: -0.0178, dsquare_px: -0.0330 }
+  theta_y: { dx_px: 10.3283, dy_px: 0.2467, droll_deg: 0.1492, dsquare_px: 0.0345 }
+  theta_z: { dx_px: 0.6250, dy_px: 0.3900, droll_deg: -1.0312, dsquare_px: -0.0147 }
+  x: { dx_px: 867.0000, dy_px: -1.2222, droll_deg: -2.5222, dsquare_px: 0.9111 }
+  y: { dx_px: -8.6667, dy_px: 576.0000, droll_deg: 0.5444, dsquare_px: -4.9778 }
+  z: { dx_px: -17.5556, dy_px: 141.4444, droll_deg: 0.4333, dsquare_px: 29.7111 }
+# Measured change for the actual probe size.
+raw_effects:
+  theta_x: { dx_px: 0.1900, dy_px: -26.6767, droll_deg: -0.0357, dsquare_px: -0.0660 }
+  theta_y: { dx_px: 20.6567, dy_px: 0.4933, droll_deg: 0.2983, dsquare_px: 0.0690 }
+  theta_z: { dx_px: 1.2500, dy_px: 0.7800, droll_deg: -2.0623, dsquare_px: -0.0293 }
+  x: { dx_px: 26.0100, dy_px: -0.0367, droll_deg: -0.0757, dsquare_px: 0.0273 }
+  y: { dx_px: -0.2600, dy_px: 17.2800, droll_deg: 0.0163, dsquare_px: -0.1493 }
+  z: { dx_px: -0.5267, dy_px: 4.2433, droll_deg: 0.0130, dsquare_px: 0.8913 }
+# Centroid distance between before and after each return to the start, px.
+return_error_px: { theta_x: 0.246, theta_y: 0.050, theta_z: 0.057, x: 0.083, y: 0.126, z: 0.059 }
+
+# Which tool axis to use for each image direction. sign: the tool motion's
+# sign that moves the board right / down / clockwise / closer; the opposite
+# direction is the opposite sign. second_best_ratio: the next strongest axis
+# as a fraction of this one (over 0.5: the axes are coupled).
+mapping:
+  right:
+    rotation: { axis: "theta_y", sign: 1, px_per_deg: 10.3283, second_best_ratio: 0.061 }
+    translation: { axis: "x", sign: 1, px_per_m: 867.0000, second_best_ratio: 0.020 }
+  down:
+    rotation: { axis: "theta_x", sign: -1, px_per_deg: 13.3383, second_best_ratio: 0.029 }
+    translation: { axis: "y", sign: 1, px_per_m: 576.0000, second_best_ratio: 0.246 }
+  clockwise:
+    rotation: { axis: "theta_z", sign: -1, deg_per_deg: 1.0312, second_best_ratio: 0.145 }
+  closer:
+    translation: { axis: "z", sign: 1, square_px_per_m: 29.7111, second_best_ratio: 0.168 }

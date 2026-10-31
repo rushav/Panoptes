@@ -42,6 +42,10 @@ this repo.
 - **Grayscale delivery:** ~10.7 MB/s, 6–8 fps whatever the imager rate; camera and date not recorded. §5
 - **Pose variety:** 20 static views at tilt std 0.02° solve to fx = 154 and fx = 554 against ~780, RMS 0.08–0.09 px; 2026-08-24 gain sessions. §8
 - **Working distance:** 1–1.5 m for intrinsics (old 9×6 board), observation only. §12
+- **First arm session:** 5 accepted in 35.7 s, then `ACTION_ABORT INVALID_PARAM` at the 6th target (the Cartesian planner rejected the path, below); reach error ≤ 0.09 mm / 0.009°; rotation ran at 2.5–2.7°/s against 10 configured; 87% of the time moving; 2026-10-28, camera 33664, `tests/fixtures/session_arm_33664_20261028_185017.json`. §20
+- **Arm-camera probe:** θy +11.39 px/deg in image x, θx −13.13 px/deg in y, θz −1.03° roll per deg; returns within 0.40 px; board at 31.5 px/sq (far); 2026-10-28, camera 33664, `config/arm_camera.yaml`. §20
+- **Arm session 2:** 15 accepted, 29/30 cells, 10 bins short, 389 s, stopped by Ctrl-C; cell 29 tried 7 times, never filled; 2026-10-28 19:10, camera 33664, `tests/fixtures/session_arm_33664_20261028_191025.json`. §20
+- **Camera on the arm:** optical axis 12.06° off tool z (rotations of 13 frames, PnP against the arm), 13.4° from the size gains; lens f 768 px against 653/752 px from the rotation gains; same session, 23 views, RMS 0.16 px. §20
 - **Kortex API on Python 3.12:** wheel 2.6.0.post3 imports with protobuf 3.20.3 (`--no-deps`), not with its pinned 3.5.1 or with 4.25.8; 2026-10-28, `.venv`. Never yet connected to the arm. §20
 - **IMU parameters:** not in this repo. No IMU document, config or measurement exists to link.
 
@@ -611,6 +615,238 @@ each; until it has been run, none is verified (Open items).
   separately; whether every call `arm.py` uses answers on 2.8.0-5 is
   unverified.
 
+**Motion (`arm.py move` / `goto` / `stop`), 2026-10-28: nothing measured.**
+The code has run only against a fake `BaseClient` (in a scratch directory,
+not the repo). That checked:
+- dry runs send nothing;
+- box, timeout-estimate and servoing-mode refusals send nothing;
+- the one action sent is a `reach_pose` with the configured speeds;
+- subscribe comes before `ExecuteAction`, and unsubscribe after;
+- an abort or a timeout exits non-zero, and a timeout sends `Stop`.
+
+Not known, and not in the Gen3 user guide:
+- whether a `reach_pose` moves the tool in a straight line, which the
+  box-convexity argument relies on (ARCHITECTURE §9);
+- whether the arm stops a move in progress when the session drops.
+
+**Euler convention, from the Gen3 user guide** ("Cartesian reference
+frames": "x-y-z extrinsic convention"), not checked on the arm:
+R = Rz(θz)·Ry(θy)·Rx(θx). `arm_capture.py` builds its tool-frame targets
+on it. If it were wrong, the probe's rotations would be about other axes
+than labelled. The labels in `config/arm_camera.yaml` would then be wrong,
+but the motions would still be 2° and 30 mm.
+
+**Probe result, 2026-10-28 18:26 local** (`config/arm_camera.yaml`,
+`created_utc` 2026-10-29T01:26:48Z, camera 33664). It was run by the
+operator; the terminal output and conditions were not recorded, so
+everything here is read from the file. Camera on the arm, board on an easel.
+
+- Start pose x 0.5495, y −0.0301, z 0.4806 m, θ 84.20 / −1.56 / 95.85°.
+  Board at the start: centroid (627.4, 503.3) px, square 31.5 px (far band;
+  ~1.5 m at 780 px focal), roll 93.0° (board rows vertical in the image).
+- Per +1° of tool rotation: θx moves the board −13.13 px in y (−0.54 in
+  x); θy moves it +11.39 px in x (+0.45 in y); θz rolls it −1.03° and
+  moves it under 0.4 px. Each runner-up axis is 3–5% as strong as the
+  chosen one (`second_best_ratio`).
+- Per +1 m of tool translation: x moves it +724 px in x; y moves it
+  +531 px in y (and −4.8 px of square); z moves it +259 px in x and grows
+  the square +20.2 px.
+- Return errors 0.02–0.40 px against the 3 px limit.
+- This shows, from the file alone, that `capture --auto-dry --status-file`
+  ran on the camera, that the arm made the probe's twelve box-checked moves,
+  and that every return came back within 0.4 px.
+- *Inferred:*
+  - The clean single-axis θx/θy/θz responses fit the x-y-z extrinsic
+    convention the tool-frame targets are built on. They don't prove it.
+  - Tool z is not the optical axis: moving along z shifts the image
+    259 px/m sideways. The x and y translation gains also differ (724 vs
+    531 px/m) at one depth. The camera is probably mounted at an angle to
+    the tool frame; the session uses the measured gains, so it needs no
+    hand-eye model.
+  - At this P0 (31.5 px, far) the session's ±0.10 m depth variants give
+    ~33.5 and ~29.5 px: all far. Its dry run against this file says to
+    move the board about 0.30 m closer and rerun the probe.
+
+**First arm-driven session, 2026-10-28 18:50 local**, camera 33664, P0 at
+the probe's start pose. Session `intrinsics_33664_20261028_185017`; record
+copied verbatim to `tests/fixtures/session_arm_33664_20261028_185017.json`.
+Read from the record; nothing else was logged.
+
+- **Result.** 8 moves, 6 targets. Capture accepted 5 frames in 35.7 s
+  (`capture_accepted_total` 6, one before the session). It ended on the
+  6th target with `ACTION_ABORT`, reason `INVALID_PARAM`. 16 cells and 13
+  bins were left. The arm was not moved after the abort.
+- **Reach accuracy.** Each reached pose was within 0.05–0.09 mm and
+  0.006–0.009° of its command (measured pose against commanded).
+- **Speed.** Rotations of 6–27° ran at a steady 2.5–2.7°/s, against
+  `max_rotation_dps` 10. Arm motion was 87% of the session's time;
+  waiting for a still board was 5%, 0.30–0.35 s per target. 4.5 s per move.
+  Why the arm is capped near 2.7°/s (a soft limit on the arm, or how the
+  firmware reads `CartesianSpeed.orientation`) is not known.
+- **The P0 view itself was binned `far/-x-y`:** tilted 20° or more from
+  square-on, as capture computes tilt. The flat bin can't be reached near
+  this P0. Entry 4, aimed at the top right of the frame, was binned
+  `mid/+x-y` while P0 reads far (31.5 px/sq). That is the off-axis bias of
+  open item 18, now on the real camera (*inferred* from the bins).
+- **The aborted target** (entry 5, cell 2): x 0.54954, y −0.03009,
+  z 0.4805 m (P0's position), θ 102.517 / −1.680 / 97.789°. That is a
+  rotation of (18.37, 1.95, 0)° about the tool axes from P0, reached from
+  entry 4's pose by a 16.6° rotation, mostly about tool y (−16.3°). The
+  abort came 4.5 s into a move that takes ~6 s at 2.7°/s, so about 3/4
+  along the path, not at submission.
+- **Why the arm refused it: not determined.** Ruled out from the record:
+  - the box, because the position is P0's;
+  - the Euler range, because θy is −1.7° and every angle is ordinary;
+  - the speed field, because the same constraint ran the 7 moves before
+    it, all pure rotations like this one.
+
+  The endpoint is the largest tool-x rotation commanded (18.4°, against
+  17.2° reached). The record has no joint angles, so a joint limit or
+  singularity handling along the path can't be checked. Its timing points
+  that way, but `INVALID_PARAM` is a generic code, not
+  `CONTROL_JOINT_POSITION_LIMIT` or `CONTROL_OUTSIDE_WORKSPACE`. The
+  Kinova Web App's event log for 18:51 may name it. Since this session,
+  every move is IK-checked along its path, and an abort records the joints
+  before and after (ARCHITECTURE §9), so a repeat will show more.
+- **With relative bands** (P0 ±8%), depth 0.10 m at the probe's
+  20.2 px/m along tool z puts all three depths in mid (±6.4%). Near and far
+  differ by 12.9% (the sanity threshold is 15%). `depth_m` ≥ 0.124 m would
+  separate them. Capture binned every view by its fixed 35/40 px
+  thresholds, so P0 was capture-far.
+
+**`INVALID_PARAM` on `reach_pose`, 2026-10-30.** It means the arm's Cartesian
+planner rejected the path, from a singular start or across a singularity. It
+does not mean a parameter was bad. Rushav's reading from the arm, 2026-10-30;
+not reproduced from a record here.
+
+- **Today's example:** not recorded. Today's session folders hold no
+  `session_arm.json`, so the command, joints and target aren't here. **To fill
+  in from the terminal output.**
+- **The 18:50 abort above fits a crossing:** valid numbers, 7 like moves
+  before it, and it ended about 3/4 along the path. Which singularity is
+  still unknown, as that record has no joints.
+- **The 19:10 session's P0 was clear of the wrist singularity:** actuator 5 at
+  −105.0° (read from the record).
+
+**Where the 19:10 session's arm time went, read from its record 2026-10-30.**
+389 s total, 339 s moving (87%), 6.2 s moving per move. Cell pans took 297 s
+of that over 47 moves, viewpoint moves 34 s over 7, the return 8 s. So faster
+viewpoint moves alone recover at most about 30 s of that run; the time is in
+the pans, which stay at `max_rotation_dps` and ran at ~2.7°/s (open item 19).
+
+**Second arm session, 2026-10-28 19:10 local**, camera 33664, session
+`intrinsics_33664_20261028_191025`; record copied verbatim to
+`tests/fixtures/session_arm_33664_20261028_191025.json`. Run with the
+lateral variants, before the orbit existed.
+
+- **Result.** 55 moves, 15 accepted (16 frames with the one before the
+  session), 29/30 cells, 10 of 15 bins short, 389 s, 11 targets unreachable
+  (joints 2 and 5, near P0), no aborts, ended by Ctrl-C.
+- **Tilted bins stayed short** because the variants barely change the view
+  angle. The frames span 9–47° of tilt (PnP), but mostly from pointing, not
+  from where the camera stands.
+- **Cell 29 (bottom right).** 7 tries of 4 moves each, none filled it. Each
+  try was: first move, board lost, halfway back, correction, lost again,
+  back. The board left the frame.
+- **The run was already using the atan aim.** `rotation_for_aim()` as it
+  then stood reproduces every recorded first command within 0.004°. The
+  linear gains would differ by over 1°. So the misses below are not the
+  small-angle error.
+- **First-try misses, read from accepted frames at first-try poses.** Cell
+  18: 938.6 against 896.0 px in x (+43, overshoot). Cell 8: 921.7 against
+  877.7 (+44, overshoot). Cell 5: 287.4 against 243.1 (+44, undershoot, since
+  that move goes left). Right overshoots and left undershoots, so no single
+  focal length fixes both.
+- **Why cell 29 was lost** (*inferred*, from a model). Near that aim the
+  tilted board is asymmetric about its centroid: predicted 249 px below it
+  and 182 px above, reaching 1015 of 1024 px with the aim's margin already
+  spent. `aim_for_cell()` assumed symmetry. On the rig-like simulation the
+  board is lost at this aim even with the aim hit exactly.
+
+**Camera geometry, measured from that session**, 2026-10-30, offline, on
+its PNGs and `session_arm.json`. Not a calibration to reuse: 23 views, one
+afternoon, scratch scripts.
+
+- **Lens.** `calibrateCamera` on the 23 frames of `_190515` and `_191025`
+  (k1, k2 only, one focal length): RMS 0.16 px, f 767.65 px, principal point
+  (627.7, 521.4), k1 −0.085, k2 0.055. Fitting the 33664 jitter session
+  `_151829` instead gave fx 847, fy 834, k3 −44: static views can't fix
+  the intrinsics (§8).
+- **The rotation gains are not the focal length.** 11.39 and 13.13 px/deg
+  give 653 and 752 px against 768. They are the response to a rotation about
+  the TCP, which also moves the camera.
+- **Optical axis.** Rotations between 13 frames, PnP against the arm
+  (Kabsch): 12.06° off tool z, toward −y. Residual 0.94° median over 78
+  pairs of median rotation 24.5°. The probe's size gains alone give 13.4°,
+  1.32° from that. So the 2026-10-28 note above, that the camera is mounted
+  at an angle, is now measured, and the probe's file is enough to find the
+  axis.
+- **Distance at P0.** PnP 1.456 m. From the size gains, 1.513 m. From
+  square size and f, 1.336 m with the gains' geometric mean, 701 px (−8%).
+- **The camera turns more than the arm reports.** Moving 0.15 m along tool z,
+  the arm reports −3.39° about y and PnP sees −1.91°; translations themselves
+  match within 10 mm. That is ~10°/m, and it would explain a probe gain no
+  rigid pinhole can give: x +724 px/m, against 768/1.456 = 527 px/m at most
+  (*inferred*: arm or mount compliance, or the arm's kinematic model).
+- **Camera position in the tool frame: not determined.** A rigid fit of the
+  camera and board to 9 frames leaves 9.2 px per point and doesn't reproduce
+  the θz or translation gains. With the axes fixed, the best single lever on
+  11 recorded centroids is (−0.31, −0.40, −0.13) m at 12.9 px RMS. That is
+  too long to be the mount: treat it as effective, absorbing the unreported
+  rotation. It reproduces the right-overshoot, left-undershoot pattern, so
+  the tests use it as a rig-like geometry.
+
+**Aiming and orbit, offline, 2026-10-30.** `python/test_arm_capture.py`, 59
+checks. On the rig-like geometry, corners 347–374 px away: first move
+leaves 139–151 px, final miss 7–12 px, and cell 29 ends 12 px from its
+refitted aim after one lost board and a correction. The other three corners
+need no correction. The literal atan(dpx/f) from the current centroid,
+in place of the two rays, ended 25 px past the aim on two corners, against
+7 px. The orbit's optical axis is on the estimated centre within 0.0001°
+by construction. The true board lands 22 px (median), 109 px (worst) from the
+image centre, 88/88 at all 75 viewpoints. **None of this has run on the arm.**
+
+**Why ~1.0 m and 10–12° of lean** (*computed*, not run): the default box,
+the recorded P0 and gains, the 75-viewpoint cap, box only (the IK needs
+the arm). Viewpoints inside the box:
+
+| Easel distance | P0 x 0.55 | P0 x 0.43 |
+|---|---|---|
+| 1.0 m | 15/75 (r0 9, r+0.20 6, r−0.20 0) | 23/75 (r0 9, r+0.20 2, r−0.20 12) |
+| 1.45 m | 10/75 | 12/75 |
+
+At 1.0 m only ±12° of elevation stays in the box. Of the 15 viewpoints
+reachable at P0 x 0.55, centred views only: a board square to P0 gives 15
+flat; leaned 11°, 12 flat and 3 tilted past 20°; leaned 22°, 6 flat and 9
+tilted, all with the same sign of tilt about x. Lean adds tilted views on one
+side only; the opposite side still comes from pointing at frame corners.
+
+**Status file and session code, offline.** Run only offline:
+- the status writer, in `tests/test_autocapture`;
+- the reader, against `tests/fixtures/capture_status.json`;
+- the probe, against a fake arm and a simulated camera writing status
+  files (scratch directory, not the repo). The sensitivities it recovered
+  matched the simulation's, and its refusals and return-check stop worked.
+- the session (`arm_capture.py session`); first hardware run above. Since
+  then tested by `python/test_arm_capture.py` (31 checks then, in the repo),
+  including a replay of that abort, IK rejection, joint-limit and
+  branch-change rejection, abort recovery and the three-abort stop.
+  Before that, tested against a simulation: camera on the arm 8 cm ahead of the TCP, pinhole
+  780 px, the board 1.25 m away on an easel, and a Python stand-in for
+  `capture --auto` (gates 1–3, 5, 6, coverage, pose bins, status file).
+  The probe was run on the simulation first, so the session used gains
+  measured the same way. Results:
+  - 21 moves; all 30 cells and every flat bin filled; near quadrant bins
+    filled.
+  - Mid and far quadrant bins stayed short: off-axis views look closer
+    (`apparentSquarePx` grows ~1 + tan²θ), so corner views from mid/far are
+    binned near. The dry run had predicted it for exactly those bands.
+  - With rotation gains deliberately 0.6× wrong: 62 moves, 8 board-lost
+    recoveries, 11 corrections, still ending cleanly at P0.
+  - Endings tested: `q`, a dying capture, Ctrl-C during a move (all back at
+    P0), and an `ACTION_ABORT` (no further move).
+  - Every commanded pose was asserted inside the box.
+
 ## Open items
 
 The single open-items list. CLAUDE.md and the other docs link here.
@@ -675,7 +911,51 @@ The single open-items list. CLAUDE.md and the other docs link here.
 16. **Whether 5×6 is the right coverage grid.** 30 cells against 88 corners
     per view (40 on the old board) means one capture can touch many cells. A
     finer grid would be stricter; the right granularity is not established.
-17. **Arm first contact not run.** `python/arm.py status` has never reached
-    the arm (§20). Record its output here: firmware, serial, DOF and end
+17. **Arm: outputs not recorded.** The probe has run on the arm (§20), but
+    no `arm.py status` output has been recorded. Record it here: firmware, serial, DOF and end
     effector against the stated values, and whether each Kortex call
-    answers on firmware 2.8.0-5.
+    answers on firmware 2.8.0-5. Then the first motion,
+    `move --dz 0.02 --yes` (RUNBOOK §13): result, measured error, and
+    whether the tool path looked straight. The probe's terminal output is
+    unrecorded too. A first session has run and aborted (§20; item 19).
+    Next: a full session, its summary and `session_arm.json`, and an
+    intrinsics fit of it against a manual one (RUNBOOK §9 rule).
+18. **Distance bands are apparent size, so off-axis views read closer.**
+    `poseBin()` bands by `apparentSquarePx()`; a board at a frame corner
+    looks ~1.3–1.5× bigger at the same distance (pinhole; less with the
+    real lens's barrel distortion, by how much is unmeasured). Corner (tilted)
+    views are then binned a band closer than their distance, so in
+    simulation the mid and far quadrant bins never filled from an arm
+    session. Seen on hardware: a top-right view in the first session was
+    binned mid while P0 reads far (§20). Hand-held capture has the same
+    bias. Candidate fix: band by
+    the solvePnP distance `poseBin()` already computes. Not changed, as it
+    changes what capture accepts (§20; ARCHITECTURE §9).
+19. **Arm aborts with `INVALID_PARAM`; rotations run slow.** `INVALID_PARAM`
+    is the Cartesian planner rejecting the path (§20). Sessions now refuse a
+    singular wrist at the start, but the IK check along a path does not
+    measure closeness to a singularity, so a crossing can still abort:
+    check the next record's `joints_after_abort_deg`. Separately,
+    rotations run at ~2.7°/s against `max_rotation_dps` 10 (§20): check the
+    arm's Cartesian soft limits.
+20. **Arm: the camera turns more than the arm reports, and its position in
+    the tool frame is unknown** (§20). The planner works from the probe and
+    closes the loop on the image, so it doesn't need either. Anything that
+    uses the arm's pose as a measurement would, starting with hand-eye
+    calibration.
+21. **Orbit and two-move aiming have not run on the arm.** Next: a probe at
+    the new easel and P0, a dry run, then a session: its `cap` line, its
+    `aim_error` lines, and the bins. The box leaves 23/75 of the cap at best
+    (§20), and IK can only remove more. Whether that fills the tilted bins, or
+    the box or `orbit_angles_deg` has to change, is untested.
+22. **Joint moves, teach and taught sessions have not run on the arm.**
+    `joints`, `goto-pose`, `--from-pose`, `teach` and `session --poses` are
+    tested against stubs only. Also unknown: how the Web App shows up, since
+    "arm free" rests on `Base.Stop` failing while it holds the arm; whether
+    the probe's px/deg stays good enough at far taught poses; and whether the
+    fixed 35/40 px bands span a far/near ratio under 0.6 (the `WARNING` at
+    the dry run). To check at first use: that
+    `ComputeForwardKinematics` agrees with the measured pose (`target FK`
+    against a saved pose), that the arm honours `JOINT_CONSTRAINT_SPEED`, and
+    the time against `move_timeout_s` if joints also run below the commanded
+    rate.

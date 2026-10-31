@@ -1,0 +1,38 @@
+%YAML:1.0
+---
+# Motion limits for python/arm.py move / goto (RUNBOOK §13). Every field is
+# required; arm.py refuses to move if one is missing or out of range. Units
+# are metres, degrees and seconds (not inches, unlike layout.yaml).
+#
+# Read with OpenCV FileStorage. Quote string values that carry a trailing
+# comment.
+
+# Workspace box, base frame, metres. Both the current pose and the target
+# must be inside it, or nothing is sent. It bounds the TOOL POINT only: the
+# elbow and wrist links can still leave it. There is no CLI flag to disable
+# it; edit this file, in review.
+# Defaults: a conservative box around the arm's pose at first contact.
+x_min: 0.25
+x_max: 0.95
+y_min: -0.45
+y_max: 0.45
+z_min: 0.15
+z_max: 0.85
+
+# Speed constraint sent with every move (Kortex CartesianSpeed). arm.py
+# refuses values above 0.20 m/s and 30 deg/s regardless of this file. The
+# arm's own Cartesian limits are 0.5 m/s and 50 deg/s (Gen3 user guide).
+max_translation_mps: 0.05
+max_rotation_dps: 10.0
+
+# Viewpoint moves of a taught session: joint moves, faster than the moves above.
+# reach_joint_angles takes one joint speed, so each move's speed is
+# viewpoint_rotation_dps, lowered if needed so that the tool's straight-line
+# distance over the move's time stays under viewpoint_translation_mps. Same
+# ceilings as above.
+viewpoint_translation_mps: 0.15
+viewpoint_rotation_dps: 25.0
+
+# Wait this long for ACTION_END or ACTION_ABORT. On timeout arm.py sends
+# Base.Stop and exits non-zero.
+move_timeout_s: 30.0
