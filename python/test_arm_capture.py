@@ -14,7 +14,11 @@ same way as on hardware.
 The regression cases replay tests/fixtures/session_arm_33664_20261028_185017.json:
 the first arm-driven session on 33664, which ended on ACTION_ABORT
 (INVALID_PARAM) at its sixth target; and ..._191025.json, whose bottom-right
-corner was never reached. Exit 0 only if every check passes.
+corner was never reached; and the two taught sessions of 2026-11-02,
+..._150512.json (15:05, 28 accepts) and ..._175213.json (17:52, ended after
+10 accepts on "board not back in view after returning from a skipped
+target"), replayed through the visit order and the reach-edge rule. Exit 0
+only if every check passes.
 
 The aiming and orbit cases also run on a rig-like geometry, use_rig(): optical
 axis 12 deg off tool z, board tilted 23 deg, an effective lever fitted to the
@@ -22,7 +26,7 @@ recorded centroids of ..._191025 (FINDINGS §20). Without that lever a rotation
 about the TCP is nearly a rotation about the camera, and the aim is too easy.
 """
 
-import datetime, json, math, os, sys, tempfile, threading, time
+import datetime, json, math, os, re, sys, tempfile, threading, time
 
 import numpy as np
 
@@ -34,6 +38,8 @@ import capture_status as cs
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests", "fixtures")
 FIXTURE = os.path.join(FIXTURES, "session_arm_33664_20261028_185017.json")
 CORNER_FIXTURE = os.path.join(FIXTURES, "session_arm_33664_20261028_191025.json")
+TAUGHT_1505 = os.path.join(FIXTURES, "session_arm_33664_20261102_150512.json")
+TAUGHT_1752 = os.path.join(FIXTURES, "session_arm_33664_20261102_175213.json")
 
 ok = fail = 0
 
@@ -117,21 +123,29 @@ def fake_fk(q):
 
 class FakeArm:
     """abort_at: these 1-based move numbers return ACTION_ABORT INVALID_PARAM.
-    ik: optional function(pose) -> joints, or raises armlib.IKFailed."""
+    ik: optional function(pose) -> joints, or raises armlib.IKFailed;
+    seeded_ik: the same, as function(pose, guess)."""
 
-    def __init__(self, pose, abort_at=(), ik=None):
+    def __init__(self, pose, abort_at=(), ik=None, seeded_ik=None):
         self.pose = list(pose)
         self.calls, self.ik_calls, self.joint_calls, self.joint_speeds = [], 0, [], []
         self.stops, self.joint_abort_at = 0, set()
+        self.last_abort = self.last_move_s = None
         self.joints_override = None
+        self.branch = 0.0         # joint 3's offset from fake_joints(): 0 or 180 (another branch)
         self.unsettled = 0
-        self.abort_at, self.ik = set(abort_at), ik
+        self.hidden = False       # Capture shows 87/88 until the next joint move
+        self.abort_at, self.ik, self.seeded_ik = set(abort_at), ik, seeded_ik
 
     def measured_pose(self):
         return tuple(self.pose)
 
     def measured_joints(self):
-        return list(enumerate(self.joints_override or fake_joints(self.pose)))
+        if self.joints_override:
+            return list(enumerate(self.joints_override))
+        q = fake_joints(self.pose)
+        q[2] += self.branch       # a Cartesian move keeps the branch, as a real arm does
+        return list(enumerate(q))
 
     def forward_kinematics(self, joints):
         return fake_fk(joints)
@@ -147,6 +161,8 @@ class FakeArm:
         if len(self.joint_calls) in self.joint_abort_at:
             return "abort", "INVALID_PARAM"
         self.pose = list(fake_fk(joints))
+        self.hidden = False
+        self.branch = 180.0 * round(armlib.wrap180(joints[2] - fake_joints(self.pose)[2]) / 180.0) % 360
         self.unsettled = 3
         return "end", None
 
@@ -161,6 +177,8 @@ class FakeArm:
 
     def inverse_kinematics(self, pose, guess):
         self.ik_calls += 1
+        if self.seeded_ik:
+            return self.seeded_ik(pose, guess)
         return (self.ik or fake_joints)(pose)
 
     def reach_pose(self, target, lim):
@@ -171,17 +189,33 @@ class FakeArm:
             self.pose = list(ac.interpolate(tuple(self.pose), tuple(target), 0.4))
             self.unsettled = 3
             return "abort", "INVALID_PARAM"
+        before = dict(self.measured_joints())[2]
         self.pose = list(target)
+        # fake_joints() halves theta_z into joint 3, so a wrapped Euler angle
+        # reads as a 180 deg jump; a real Cartesian move stays on its branch.
+        base = fake_joints(self.pose)[2]
+        self.branch = min((0.0, 180.0), key=lambda b: abs(armlib.wrap180(base + b - before)))
         self.unsettled = 3
         return "end", None
 
 
 class FakeStub:
     """The Kortex BaseClient as Arm sees it: records requests, answers FK, and
-    fires ACTION_END from ExecuteAction."""
+    fires ACTION_END from ExecuteAction (ACTION_START then ACTION_ABORT
+    METHOD_FAILED, with a trajectory error report, while abort is set)."""
 
     def __init__(self, pose):
         self.pose, self.executed, self.notify, self.stopped = pose, [], None, 0
+        self.abort = False
+
+    def GetTrajectoryErrorReport(self, options=None):
+        r = armlib.Base_pb2.TrajectoryErrorReport()
+        e = r.trajectory_error_elements.add()
+        e.error_type = armlib.Base_pb2.TRAJECTORY_ERROR_TYPE_INVALID_JOINT_SPEED
+        e.error_identifier = armlib.Base_pb2.TRAJECTORY_ERROR_IDENTIFIER_VELOCITY
+        e.error_value, e.min_value, e.max_value, e.index = 10.0, 0.0, 1.0, 2
+        e.message = "fake"
+        return r
 
     def ComputeForwardKinematics(self, q, options=None):
         self.fk_request = q
@@ -200,7 +234,16 @@ class FakeStub:
 
     def ExecuteAction(self, action, options=None):
         self.executed.append(action)
-        self.notify(armlib.Base_pb2.ActionNotification(action_event=armlib.Base_pb2.ACTION_END))
+        B = armlib.Base_pb2
+        if self.abort:
+            self.notify(B.ActionNotification(action_event=B.ACTION_START))
+            n = B.ActionNotification(action_event=B.ACTION_ABORT,
+                                     abort_details=armlib.Errors_pb2.METHOD_FAILED)
+            t = n.trajectory_info.add()
+            t.trajectory_info_type, t.joint_index = B.JOINT_SPEED_LIMIT_REACHED, 2
+            self.notify(n)
+            return
+        self.notify(B.ActionNotification(action_event=B.ACTION_END))
 
 
 class Capture(threading.Thread):
@@ -222,6 +265,9 @@ class Capture(threading.Thread):
             if self.die_after and self.frame > self.die_after:
                 return
             uv, inside, (tx, ty, tilt), sq, roll = view(self.arm.pose)
+            if getattr(self.arm, "hidden", False):  # one corner out, 87/88, as at 17:52 entry 51
+                inside = inside.copy()
+                inside[0] = False
             full = bool(inside.all())
             moving = self.arm.unsettled > 0
             if moving:
@@ -281,6 +327,52 @@ class Capture(threading.Thread):
             time.sleep(0.01)
 
 
+# This arm's joint limits, Web App Safeties -> Actuators, 2026-11-02.
+WEB_APP_LIMITS = {1: "continuous", 2: (-129.0, 138.0), 3: (-148.0, 152.0), 4: "continuous",
+                  5: (-120.0, 128.0), 6: "continuous"}
+UNCONFIRMED = {a: None for a in range(1, 7)}
+
+
+def limit_config_checks(lim, d):
+    """config/arm.yaml joint limits: parsing, asymmetric refusals, the null (warn) path."""
+    print("joint limits: config/arm.yaml, [low, high] refuses, null warns")
+    check(lim["joint_limits_deg"] == WEB_APP_LIMITS,
+          "config/arm.yaml: the Web App's limits, actuators 1, 4, 6 continuous")
+    src = open(armlib.LIMITS).read()
+
+    def load(text):
+        path = os.path.join(d, "arm_limits.yaml")
+        with open(path, "w") as f:
+            f.write(text)
+        try:
+            return armlib.load_limits(path)["joint_limits_deg"]
+        except armlib.ArmError as e:
+            return str(e)
+
+    got = load(src.replace('joint_4_limit_deg: "continuous"', "joint_4_limit_deg: null"))
+    check(isinstance(got, dict) and got[4] is None and got[2] == (-129.0, 138.0),
+          "[low, high], \"continuous\" and null each load")
+    check("joint_6_limit_deg is missing" in load(src.replace('joint_6_limit_deg: "continuous"\n', "")),
+          "a missing joint limit is refused, by key")
+    for bad, what in (("[ 138.0, -129.0 ]", "low above high"), ("[ -129.0, 200.0 ]", "past 180"),
+                      ("138.0", "a single number")):
+        check("joint_2_limit_deg" in str(load(src.replace("[ -129.0, 138.0 ]", bad))),
+              f"a joint limit with {what} is refused")
+
+    q = [169.979, 230.559, 199.779, 185.307, 239.964, 87.952]     # status, 2026-11-02
+    refuse, warn = armlib.joint_limit_checks(lim, q)
+    check(not warn and [r.split()[1] for r in refuse] == ["2", "3", "5"],
+          "the pose status showed, resting on the stops, is outside joints 2, 3 and 5")
+    q2 = [0, -132.0, 0, 0, 0, 0]
+    check(armlib.joint_limit_checks(lim, q2)[0] and not armlib.joint_limit_checks(lim, [-v for v in q2])[0],
+          "limits are asymmetric: joint 2 at -132 refused, +132 accepted")
+    refuse, warn = armlib.joint_limit_checks(dict(lim, joint_limits_deg=UNCONFIRMED), q, 10.0)
+    check(not refuse and len(warn) == 1 and "3 at -160.2" in warn[0],
+          "null limits warn with the angle, never refuse: " + (warn[0] if warn else "no warning"))
+    refuse, _ = ac.joint_margin(lim, [0, 0, 0, 0, 120.0, 0])
+    check(refuse and "need 10" in refuse[0], "teach margin: joint 5 at +120, 8 deg from +128, refused")
+
+
 def main():
     lim = armlib.load_limits()
     d = tempfile.mkdtemp(prefix="panoptes_session_")
@@ -312,6 +404,7 @@ def main():
         return json.load(open(os.path.join(sess, ac.SESSION_RECORD)))
 
     try:
+        limit_config_checks(lim, d)
         # ------------------------------------------------ the recorded abort
         print("regression: tests/fixtures/session_arm_33664_20261028_185017.json")
         rec = json.load(open(FIXTURE))
@@ -348,6 +441,74 @@ def main():
         check({v["band"] for v in vs} == {"mid"} and len(warns) == 2 and "12.8%" in warns[0],
               f"relative bands: depth 0.10 m keeps all three in mid ({k_z:.1f} px/m on "
               f"{sq0:.1f} px); both sanity warnings fire")
+
+        # ------------------------------------------------ the taught sessions of 2026-11-02
+        print("\nregression: tests/fixtures/session_arm_33664_20261102_{150512,175213}.json")
+        recs = {"15:05": json.load(open(TAUGHT_1505)), "17:52": json.load(open(TAUGHT_1752))}
+        r52 = recs["17:52"]
+        last = r52["poses"][51]
+        check(r52["end"]["end"] == "board not back in view after returning from a skipped target"
+              and r52["end"]["accepted"] == 10 and r52["end"]["unreachable"] == 31
+              and last["variant"] == "lr0_hl1_nf0" and last["cell"] == 4
+              and last["outcome"] == "skipped: board left the view" and "total_s" not in last["times"]
+              and [c["sent"] for c in last["commanded"]] == [True, True, True]
+              and r52["poses"][52]["kind"] == "return",
+              "17:52: ended after 10 accepts at entry 51 (lr0_hl1_nf0, cell 4): target, halfway "
+              "and the way back all sent, board not back, the entry never finished")
+        check(r52["end"]["cells_remaining"] == [0, 4, 29] and len(r52["end"]["bins_short"]) == 12,
+              "17:52: 3 cells and every mid and far bin still short when it ended")
+
+        def pan_runs(rec):
+            """[(viewpoint, [outcome of each cell pan that sent or checked a move], [accepted])]."""
+            out = []
+            for e in rec["poses"]:
+                if e["kind"] == "variant":
+                    out.append((e["variant"], [], []))
+                elif e["kind"] == "cell" and out and e.get("commanded"):
+                    out[-1][1].append(e["outcome"])
+                    out[-1][2].append(bool((e.get("camera") or {}).get("accepted")))
+            return out
+
+        for label, rec in recs.items():
+            runs = pan_runs(rec)
+            edge = [(n, o, a) for n, o, a in runs if ac.at_reach_edge(o)]
+            first = runs[0]
+            check(first[0] == "lr0_hl0_nf0" and first[1] and set(first[1]) == {"unreachable"}
+                  and ac.at_reach_edge(first[1]),
+                  f"{label} replay: near corner lr0_hl0_nf0, {len(first[1])} pans all IK-unreachable; "
+                  f"now stopped after {ac.REACH_EDGE_PANS} ({len(first[1]) - ac.REACH_EDGE_PANS} "
+                  "pans not tried)")
+            print(f"    {label}: reach edge at " + "; ".join(
+                f"{n} ({len(o) - ac.REACH_EDGE_PANS} of {len(o)} pans dropped, "
+                f"{sum(a[ac.REACH_EDGE_PANS:])} of them accepted)" for n, o, a in edge))
+        edge05 = {n: sum(a[2:]) for n, o, a in pan_runs(recs["15:05"]) if ac.at_reach_edge(o)}
+        edge52 = {n: sum(a[2:]) for n, o, a in pan_runs(recs["17:52"]) if ac.at_reach_edge(o)}
+        check(edge05 == {"lr0_hl0_nf0": 0, "lr2_hl0_nf0": 3, "lr2_hl1_nf0": 3}
+              and edge52 == {"lr0_hl0_nf0": 0, "lr0_hl1_nf0": 0},
+              "the rule's cost, replayed: 15:05 would lose 6 of 28 accepts (lr2_hl0_nf0, "
+              "lr2_hl1_nf0 filled cells after two failed pans); 17:52 none, and it skips "
+              "lr0_hl1_nf0's cell 4, the pan that ended the session")
+        for label, rec in recs.items():
+            ok_v = [v for v in rec["variants"] if not v["skip"]]
+            idx = {v["name"]: i for i, v in enumerate(ok_v)}
+            fams_r = [[idx[n] for n in f] for f in rec["families"]["families"]]
+            new = ac.visit_order(ok_v, fams_r)
+            bands = [v["capture_band"] for v in new]
+            rank = [ac.BAND_ORDER.index(b) for b in bands]
+            grouped = all([v["family"] for v in new if v["capture_band"] == b] ==
+                          sorted(v["family"] for v in new if v["capture_band"] == b)
+                          for b in ac.BAND_ORDER)
+            kept = all([v["name"] for v in new if v["capture_band"] == b and v["family"] == f] ==
+                       [v["name"] for v in ok_v if v["capture_band"] == b and v["family"] == f]
+                       for b in ac.BAND_ORDER for f in range(1, len(fams_r) + 1))
+            hubs = lambda seq: len(ac.hub_legs([(v["family"], v["joints_deg"]) for v in seq], lim))
+            check([v["name"] for v in ok_v] == [ok_v[m]["name"] for f in fams_r for m in f]
+                  and sorted(idx) == sorted(v["name"] for v in new) and rank == sorted(rank)
+                  and bands[0] == "mid" and grouped and kept,
+                  f"{label} replay: recorded order was family by family; reordered "
+                  f"{bands.count('mid')} mid, {bands.count('near')} near, {bands.count('far')} far, "
+                  f"first {new[0]['name']}, families grouped and serpentine kept within each band; "
+                  f"hub legs between viewpoints {hubs(ok_v)} -> {hubs(new)}")
 
         # ------------------------------------------------ probe on the sim
         print("\nprobe on the simulation")
@@ -401,7 +562,7 @@ def main():
         r = record()
         starts = [l for l in lines if ": " in l and " targets (" in l]
         n_first = int(starts[0].split(": ")[1].split()[0]) if starts else 0
-        check(r["schema"] == "panoptes.session_arm/4" and n_first <= 30 + 6,
+        check(r["schema"] == "panoptes.session_arm/6" and n_first <= 30 + 6,
               f"first variant plans {n_first} targets (30 empty cells + seekers), not 450")
         check(all(c.get("ik_deg") for p in r["poses"] for c in p.get("commanded", [])),
               "every commanded pose records the IK solution it was validated with")
@@ -482,7 +643,7 @@ def main():
         def joint5_limit(pose):
             q = fake_joints(pose)
             if ac.relative(P0, pose)["rotvec_deg"][0] > 15:
-                q[4] = 117.0                 # inside 120.3 but within the 5 deg margin
+                q[4] = 125.0                 # inside +128 but within the 5 deg margin
             return q
 
         clear()
@@ -490,7 +651,7 @@ def main():
         s, e = session(a, Capture(a, st, dry=False, session_path=sess))
         un = [p for p in record()["poses"] if p["outcome"] == "unreachable"]
         check(e is None and un and all("joint 5" in p["note"] for p in un),
-              f"joint 5 at 117 deg (limit 120.3, margin 5): {len(un)} unreachable")
+              f"joint 5 at 125 deg (limit +128, margin 5): {len(un)} unreachable")
 
         def branch_flip(pose):
             q = fake_joints(pose)
@@ -704,14 +865,39 @@ def main():
             check(False, "ExecuteAction is not reachable through the reads list")
         except armlib.ArmError:
             check(True, "ExecuteAction is not reachable through the reads list")
-        check(real.reach_joints(Q, lim) == ("end", None), "reach_joints() runs to ACTION_END")
+        check(real.reach_joints(Q, lim) == ("end", None) and real.last_move_s is not None,
+              "reach_joints() runs to ACTION_END and records its duration")
         act = stub.executed[-1]
         c = act.reach_joint_angles
         check(act.WhichOneof("action_parameters") == "reach_joint_angles" and
               [(a.joint_identifier, a.value) for a in c.joint_angles.joint_angles] == list(enumerate(Q))
-              and c.constraint.type == armlib.Base_pb2.JOINT_CONSTRAINT_SPEED
-              and c.constraint.value == lim["max_rotation_dps"],
-              "the action sent: reach_joint_angles, six joints, speed constraint max_rotation_dps")
+              and not c.HasField("constraint"),
+              "the action sent by default: reach_joint_angles, six joints, no constraint (Kinova's form)")
+        check(real.reach_joints(Q, lim, 7.5) == ("end", None) and
+              stub.executed[-1].reach_joint_angles.constraint.type
+              == armlib.Base_pb2.JOINT_CONSTRAINT_SPEED and
+              stub.executed[-1].reach_joint_angles.constraint.value == 7.5,
+              "reach_joints(dps=7.5): JOINT_CONSTRAINT_SPEED 7.5")
+        sent = len(stub.executed)
+        try:
+            real.reach_joints(Q, lim, armlib.ROTATION_CEILING_DPS + 1)
+            check(False, "reach_joints() refuses a constraint above the ceiling")
+        except armlib.ArmError:
+            check(len(stub.executed) == sent, "reach_joints() refuses a constraint above the ceiling")
+        stub.abort = True
+        result, reason = real.reach_joints(Q, lim, 10.0)
+        stub.abort = False
+        check(result == "abort" and reason.startswith("METHOD_FAILED;")
+              and "ACTION_START, ACTION_ABORT(METHOD_FAILED) [JOINT_SPEED_LIMIT_REACHED joint_index 2"
+              in reason and "TRAJECTORY_ERROR_TYPE_INVALID_JOINT_SPEED" in reason
+              and "max 1 'fake'" in reason,
+              f"abort reason: sub-code, every notification, trajectory error report ({reason})")
+        check(real.last_abort and "notification 2 of 2" in real.last_abort
+              and "abort_details: METHOD_FAILED" in real.last_abort
+              and "JOINT_CONSTRAINT_SPEED" in real.last_abort,
+              "Arm.last_abort: the action sent and each notification in full")
+        real.reach_joints(Q, lim)
+        check(real.last_abort is None, "last_abort is cleared by the next action")
         check(real.reach_pose(tuple(P0), lim) == ("end", None) and
               stub.executed[-1].WhichOneof("action_parameters") == "reach_pose",
               "reach_pose() still runs through the same path")
@@ -733,38 +919,70 @@ def main():
 
         now = fake_joints(P0)
 
-        def joint_refused(pose_now, target, limits=lim):
+        def joint_refused(pose_now, target, limits=lim, **kw):
             arm = FakeArm(pose_now)
             try:
-                armlib.check_joint_move(arm, limits, tuple(pose_now), now, target, show=False)
+                armlib.check_joint_move(arm, limits, tuple(pose_now), now, target, show=False, **kw)
                 return ""
             except armlib.ArmError as e:
                 return str(e)
 
         q2, fk, _ = armlib.check_joint_move(FakeArm(P0), lim, tuple(P0), now, now, show=False)
-        check(np.allclose(fk, P0, atol=1e-9) and all(0 <= v < 360 for v in q2),
-              "check_joint_move(): FK of the target, angles in [0, 360)")
+        cont = armlib.continuous_joints(lim)
+        check(np.allclose(fk, P0, atol=1e-9) and cont == {1, 4, 6}
+              and all(0 <= v < 360 for i, v in enumerate(q2, 1) if i not in cont)
+              and all(q2[i - 1] == now[i - 1] for i in cont),
+              "check_joint_move(): FK of the target; limited joints in [0, 360), continuous "
+              "ones from the measured angle")
+        here = [350.0, 0, 0, 350.0, 60, 10.0]
+        fixed = FakeArm(P0)
+        fixed.forward_kinematics = lambda q: tuple(P0)       # the fake FK reads joints 4, 6 as x, z
+        q3 = armlib.check_joint_move(fixed, lim, tuple(P0), here,
+                                     [10.0, 0, 0, 160.0, 60, 200.0], show=False)[0]
+        check(q3[0] == 370.0 and q3[3] == 520.0 and q3[5] == -160.0,
+              f"continuous joints are sent the short way: 350->10 as {q3[0]:g}, 350->160 as "
+              f"{q3[3]:g}, 10->200 as {q3[5]:g}")
         out = list(now)
         out[3] = lim["x_max"] * 100 + 5
         check("target: x" in joint_refused(P0, out), "a joint target whose FK is outside the box is refused")
         check("current pose" in joint_refused((5.0,) + tuple(P0[1:]), now),
               "a joint move from outside the box is refused")
         past = list(now)
-        past[1] = 130.0
+        past[1] = 140.0
         check("joint 2" in joint_refused(P0, past), "a joint past its limit is refused, by name")
+        warned = []
+        armlib.check_joint_move(FakeArm(P0), dict(lim, joint_limits_deg=UNCONFIRMED), tuple(P0),
+                                now, past, show=False, warn=warned.append)
+        check(len(warned) == 1 and "2 at +140.0" in warned[0],
+              "the same target with null limits is passed, with a warning naming the angle")
+        def joint5_at_125(pose):
+            q = fake_joints(pose)
+            q[4] = 125.0
+            return q
+
+        nul = dict(lim, joint_limits_deg=UNCONFIRMED)
+        why, _ = ac.ik_check(FakeArm(P0, ik=joint5_at_125), nul, P0, P0, joint5_at_125(P0))
+        guide, _ = ac.ik_check(FakeArm(P0, ik=joint5_at_125), lim, P0, P0, joint5_at_125(P0))
+        check(why is None and "joint 5" in str(guide),
+              f"the IK path check refuses joint 5 at 125 only on a confirmed limit: {guide}")
         check("6-joint" in joint_refused(P0, now[:5]), "the wrong number of joints is refused")
         far = list(now)
         far[0] = armlib.wrap180(far[0] + 170)
-        check("move_timeout_s" in joint_refused(P0, far, dict(lim, move_timeout_s=5.0)),
-              "a joint move longer than move_timeout_s is refused")
+        check("move_timeout_s" in joint_refused(P0, far, dict(lim, move_timeout_s=5.0), rate_dps=10.0)
+              and "move_timeout_s" in joint_refused(P0, far, dict(lim, move_timeout_s=5.0), dps=10.0),
+              "a joint move longer than move_timeout_s is refused, at a measured rate or a constraint")
+        check(not joint_refused(P0, far, dict(lim, move_timeout_s=5.0)),
+              "with neither, no estimate: the same move is not refused on time")
         wrapped = list(now)
         wrapped[0] += 360.0
-        check(not joint_refused(P0, wrapped), "the time estimate wraps: +360 deg is no move")
+        check(not joint_refused(P0, wrapped, dict(lim, move_timeout_s=5.0), rate_dps=1.0),
+              "the time estimate wraps: +360 deg is no move")
 
         class Args:
             ip, port, username, password = "x", 0, "u", "p"
             yes = force = False
             joints = now
+            speed_constraint = None
 
         def cli(fn, arm, **kw):
             armlib._connect = lambda a: arm
@@ -786,6 +1004,27 @@ def main():
         text = cli(armlib.joints, a, joints=moved, yes=True)
         check(len(a.joint_calls) == 1 and "result     END" in text and "joints     largest error" in text,
               "arm.py joints --yes sends one move and reports the error")
+        check(a.joint_speeds == [None] and "no speed constraint" in text
+              and "duration measured after the move" in text and "sent as    id 0:" in text,
+              "arm.py joints sends no constraint by default and says so")
+        big = list(now)
+        big[0] += 90.0
+        text = cli(armlib.joints, a, joints=big, yes=True)
+        check(len(a.joint_calls) == 2, "no size limit on an unconstrained move (90 deg sent)")
+        text = cli(armlib.joints, a, joints=now, speed_constraint=5.0)
+        check("JOINT_CONSTRAINT_SPEED 5 deg/s" in text and "about 18.0 s at 5.0 deg/s" in text,
+              f"--speed-constraint 5: the plan uses it for the time ({text.splitlines()[4][:90]})")
+        try:
+            cli(armlib.joints, a, joints=now, speed_constraint=1.0, yes=True)
+            check(False, "--speed-constraint: the timeout check applies")
+        except armlib.ArmError as e:
+            check("move_timeout_s" in str(e) and len(a.joint_calls) == 2,
+                  "--speed-constraint: the timeout check applies, nothing sent")
+        try:
+            cli(armlib.joints, a, joints=moved, speed_constraint=0.0)
+            check(False, "--speed-constraint 0 is refused")
+        except armlib.ArmError as e:
+            check("outside (0," in str(e), "--speed-constraint 0 is refused")
 
         # ------------------------------------------------ saved poses
         print("\nsaved poses")
@@ -909,10 +1148,26 @@ def main():
         check(len(order) == 27 and len(set(order)) == 27, "serpentine order visits all 27 once")
         check(all(sum(abs(p - q) for p, q in zip(a1, b1)) == 1 for a1, b1 in zip(order, order[1:])),
               "each step is one grid step, so no long moves")
-        wrap = ac.unwrapped([[350.0, 0, 0, 0, 0, 0], [10.0, 0, 0, 0, 0, 0]])
-        check(np.allclose(wrap[1], [370, 0, 0, 0, 0, 0]) and
-              ac.joint_spread([[350.0] * 6, [10.0] * 6]) == (20.0, 1),
-              "interpolation goes the short way across 0/360")
+        real = armlib.load_poses(os.path.join(FIXTURES, "arm_poses_20261102.yaml"))
+        cp = {ac.TAUGHT[n]: tuple(real[n]["pose"]) for n in ac.TAUGHT}
+        errs = [max(abs(armlib.wrap180(a - b)) for a, b in
+                    zip(ac.trilinear_pose(cp, *c), cp[c])) for c in cp]
+        check(max(errs) < 1e-9, f"trilinear_pose(): reproduces the eight taught poses of "
+              f"2026-11-02 at the corners (worst {max(errs):.1e})")
+        mid = ac.trilinear_pose({c: (0, 0, 0, 0, 0, 170.0 if c[0] else -170.0) for c in cp}, 0.5, 0, 0)
+        check(abs(abs(mid[5]) - 180) < 1e-9, "rotation blends the short way: -170 and +170 meet at 180")
+        q1 = [0, 0, -45.0, 0, 60.0, 0]
+        q2 = [0, 0, 135.0, 0, 60.0, 0]                       # joint 3 half a turn over
+        vecs = [list(q1), [5, 0, -40, 0, 60, 0], list(q2), [5, 0, 140, 0, 60, 0], [10, 0, -35, 0, 60, 0]]
+        fams = ac.families(vecs)
+        seq = [(f, vecs[m]) for f, members in enumerate(fams, 1) for m in members]
+        check(fams == [[0, 1, 4], [2, 3]] and len(ac.hub_legs(seq)) == 1,
+              f"two synthetic families: {fams}, ordered family by family, exactly one hub transition")
+        check(ac.joint_gap([350.0] * 6, [10.0] * 6) == 20.0, "the joint gap wraps across 0/360")
+        wrist = [list(q1), [180.0, 0, -45, 170.0, 60, 180.0]]     # joints 1, 4, 6 half a turn over
+        check(ac.families(wrist) == [[0], [1]] and ac.families(wrist, lim) == [[0, 1]]
+              and ac.joint_gap(*wrist, lim) == 0.0,
+              "continuous joints 1, 4, 6 never split a family; 2, 3, 5 do")
 
         def corner_pose(name):
             lr, hl, nf = ac.TAUGHT[name]
@@ -936,7 +1191,7 @@ def main():
                 a.unsettled = 3
                 time.sleep(0.1)
                 if n == "near_left_high" and tries[n] == 1:
-                    a.joints_override = fake_joints(a.pose)[:4] + [115.0, 0.0]
+                    a.joints_override = fake_joints(a.pose)[:4] + [120.0, 0.0]
                 return ""
 
             busy = {"n": 0}
@@ -957,8 +1212,8 @@ def main():
             check("isn't free" in text and a.stops >= 8, "teach stops the arm each time, and a held arm is refused")
             check(prompts[0] == "jog to near_left_high, close the Web App, press Enter (q to quit) ",
                   "the prompt")
-            check("far/near   square size ratio" in text and "largest joint-space spread" in text,
-                  "teach ends with the ratio and the spread: " +
+            check("far/near   square size ratio" in text and "families   1 among" in text,
+                  "teach ends with the ratio and the families: " +
                   next(l for l in text.splitlines() if l.startswith("far/near")))
             try:
                 ac.run_teach(connect, lim, st, ask=jog, log=quiet, poses_path=taught_file)
@@ -971,13 +1226,15 @@ def main():
             cap.halt = True
             cap.join()
 
-        def taught_session(arm, yes, keys=None, path=taught_file, limits=lim, grid=scfg, log=quiet):
+        def taught_session(arm, yes, keys=None, path=taught_file, limits=lim, grid=scfg, log=quiet,
+                           speed_constraint=None):
             cp = Capture(arm, st, dry=False, session_path=sess)
             cp.start()
             time.sleep(0.1)
             try:
                 return ac.run_session(arm, limits, st, yes, gains_path=gains, scfg=grid, acfg=acfg,
-                                      keys=keys, log=log, poses_path=path), None
+                                      keys=keys, log=log, poses_path=path,
+                                      speed_constraint=speed_constraint), None
             except (ac.ProbeError, armlib.ArmError) as e:
                 return None, e
             finally:
@@ -1001,10 +1258,24 @@ def main():
               "joints_deg" in r["taught_poses"]["far_left_low"] and
               "pose" in r["taught_poses"]["far_left_low"],
               f"session: ended '{res and res['end']}'; the record has the mode and the taught poses")
-        check(moves and all(c["joint_speed_dps"] <= lim["viewpoint_rotation_dps"] for c in moves) and
-              len(a.joint_calls) >= len(moves),
-              f"viewpoint moves are joint moves within the limit, {len(moves)} of them")
+        check(moves and all(c["joint_speed_dps"] is None for c in moves) and
+              all(v is None for v in a.joint_speeds) and len(a.joint_calls) >= len(moves) and
+              any("measured_joint_dps" in c for c in moves),
+              f"viewpoint moves are joint moves with no constraint and a measured rate, "
+              f"{len(moves)} of them")
         check(res is not None and res["returned_to_p0"], "it returns to its start by a joint move")
+        check(r["families"]["ik"]["corners_used"] == 8 and
+              sum(1 for v in r["variants"] if v["taught"] and v["ik_seed"] == "taught") == 8 and
+              all("ik_failed" in v for v in r["variants"]),
+              "the record keeps the IK summary, and each viewpoint's taught corner and failed seeds")
+        clear()
+        a = FakeArm(ac.compose(P0, {"theta_x": 4}))
+        res, err = taught_session(a, True, keys=QAfter(100), speed_constraint=12.0)
+        r = record()
+        check(err is None and a.joint_calls and all(v == 12.0 for v in a.joint_speeds) and
+              r["config"]["joint_speed_constraint_dps"] == 12.0,
+              f"session --speed-constraint 12: every joint move carries it ({len(a.joint_calls)}), "
+              "and the record says so")
         check(a.calls and res["accepted"] > 0, f"cell pans ran between: {len(a.calls)} Cartesian moves, "
               f"{res and res['accepted']} accepted")
         clear()
@@ -1013,22 +1284,206 @@ def main():
         res, err = taught_session(a, True, keys=QAfter(60))
         check(err is None and res is not None and res["aborted"] == 1,
               "an aborted viewpoint is logged, and the session goes on")
+
+        # Visit order on the simulation: mid, near, far.
+        plain = lambda pose, guess: fake_joints(pose)
+        vps_sim, _ = ac.build_taught(FakeArm(P0, seeded_ik=plain), ac.taught_poses(taught_file), P0,
+                                     scfg, acfg, lim)
+        sim_bands = [v["capture_band"] for v in vps_sim if not v["skip"]]
+        sim_rank = [ac.BAND_ORDER.index(b) for b in sim_bands]
+        check(sim_rank == sorted(sim_rank) and len(set(sim_bands)) >= 2,
+              "simulation plan visits " + " -> ".join(
+                  f"{b} {sim_bands.count(b)}" for b in ac.BAND_ORDER if b in sim_bands))
+
+        # 17:52 replayed: the board stays out of view (87/88, as at entry 51)
+        # after the first cell pan until the next joint move.
+        class HideAfter(FakeArm):
+            def reach_pose(self, target, lim):
+                r = super().reach_pose(target, lim)
+                if len(self.calls) == 1:
+                    self.hidden = True
+                return r
+
+        clear()
+        a = HideAfter(P0, seeded_ik=plain)
+        lines = []
+        res, err = taught_session(a, True, keys=QAfter(1500), log=lines.append)
+        r = record()
+        ab = [e for e in r["poses"] if e["kind"] == "abandon"]
+        i = ab[0]["i"] if ab else -1
+        prev_e = r["poses"][i - 1] if i > 0 else {}
+        after = r["poses"][i + 1:] if i >= 0 else []
+        check(err is None and len(ab) == 1 and ab[0]["outcome"] == "abandoned: board not in view"
+              and ab[0]["note"].startswith("board not back in view after returning from a skipped target")
+              and prev_e.get("outcome") == "skipped: board left the view"
+              and len(prev_e.get("commanded", [])) == 3 and "total_s" in prev_e["times"],
+              f"board not back after the return: the pan is finished as skipped (target, halfway, "
+              f"back) and the viewpoint abandoned ({ab[0]['note'] if ab else 'no abandon entry'})")
+        nxt = after[0] if after else {}
+        check(nxt.get("kind") in ("hub", "variant") and "joints_deg" in nxt["commanded"][0]
+              and any(e["kind"] == "variant" for e in after)
+              and any("viewpoint abandoned" in l for l in lines),
+              f"logged, then a joint move to the next viewpoint ({nxt.get('kind')} "
+              f"{nxt.get('variant')}); {sum(e['kind'] == 'variant' for e in after)} viewpoints after it")
+        check(res is not None and "board not back" not in res["end"] and res["abandoned"] == 1
+              and res["returned_to_p0"],
+              f"the session doesn't end there: ended '{res and res['end']}', back at P0, "
+              f"summary abandoned {res and res['abandoned']}")
+
+        # Reach edge: every pan from the first viewpoint fails the IK path check.
+        vp0 = next(v for v in vps_sim if not v["skip"])
+
+        def edge_ik(pose, guess):
+            if math.dist(pose[:3], vp0["pose"][:3]) < 1e-3 and \
+                    np.linalg.norm(ac.relative(vp0["pose"], pose)["rotvec_deg"]) > 0.5:
+                raise armlib.IKFailed("no IK solution (fake, reach edge)")
+            return fake_joints(pose)
+
+        clear()
+        a = FakeArm(P0, seeded_ik=edge_ik)
+        lines = []
+        res, err = taught_session(a, True, keys=QAfter(1500), log=lines.append)
+        r = record()
+        at0 = [e for e in r["poses"] if e["variant"] == vp0["name"]]
+        cells0 = [e for e in at0 if e["kind"] == "cell"]
+        edge_e = [e for e in at0 if e["kind"] == "abandon"]
+        check(err is None and [e["outcome"] for e in cells0] == ["unreachable"] * ac.REACH_EDGE_PANS
+              and len(edge_e) == 1 and edge_e[0]["outcome"] == "abandoned: viewpoint at reach edge"
+              and any(f"{vp0['name']}: viewpoint at reach edge" in l for l in lines),
+              f"reach edge at {vp0['name']}: {len(cells0)} pans tried, then '{edge_e[0]['note'] if edge_e else '?'}'")
+        later_v = [e for e in r["poses"] if e["kind"] == "variant" and e["variant"] != vp0["name"]]
+        check(res is not None and res["reach_edge"] == 1 and later_v and res["returned_to_p0"]
+              and a.calls,
+              f"then on to the next viewpoint: {len(later_v)} more visited, ended '{res and res['end']}'")
         tight = dict(lim, x_max=P0[0])
         clear()
         a = FakeArm(P0)
         lines = []
         taught_session(a, False, limits=tight, log=lines.append)
         check(sum("SKIP" in l for l in lines) > 0 and sum(l.startswith("  lr") for l in lines) == 27,
-              "viewpoints outside the box by FK are skipped: " + next(l for l in lines if l.startswith("checks")))
+              "viewpoints outside the box are skipped: " + next(l for l in lines if l.startswith("checks")))
         res, err = taught_session(FakeArm(P0), False, path=poses)
         check("taught poses missing" in str(err), "a missing taught pose is refused, by name")
+
+        def near_limit(pose):
+            q = fake_joints(pose)
+            if pose[1] < P0[1] - 0.01:                       # the right-hand column
+                q[4] = 120.0                                 # 8 deg inside joint 5's +128
+            return q
+
+        clear()
+        lines = []
+        taught_session(FakeArm(P0, ik=near_limit), False, log=lines.append)
+        un = [l for l in lines if l.startswith("  lr2") and "SKIP: unreachable: joint 5" in l]
+        corner_ok = [l for l in lines if re.match(r"  lr2_hl[02]_nf[02] ", l) and "SKIP" not in l]
+        check(len(un) == 5 and "need 10" in un[0] and len(corner_ok) == 4,
+              f"a viewpoint whose IK lands within 10 deg of a limit is skipped: {len(un)}/5 in the "
+              f"right-hand column; its 4 corners keep their taught joints ({len(corner_ok)})")
+
+        # Two families: the right-hand corners taught with joint 3 half a turn
+        # over (the fake FK can't tell), and an IK that keeps the seed's side.
+        two = os.path.join(d, "two_families.yaml")
+        for name, p in armlib.load_poses(taught_file).items():
+            q = list(p["joints_deg"])
+            if ac.TAUGHT[name][0]:
+                q[2] += 180.0
+            armlib.store_pose(name, q, p["pose"], True, p["square_px"], two)
+
+        def keep_side(pose, guess):
+            q = fake_joints(pose)
+            if abs(armlib.wrap180(guess[2] - q[2])) > 90:
+                q[2] += 180.0
+            return q
+
+        clear()
+        lines = []
+        res, err = taught_session(FakeArm(P0, seeded_ik=keep_side), False, path=two, log=lines.append)
+        rep_line = next((l for l in lines if l.startswith("families")), "")
+        check("families   2: 1 18 viewpoints, 2 9 viewpoints" in rep_line and
+              "3 between viewpoints" in rep_line and "no 'hub' pose" in str(err),
+              f"two families over two bands, no hub: refused after the report: {rep_line}")
+        armlib.store_pose("hub", fake_joints(P0), P0, path=two)
+        clear()
+        a = FakeArm(P0, seeded_ik=keep_side)
+        res, err = taught_session(a, True, keys=QAfter(4000), path=two)
+        r = record()
+        hubs = [e for e in r["poses"] if e["kind"] == "hub"]
+        vinfo = {v["name"]: (v["capture_band"], v["family"]) for v in r["variants"]}
+        visited = [vinfo[e["variant"]] for e in r["poses"] if e["kind"] == "variant"]
+        by_band = {b: [f for vb, f in visited if vb == b] for b in ac.BAND_ORDER}
+        check(err is None and hubs and all(e["outcome"] == "reached" for e in hubs)
+              and [ac.BAND_ORDER.index(vb) for vb, _ in visited] ==
+              sorted(ac.BAND_ORDER.index(vb) for vb, _ in visited)
+              and all(f == sorted(f) and len(set(f)) == 2 for f in by_band.values() if f)
+              and "family 1 -> 2" in hubs[0]["note"]
+              and r["families"]["hub_legs"] == {"between": 3, "start": 0, "return": 0}
+              and len(hubs) == 3,
+              f"with a hub, starting at it: per band family 1 then 2 (mid, then far), one hub move per "
+              f"family change, none to start or "
+              f"return ({len(hubs)} hub moves: "
+              + ", ".join(e["note"] for e in hubs) + ")")
+        # ------------------------------------------------ corners take taught joints
+        tp = ac.taught_poses(taught_file)
+        taught_q = [list(p["joints_deg"]) for p in tp.values()]
+        asked = []
+
+        def picky_ik(pose, guess):
+            asked.append(tuple(pose))
+            if any(np.allclose(pose, p["pose"], atol=1e-9) for p in tp.values()):
+                raise armlib.IKFailed("no IK solution (first convergence of the IK has failed)")
+            name = next(v for v in names if np.allclose(v[1], pose, atol=1e-9))[0]
+            if name == "lr1_hl0_nf0" or (name == "lr1_hl1_nf1" and
+                                         any(np.allclose(guess, q) for q in taught_q)):
+                raise armlib.IKFailed(f"no IK solution (fake, {name})")
+            return fake_joints(pose)
+
+        n3 = [scfg[k] for k in ac.GRID_KEYS]
+        corners3 = {ac.TAUGHT[m]: tuple(p["pose"]) for m, p in tp.items()}
+        names = [(f"lr{i}_hl{j}_nf{k}",
+                  ac.trilinear_pose(corners3, i / (n3[0] - 1), j / (n3[1] - 1), k / (n3[2] - 1)))
+                 for i, j, k in ac.serpentine(*n3)]
+        vps, rep = ac.build_taught(FakeArm(P0, seeded_ik=picky_ik), tp, P0, scfg, acfg,
+                                   dict(lim, x_min=-9, x_max=9, y_min=-9, y_max=9, z_min=-9, z_max=9))
+        by = {v["name"]: v for v in vps}
+        corner_vps = [v for v in vps if v["taught"]]
+        check(len(corner_vps) == 8 and all(v["ik_seed"] == "taught" and not v["skip"] and
+              v["joints_deg"] == list(tp[v["taught"]]["joints_deg"]) and
+              tuple(v["pose"]) == tuple(tp[v["taught"]]["pose"]) for v in corner_vps) and
+              not any(np.allclose(q, p["pose"], atol=1e-9) for q in asked for p in tp.values()),
+              "every grid corner uses its taught joints and measured pose; IK is never asked for one")
+        ik = rep["ik"]
+        others = len(vps) - 8
+        check(ik["corners"] == ik["corners_used"] == 8 and ik["others"] == others and
+              ik["failed"] == 1 and ik["solved_previous_seed"] == 1 and
+              ik["solved_nearest_seed"] == others - 2 and
+              by["lr1_hl0_nf0"]["skip"].startswith("unreachable: seeded ") and
+              [f["seed"] for f in by["lr1_hl1_nf1"]["ik_failed"]][0] in ac.TAUGHT and
+              by["lr1_hl1_nf1"]["ik_seed"] == "previous" and
+              {f["name"] for f in ik["failures"]} == {"lr1_hl0_nf0", "lr1_hl1_nf1"} and
+              len(ik["failures"]) == 3,
+              f"IK summary: {ik['failed']} failed with every seed, {ik['solved_previous_seed']} by the "
+              f"previous seed, {ik['solved_nearest_seed']} by the nearest; each failed attempt named")
+        lines = []
+        taught_session(FakeArm(P0, seeded_ik=picky_ik), False, log=lines.append)
+        ikl = next((l for l in lines if l.startswith("ik ")), "")
+        check("8/8 corners use their taught joints" in ikl and "1 failed with every seed" in ikl
+              and sum(l.startswith("  IK failed  lr1_hl0_nf0") for l in lines) == 2,
+              f"the dry run prints the IK summary and each failure: {ikl}")
+
         q_far = list(now)
         q_far[3] += 40.0                 # 0.40 m of x by fake_fk
         q_far[0] += 16.0
-        dps = armlib.check_joint_move(FakeArm(ac.compose(P0, None, None)), dict(lim, x_max=1.0), tuple(P0),
-                                      now, q_far, show=False, viewpoint=True)[2]
-        check(abs(dps - 40.0 * lim["viewpoint_translation_mps"] / 0.40) < 1e-6,
-              f"a long tool move lowers the joint speed: {dps:.1f} deg/s for 0.15 m/s")
+        far_lim = dict(lim, x_max=1.0, move_timeout_s=10.0)
+        armlib.check_joint_move(FakeArm(ac.compose(P0, None, None)), far_lim, tuple(P0),
+                                now, q_far, show=False)
+        check(True, "unconstrained, no measured rate: no timeout estimate (40 deg in 10 s passes)")
+        try:
+            armlib.check_joint_move(FakeArm(ac.compose(P0, None, None)), far_lim, tuple(P0),
+                                    now, q_far, show=False, rate_dps=2.0)
+            check(False, "a measured rate of 2 deg/s refuses 40 deg against a 10 s timeout")
+        except armlib.ArmError as e:
+            check("move_timeout_s" in str(e),
+                  "a measured rate of 2 deg/s refuses 40 deg against a 10 s timeout")
     finally:
         for root, _, files in os.walk(d, topdown=False):
             for f in files:

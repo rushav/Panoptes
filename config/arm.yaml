@@ -1,6 +1,6 @@
 %YAML:1.0
 ---
-# Motion limits for python/arm.py move / goto (RUNBOOK §13). Every field is
+# Motion limits for python/arm.py and python/arm_capture.py (RUNBOOK §13). Every field is
 # required; arm.py refuses to move if one is missing or out of range. Units
 # are metres, degrees and seconds (not inches, unlike layout.yaml).
 #
@@ -19,20 +19,33 @@ y_max: 0.45
 z_min: 0.15
 z_max: 0.85
 
-# Speed constraint sent with every move (Kortex CartesianSpeed). arm.py
-# refuses values above 0.20 m/s and 30 deg/s regardless of this file. The
-# arm's own Cartesian limits are 0.5 m/s and 50 deg/s (Gen3 user guide).
+# Speed constraint sent with every Cartesian move (Kortex CartesianSpeed).
+# arm.py refuses values above 0.20 m/s and 30 deg/s regardless of this file.
+# The arm's own Cartesian limits are 0.5 m/s and 50 deg/s (Gen3 user guide).
+# Joint moves carry no speed constraint (the arm picks the speed) unless
+# --speed-constraint DEG_S is given; this file doesn't set one (FINDINGS §20).
 max_translation_mps: 0.05
 max_rotation_dps: 10.0
-
-# Viewpoint moves of a taught session: joint moves, faster than the moves above.
-# reach_joint_angles takes one joint speed, so each move's speed is
-# viewpoint_rotation_dps, lowered if needed so that the tool's straight-line
-# distance over the move's time stays under viewpoint_translation_mps. Same
-# ceilings as above.
-viewpoint_translation_mps: 0.15
-viewpoint_rotation_dps: 25.0
 
 # Wait this long for ACTION_END or ACTION_ABORT. On timeout arm.py sends
 # Base.Stop and exits non-zero.
 move_timeout_s: 30.0
+
+# Joint position limit of each actuator (1..6, the order status prints), deg,
+# on the angle wrapped to +-180: [low, high], "continuous" (turns without
+# limit), or null (unconfirmed: warns, never refuses). Every key is required.
+# A limit refuses a joint move's target outside it, a taught pose within
+# 10 deg of either end and an IK path sample within 5 deg. The joint-space
+# spread check is separate and always refuses.
+#
+# Source: the Web App, Safeties -> Actuators, "Joint Limit Low/High",
+# read 2026-11-02 (serial WO520851-2, firmware 2.8.0). Actuators 1, 4 and 6
+# show 0/0 there: disabled, so continuous. Kortex 2.6 can't read these
+# (FINDINGS §20); re-copy them if the Web App's values change. They are not
+# the user guide's symmetric +-128.9 / +-147.8 / +-120.3.
+joint_1_limit_deg: "continuous"
+joint_2_limit_deg: [ -129.0, 138.0 ]
+joint_3_limit_deg: [ -148.0, 152.0 ]
+joint_4_limit_deg: "continuous"
+joint_5_limit_deg: [ -120.0, 128.0 ]
+joint_6_limit_deg: "continuous"

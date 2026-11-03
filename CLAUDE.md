@@ -109,6 +109,11 @@ together, in the same change.**
     Python 3.12.** Install `python/requirements-arm.txt` with `--no-deps`
     (protobuf 3.20.3). protobuf 4.x refuses the wheel's generated code.
     `pip check` reporting the pin mismatch is expected. (§20)
+21. **Joint moves carry no speed constraint by default.** With
+    `JOINT_CONSTRAINT_SPEED` the arm validates the implied acceleration and
+    aborts a short move `METHOD_FAILED` (`INVALID_JOINT_ACCELERATION`); with
+    no constraint it picks a profile itself. `--speed-constraint DEG_S` is
+    opt-in. (§20)
 
 ## Keeping the docs current
 

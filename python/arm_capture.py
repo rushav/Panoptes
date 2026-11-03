@@ -2,7 +2,7 @@
 Arm + camera: the camera rides on the arm, the board stands on an easel.
 
   python arm_capture.py probe   --status-file PATH [--yes]
-  python arm_capture.py session --status-file PATH [--yes]
+  python arm_capture.py session --status-file PATH [--yes] [--speed-constraint DEG_S]
 
 PROBE: find how tool motions move the board in the image. Run with
 04_capture --auto-dry --status-file PATH, the board centred and fully in
@@ -31,7 +31,10 @@ and ARCHITECTURE §9.
 
 Every move goes through arm.check_move() (box, timeout estimate, servoing
 mode) and Arm.reach_pose(), and only with --yes; session --from-pose's first
-move goes through arm.check_joint_move() and Arm.reach_joints(). Without --yes both commands
+move goes through arm.check_joint_move() and Arm.reach_joints(). Joint moves
+(viewpoint, hub, return, --from-pose) carry no speed constraint unless
+session --speed-constraint DEG_S: the arm picks the speed (FINDINGS §20).
+Their time estimate is the session's measured joint rate. Without --yes both commands
 check their targets and print the plan. Neither moves to recover from an
 arm failure (abort, timeout): it stops and prints the arm.py goto command
 that returns to P0. The session does return to P0 itself on q, Ctrl-C, a
@@ -831,32 +834,49 @@ TAUGHT = {"near_left_high": (0, 0, 0), "near_right_high": (1, 0, 0),
           "far_left_low": (0, 1, 1), "far_right_low": (1, 1, 1)}
 TEACH_MARGIN_DEG = 10.0   # a taught pose stays this far inside each joint limit
 FAR_NEAR_RATIO_MAX = 0.6  # far square size / near square size should be under this
-MAX_SPREAD_DEG = 170.0    # taught angles nearer half a turn apart have no clear shortest way
+VIEWPOINT_MARGIN_DEG = 10.0  # a viewpoint's IK solution stays this far inside each joint limit
+FAMILY_DEG = 90.0         # limited joints further apart than this on one joint: another configuration
+POSE_DIST_M_PER_RAD = 0.5  # nearest taught pose: 1 rad of rotation counts as 0.5 m
+HUB = "hub"               # config/arm_poses.yaml entry the arm passes through between families
+BAND_ORDER = ("mid", "near", "far")   # taught viewpoints are visited band by band, in this order
 
 
-def joint_margin(joints):
-    """Reasons a joint is inside TEACH_MARGIN_DEG of its limit; empty if clear."""
-    why = []
-    for actuator, limit in armlib.JOINT_LIMITS_DEG.items():
-        a = armlib.wrap180(joints[actuator - 1])
-        if limit - abs(a) < TEACH_MARGIN_DEG:
-            why.append(f"joint {actuator} at {a:+.1f} deg is {limit - abs(a):.1f} deg from its "
-                       f"limit +-{limit:g}; need {TEACH_MARGIN_DEG:g}")
-    return why
+def joint_margin(lim, joints):
+    """(reasons a joint is inside TEACH_MARGIN_DEG of its confirmed limit,
+    warnings for unconfirmed limits); both empty if clear."""
+    return armlib.joint_limit_checks(lim, joints, TEACH_MARGIN_DEG)
 
 
-def unwrapped(vectors):
-    """Joint vectors in deg, each joint on the side of the first vector's that
-    makes the difference under half a turn, so interpolation takes the short way."""
-    base = np.array(vectors[0], dtype=float)
-    return [base + [armlib.wrap180(a - b) for a, b in zip(v, base)] for v in vectors]
+def joint_gap(a, b, lim=None):
+    """Largest wrapped difference over the joints, deg. With lim, over the
+    limited joints only: a continuous joint is moved the short way, so it
+    never needs the hub and never splits a family."""
+    skip = armlib.continuous_joints(lim) if lim else set()
+    return max(abs(armlib.wrap180(x - y)) for i, (x, y) in enumerate(zip(a, b), 1)
+               if i not in skip)
 
 
-def joint_spread(vectors):
-    """(largest max-min over the joints, deg; its actuator number)."""
-    q = np.array(unwrapped(vectors))
-    d = q.max(axis=0) - q.min(axis=0)
-    return float(d.max()), int(d.argmax()) + 1
+def families(vectors, lim=None):
+    """Index lists, one per configuration family. A vector joins the first
+    family with a member within FAMILY_DEG of it on every joint (with lim,
+    every limited joint); otherwise it starts a new one."""
+    out = []
+    for i, q in enumerate(vectors):
+        for fam in out:
+            if any(joint_gap(q, vectors[m], lim) <= FAMILY_DEG for m in fam):
+                fam.append(i)
+                break
+        else:
+            out.append([i])
+    return out
+
+
+def hub_legs(seq, lim=None):
+    """Indices k where the move from seq[k-1] to seq[k] goes through the hub:
+    seq is [(family, joints)], in visiting order; a hub leg is a change of
+    family or a joint gap (joint_gap(), with lim) over FAMILY_DEG."""
+    return [k for k in range(1, len(seq))
+            if seq[k][0] != seq[k - 1][0] or joint_gap(seq[k][1], seq[k - 1][1], lim) > FAMILY_DEG]
 
 
 def far_near_ratio(squares):
@@ -892,28 +912,129 @@ def taught_poses(path=None):
     return {n: poses[n] for n in TAUGHT}
 
 
-def build_taught(arm, poses, p0, scfg, acfg):
-    """The viewpoints: grid over the eight taught joint vectors, serpentine."""
-    spread, actuator = joint_spread([p["joints_deg"] for p in poses.values()])
-    if spread > MAX_SPREAD_DEG:
-        raise ProbeError(f"taught poses span {spread:.0f} deg on joint {actuator}: too near half "
-                         "a turn for a short way between them. Teach them closer.")
-    q = dict(zip(TAUGHT.values(), unwrapped([p["joints_deg"] for p in poses.values()])))
+def trilinear_pose(corners, u, v, w):
+    """corners {(lr, hl, nf): pose}; the pose at u, v, w in [0, 1]: blended
+    along lr, then hl, then nf, each step interpolate() (position linear,
+    rotation along the shortest arc, i.e. quaternion slerp)."""
+    lr = {(j, k): interpolate(corners[0, j, k], corners[1, j, k], u)
+          for j in (0, 1) for k in (0, 1)}
+    hl = {k: interpolate(lr[0, k], lr[1, k], v) for k in (0, 1)}
+    return interpolate(hl[0], hl[1], w)
+
+
+def pose_distance(a, b):
+    """Position distance, m, plus POSE_DIST_M_PER_RAD per radian of rotation."""
+    R = euler_to_R(*a[3:]).T @ euler_to_R(*b[3:])
+    return math.dist(a[:3], b[:3]) + POSE_DIST_M_PER_RAD * float(np.linalg.norm(cv2.Rodrigues(R)[0]))
+
+
+def build_taught(arm, poses, p0, scfg, acfg, lim):
+    """
+    The viewpoints: a grid over the eight taught Cartesian poses
+    (trilinear_pose()). A grid corner IS a taught pose: it takes that pose's
+    saved joints and measured pose, with no IK, because the arm was there
+    (ik_seed "taught"; the arm's IK has refused such poses, FINDINGS §20).
+    Every other viewpoint is solved with the arm's IK seeded with the joints
+    of the nearest taught pose, then with the previous viewpoint's joints;
+    each failed attempt is kept in its "ik_failed" as {"seed", "error"}.
+    Skipped: outside the box; no IK solution, or joints within
+    VIEWPOINT_MARGIN_DEG of a joint limit ("unreachable"); wrist singular.
+    The rest are grouped into families() by joints and ordered by capture
+    band (BAND_ORDER: mid, then near, then far), family by family within a
+    band, serpentine within each family. Returns (viewpoints, skipped ones
+    last; report {"families": [names...], "ik": ik_summary()}).
+    """
+    corners = {TAUGHT[n]: tuple(p["pose"]) for n, p in poses.items()}
+    corner_name = {TAUGHT[n]: n for n in poses}
     sq = {TAUGHT[n]: p["square_px"] for n, p in poses.items()}
     n = [scfg[k] for k in GRID_KEYS]
-    out = []
+    out, prev = [], None
     for i, j, k in serpentine(*n):
         u, v, w = i / (n[0] - 1), j / (n[1] - 1), k / (n[2] - 1)
-        joints = [float(a) for a in trilinear(q, u, v, w)]
-        pose = arm.forward_kinematics([a % 360.0 for a in joints])
-        square = float(trilinear(sq, u, v, w))
+        taught = (corner_name[(i // (n[0] - 1), j // (n[1] - 1), k // (n[2] - 1))]
+                  if all(x in (0, m - 1) for x, m in zip((i, j, k), n)) else None)
+        if taught:
+            pose = tuple(poses[taught]["pose"])
+            square = float(poses[taught]["square_px"])
+        else:
+            pose = trilinear_pose(corners, u, v, w)
+            square = float(trilinear(sq, u, v, w))
         band = capture_band(square, acfg)
         rel = relative(p0, pose)
-        out.append({"name": f"lr{i}_hl{j}_nf{k}", "grid": [i, j, k], "joints_deg": joints,
-                    "band": band, "depth": f"nf{k}", "t_m": rel["t_m"], "rot_deg": rel["rotvec_deg"],
-                    "pose": pose, "predicted_square_px": square, "capture_band": band,
-                    "skip": None})
-    return out
+        vp = {"name": f"lr{i}_hl{j}_nf{k}", "grid": [i, j, k], "joints_deg": None,
+              "family": None, "ik_seed": None, "band": band, "depth": f"nf{k}",
+              "t_m": rel["t_m"], "rot_deg": rel["rotvec_deg"], "pose": pose,
+              "predicted_square_px": square, "capture_band": band, "skip": None,
+              "taught": taught, "ik_failed": []}
+        out.append(vp)
+        why = armlib.outside_box(lim, pose)
+        if why:
+            vp["skip"] = "; ".join(why)
+            continue
+        if taught:
+            vp["joints_deg"] = list(poses[taught]["joints_deg"])
+            vp["ik_seed"] = "taught"
+        else:
+            nearest = min(poses, key=lambda m: pose_distance(pose, poses[m]["pose"]))
+            for seed, guess in ((nearest, poses[nearest]["joints_deg"]), ("previous", prev)):
+                if guess is None:
+                    continue
+                try:
+                    vp["joints_deg"] = arm.inverse_kinematics(pose, guess)
+                    vp["ik_seed"] = seed
+                    break
+                except armlib.IKFailed as e:
+                    vp["ik_failed"].append({"seed": seed, "error": str(e)})
+        if vp["joints_deg"] is None:
+            vp["skip"] = "unreachable: " + "; ".join(f"seeded {f['seed']}: {f['error']}"
+                                                     for f in vp["ik_failed"])
+            continue
+        prev = vp["joints_deg"]
+        refuse, _ = armlib.joint_limit_checks(lim, vp["joints_deg"], VIEWPOINT_MARGIN_DEG)
+        singular = armlib.wrist_singular(vp["joints_deg"])
+        if refuse:
+            vp["skip"] = "unreachable: " + "; ".join(refuse)
+        elif singular:
+            vp["skip"] = singular
+    ok = [vp for vp in out if not vp["skip"]]
+    fams = families([vp["joints_deg"] for vp in ok], lim)
+    for f, members in enumerate(fams, 1):
+        for m in members:
+            ok[m]["family"] = f
+    return visit_order(ok, fams) + [vp for vp in out if vp["skip"]], \
+        {"families": [[ok[m]["name"] for m in members] for members in fams],
+         "ik": ik_summary(out)}
+
+
+def visit_order(viewpoints, fams):
+    """viewpoints (each with "capture_band"), ordered band by band in
+    BAND_ORDER, and within a band family by family (fams: index lists, as
+    families() returns), each family keeping the order it has in viewpoints.
+    Mid first: those views are the easiest to reach and fill the most cells
+    (sessions of 2026-11-02, FINDINGS §20)."""
+    return [viewpoints[m] for band in BAND_ORDER for members in fams for m in members
+            if viewpoints[m]["capture_band"] == band]
+
+
+def ik_summary(viewpoints):
+    """How build_taught()'s viewpoints got their joints. Corners (taught
+    joints) and box-skipped ones are counted apart; the rest, by outcome:
+    solved with the nearest taught pose's seed, solved by the previous
+    viewpoint's seed after the nearest one failed, or failed with every seed
+    tried. "failures": every failed attempt, {"name", "seed", "error"}."""
+    corners = [v for v in viewpoints if v["taught"]]
+    rest = [v for v in viewpoints if not v["taught"]]
+    ran = [v for v in rest if v["joints_deg"] is not None or v["ik_failed"]]
+    return {
+        "corners": len(corners),
+        "corners_used": sum(1 for v in corners if v["ik_seed"] == "taught"),
+        "others": len(rest),
+        "others_outside_box": len(rest) - len(ran),
+        "solved_nearest_seed": sum(1 for v in ran if v["ik_seed"] not in (None, "previous")),
+        "solved_previous_seed": sum(1 for v in ran if v["ik_seed"] == "previous"),
+        "failed": sum(1 for v in ran if v["joints_deg"] is None),
+        "failures": [{"name": v["name"], **f} for v in ran for f in v["ik_failed"]],
+    }
 
 
 def run_teach(connect, lim, status_path, force=False, ask=input, log=print, poses_path=None):
@@ -951,10 +1072,12 @@ def run_teach(connect, lim, status_path, force=False, ask=input, log=print, pose
             except ProbeError as e:
                 log(f"REFUSED    {name}: {e}")
                 continue
-            why = joint_margin(q)
+            why, warnings = joint_margin(lim, q)
             if why:
                 log(f"REFUSED    {name}: " + "; ".join(why))
                 continue
+            for w in warnings:
+                log(f"WARNING    {name}: {w}")
             for w in armlib.outside_box(lim, pose):
                 log(f"WARNING    {name}: {w}; viewpoints out there will be skipped")
             singular = armlib.wrist_singular(q)
@@ -966,13 +1089,15 @@ def run_teach(connect, lim, status_path, force=False, ask=input, log=print, pose
             log(f"saved      {name}: square {r.square:.1f} px  {armlib.fmt_pose(pose)}")
             break
     ratio = far_near_ratio(squares)
-    spread, actuator = joint_spread(vectors)
+    fams = families(vectors, lim)
     log(f"\nfar/near   square size ratio {ratio:.2f} (want < {FAR_NEAR_RATIO_MAX:g})")
-    log(f"spread     largest joint-space spread {spread:.1f} deg, joint {actuator}")
+    log(f"families   {len(fams)} among the taught poses (limited joints over {FAMILY_DEG:g} deg apart): "
+        + "; ".join(", ".join(list(TAUGHT)[m] for m in f) for f in fams))
     if ratio >= FAR_NEAR_RATIO_MAX:
         log("WARNING    the near and far poses are too alike: teach them further apart")
-    if spread > MAX_SPREAD_DEG:
-        log(f"WARNING    a session refuses a spread over {MAX_SPREAD_DEG:g} deg")
+    if len(fams) > 1 and HUB not in armlib.load_poses(poses_path):
+        log(f"NOTE       a session goes through a '{HUB}' pose between families: jog to a "
+            f"board-centred, mid-range pose and run arm.py save-pose {HUB}")
     return True
 
 
@@ -1013,16 +1138,18 @@ def halfway(a, b):
 
 
 IK_SAMPLES = 4            # IK checked at 1/4, 2/4, 3/4 and the end of each move
-IK_JOINT_MARGIN_DEG = 5.0  # stay this far inside the guide's joint limits
+IK_JOINT_MARGIN_DEG = 5.0  # stay this far inside the confirmed joint limits (config/arm.yaml)
 IK_JUMP_DEG = 45.0        # a joint moving more than this between samples: branch change
 
 
-def ik_check(arm, start, target, joints_now):
+def ik_check(arm, lim, start, target, joints_now):
     """None if the arm's own IK finds a solution at IK_SAMPLES points along
     start -> target (each seeded with the previous solution, the first with
-    the measured joints), every one inside JOINT_LIMITS_DEG less the margin,
-    with no joint jumping IK_JUMP_DEG between samples. Otherwise the reason.
-    Returns (reason, final joint solution or None)."""
+    the measured joints), every one inside the confirmed joint limits in
+    lim less the margin, with no joint jumping IK_JUMP_DEG between samples.
+    Otherwise the reason. Unconfirmed limits are not checked here; the
+    session warns about them once, at the start. Returns (reason, final
+    joint solution or None)."""
     guess = list(joints_now)
     for k in range(1, IK_SAMPLES + 1):
         f = k / IK_SAMPLES
@@ -1030,11 +1157,9 @@ def ik_check(arm, start, target, joints_now):
             q = arm.inverse_kinematics(interpolate(start, target, f), guess)
         except armlib.IKFailed as e:
             return f"IK failed at {f:.0%} of the path ({e})", None
-        qw = [armlib.wrap180(v) for v in q]
-        for actuator, lim in armlib.JOINT_LIMITS_DEG.items():
-            if actuator <= len(qw) and abs(qw[actuator - 1]) > lim - IK_JOINT_MARGIN_DEG:
-                return (f"joint {actuator} at {qw[actuator - 1]:+.1f} deg at {f:.0%} of the path "
-                        f"(limit +-{lim:g}, margin {IK_JOINT_MARGIN_DEG:g})"), q
+        refuse, _ = armlib.joint_limit_checks(lim, q, IK_JOINT_MARGIN_DEG)
+        if refuse:
+            return f"{refuse[0]} at {f:.0%} of the path", q
         jumps = [abs(armlib.wrap180(a - b)) for a, b in zip(q, guess)]
         if max(jumps) > IK_JUMP_DEG:
             j = int(np.argmax(jumps))
@@ -1066,7 +1191,26 @@ class TargetAborted(Exception):
         self.reason = reason
 
 
+class ViewpointAbandoned(Exception):
+    """The board isn't in view where the session would pan from next (or the
+    way back there failed its checks): the rest of this viewpoint is given
+    up, and the session goes on with a joint move to the next one."""
+
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
+
+
 MAX_CONSECUTIVE_ABORTS = 3
+REACH_EDGE_PANS = 2       # this many first cell pans IK-unreachable: the viewpoint is at the reach edge
+
+
+def at_reach_edge(outcomes):
+    """True if the first REACH_EDGE_PANS cell pans tried from a viewpoint
+    (outcomes, in order) all failed the IK path check ("unreachable"); the
+    rest of its cells aren't tried."""
+    return len(outcomes) >= REACH_EDGE_PANS and all(
+        o == "unreachable" for o in outcomes[:REACH_EDGE_PANS])
 
 
 class _Keys:
@@ -1094,6 +1238,10 @@ class _Keys:
         return False
 
 
+# A joint move counts toward the session's measured joint rate only if some
+# joint changes at least this much; tinier moves are mostly start and stop.
+JOINT_RATE_MIN_DEG = 1.0
+
 # Where the time goes, per target entry (seconds): validating (ik_s), the arm
 # moving (move_s, ExecuteAction to ACTION_END), waiting for a full still
 # board (still_s), waiting for capture's decision (decide_s).
@@ -1119,8 +1267,10 @@ def timing_breakdown(entries, total_s, moves):
 
 
 class _Session:
-    def __init__(self, arm, lim, status_path, g, scfg, acfg, keys, log):
+    def __init__(self, arm, lim, status_path, g, scfg, acfg, keys, log, dps=None):
         self.arm, self.lim, self.path = arm, lim, status_path
+        self.dps = dps            # joint speed constraint, deg/s; None: none sent
+        self.joint_rates = []     # measured: largest joint change / move_s, per joint move
         self.g, self.scfg, self.acfg, self.keys, self.log = g, scfg, acfg, keys, log
         self.t0 = time.monotonic()
         self.entries = []
@@ -1129,6 +1279,7 @@ class _Session:
         self.last = None
         self.record = None
         self.left = ""            # live "targets left" text for the log line
+        self.hub, self.family = None, None   # taught: the hub pose; family of the last viewpoint
 
     def _time(self, e, key, since):
         e["times"][key] = round(e["times"].get(key, 0.0) + time.monotonic() - since, 3)
@@ -1201,7 +1352,7 @@ class _Session:
             return False
         t = time.monotonic()
         joints = [v for _, v in self.arm.measured_joints()]
-        why, q = ik_check(self.arm, current, target, joints)
+        why, q = ik_check(self.arm, self.lim, current, target, joints)
         self._time(e, "ik_s", t)
         cmd = {"abs": [round(v, 5) for v in target], "rel_p0": relative(self.p0, target),
                "joints_before_deg": [round(v, 2) for v in joints],
@@ -1268,16 +1419,63 @@ class _Session:
             json.dump(self.record, f, indent=1)
         os.replace(tmp, self.record_path)
 
+    # ---- the hub
+
+    def hub_if_needed(self, joints, family, what):
+        """Go through the hub first if this joint move changes family (from
+        the last viewpoint reached) or any joint by over FAMILY_DEG. True if
+        the move can go ahead; False (logged) if the hub move failed."""
+        now = [v for _, v in self.arm.measured_joints()]
+        gap = joint_gap(now, joints, self.lim)
+        changes = self.family is not None and family != self.family
+        at_hub = self.hub is not None and min(joint_gap(q, self.hub["joints_deg"])
+                                              for q in (now, joints)) <= POSE_REACHED_DEG
+        if at_hub or (not changes and gap <= FAMILY_DEG):
+            return True
+        e = self.new_entry("hub", what)
+        e["note"] = (f"family {self.family} -> {family}" if changes else
+                     f"a limited joint changes {gap:.0f} deg")
+        if self.hub is None:
+            e["outcome"] = "refused: no hub pose"
+            self.finish(e, None)
+            return False
+        self.family = None
+        try:
+            ok = self.move_joints(self.hub["joints_deg"], e, is_target=False)
+        except TargetAborted as ex:
+            self.aborts += 1
+            e["outcome"] = f"aborted: {ex.reason}"
+            self.finish(e, None)
+            if self.aborts >= MAX_CONSECUTIVE_ABORTS:
+                raise armlib.ArmError(f"{self.aborts} consecutive aborts; last: {ex.reason}")
+            return False
+        if ok:
+            e["outcome"] = "reached"
+        self.finish(e, None)
+        self.log(f"  hub before {what}: {e['note']}: {e['outcome']}")
+        return ok
+
     # ---- one target
 
+    def joint_rate_dps(self):
+        """Median measured joint rate of this session's joint moves (largest
+        joint change over ExecuteAction-to-ACTION_END time), deg/s; None
+        before the first. Short moves spend more of their time accelerating,
+        so this tends to overestimate a long move's time."""
+        return float(np.median(self.joint_rates)) if self.joint_rates else None
+
     def move_joints(self, joints, e, is_target=True):
-        """A joint move at the viewpoint speeds: check_joint_move(), then send.
-        False (entry marked refused) if it fails; otherwise as move()."""
+        """A joint move: check_joint_move(), then send, with self.dps as the
+        speed constraint (None: none). The timeout check uses the measured
+        rate of earlier joint moves. False (entry marked refused) if it
+        fails; otherwise as move()."""
         current = self.arm.measured_pose()
         now = [v for _, v in self.arm.measured_joints()]
         try:
-            q, target, dps = armlib.check_joint_move(self.arm, self.lim, current, now, joints,
-                                                     show=False, viewpoint=True)
+            q, target, dps = armlib.check_joint_move(
+                self.arm, self.lim, current, now, joints, show=False, dps=self.dps,
+                rate_dps=self.joint_rate_dps(),
+                warn=lambda w: e.setdefault("warnings", []).append(w.removeprefix("WARNING    ")))
         except armlib.ArmError as ex:
             e["outcome"] = "refused"
             e["note"] = str(ex).replace("REFUSED, nothing sent:\n  ", "")
@@ -1285,7 +1483,7 @@ class _Session:
         e.setdefault("commanded", []).append(
             {"abs": [round(v, 5) for v in target], "rel_p0": relative(self.p0, target),
              "joints_before_deg": [round(v, 2) for v in now],
-             "joints_deg": [round(v, 2) for v in q], "joint_speed_dps": round(dps, 2), "sent": True})
+             "joints_deg": [round(v, 2) for v in q], "joint_speed_dps": dps, "sent": True})
         self.moves += 1
         t = time.monotonic()
         try:
@@ -1294,6 +1492,11 @@ class _Session:
             result, reason = "abort", f"ExecuteAction refused: {ex}"
         finally:
             self._time(e, "move_s", t)
+        took = time.monotonic() - t
+        rot = max(abs(v) for v in armlib.joint_error(now, q))
+        if result == "end" and took > 0 and rot >= JOINT_RATE_MIN_DEG:
+            self.joint_rates.append(rot / took)
+            e["commanded"][-1]["measured_joint_dps"] = round(rot / took, 2)
         if result == "abort":
             raise TargetAborted(reason or "no reason given")
         if result != "end":
@@ -1329,7 +1532,8 @@ class _Session:
 
     def recover(self, here, variant, reason):
         """After an abort: stop at MAX_CONSECUTIVE_ABORTS, else return to the
-        last reached pose (aborts there count too)."""
+        last reached pose (aborts there count too). ViewpointAbandoned if the
+        way back fails its checks or the board isn't in view there."""
         while True:
             if self.aborts >= MAX_CONSECUTIVE_ABORTS:
                 raise armlib.ArmError(f"{self.aborts} consecutive aborts; last: {reason}")
@@ -1338,8 +1542,8 @@ class _Session:
             try:
                 if not self.move(here, e, is_target=False):
                     self.finish(e, None)
-                    raise armlib.ArmError(f"after an abort, the way back to the last reached "
-                                          f"pose failed its checks: {e['note']}")
+                    raise ViewpointAbandoned(f"after an abort, the way back to the last reached "
+                                             f"pose failed its checks: {e['note']}")
             except TargetAborted as ex:
                 self.aborts += 1
                 reason = ex.reason
@@ -1350,7 +1554,7 @@ class _Session:
             e["outcome"] = "reached" if res == "ok" else f"reached; board {res}"
             self.finish(e, s)
             if res != "ok":
-                raise SessionStop("board not in view at the last reached pose after an abort")
+                raise ViewpointAbandoned("board not in view at the last reached pose after an abort")
             return
 
     def _visit(self, e, target, here, aim, base, joints=None):
@@ -1395,13 +1599,18 @@ class _Session:
                 res, s = self.settle(self.live()["frame"], e)
                 target = mid
             if res != "ok":
-                e["outcome"] = "skipped: board left the view"
+                why = None
                 if self.move(here, e, is_target=False):
-                    back, _ = self.settle(self.live()["frame"], e)
+                    back, s = self.settle(self.live()["frame"], e)
                     if back != "ok":
-                        raise SessionStop("board not back in view after returning from a "
-                                          "skipped target")
+                        why = f"board not back in view after returning from a skipped target ({back})"
+                else:
+                    # move() put refused/unreachable in the outcome; the arm is still out here.
+                    why = f"the way back from a skipped target failed its checks: {e['note']}"
+                e["outcome"] = "skipped: board left the view"
                 self.finish(e, s)
+                if why:
+                    raise ViewpointAbandoned(why)
                 raise _Skip(here)
         if res == "timeout":
             e["outcome"] = "skipped: not still within %gs" % self.scfg["still_timeout_s"]
@@ -1468,12 +1677,18 @@ class _Session:
             self._aim_error(e, "correction", aim, s2)
             return s2, corrected
         e["note"] += "; correction lost the board, back to the last good pose"
-        self.move(target, e, is_target=False)
+        note = e["note"]
+        if not self.move(target, e, is_target=False):
+            why = f"the way back after a correction failed its checks: {e['note']}"
+            e["note"] = note
+            e["outcome"] = "skipped: board not back after a correction"
+            self.finish(e, s)
+            raise ViewpointAbandoned(why)
         res, s2 = self.settle(self.live()["frame"], e)
         if res != "ok":
             e["outcome"] = "skipped: board not back after a correction"
             self.finish(e, s2)
-            raise _Skip(here)
+            raise ViewpointAbandoned(f"board not back in view after a correction ({res})")
         return s2, target
 
 
@@ -1507,7 +1722,8 @@ def _off_p0(pose, g, scfg):
     return None
 
 
-def go_to_saved_pose(arm, lim, status_path, name, g, scfg, yes, log, poses_path=None):
+def go_to_saved_pose(arm, lim, status_path, name, g, scfg, yes, log, poses_path=None,
+                     dps=None):
     """
     session --from-pose: move in joint space to a saved pose. Returns True
     with the arm there and the board settled; False for a dry run that has to
@@ -1531,14 +1747,15 @@ def go_to_saved_pose(arm, lim, status_path, name, g, scfg, yes, log, poses_path=
         log(f"from pose  already at {name}")
         return True
     joints, target, _ = armlib.check_joint_move(arm, lim, arm.measured_pose(), now,
-                                             saved["joints_deg"], show=False)
+                                                saved["joints_deg"], show=False, dps=dps,
+                                                warn=log)
     log(f"from pose  {name}: joint-space move to {armlib.fmt_pose(target)}")
     if not yes:
         log("\ndry run: nothing sent, nothing written. The session plan needs the arm there: "
             f"run arm.py goto-pose {name} --yes, then this dry run again.")
         return False
     frame = read_status(status_path)["frame"]
-    result, reason = arm.reach_joints(joints, lim)
+    result, reason = arm.reach_joints(joints, lim, dps)
     if result != "end":
         raise armlib.ArmError(f"move to saved pose {name}: {result.upper()}" +
                               (f" ({reason})" if reason else "") +
@@ -1547,17 +1764,116 @@ def go_to_saved_pose(arm, lim, status_path, name, g, scfg, yes, log, poses_path=
     return True
 
 
+def _plan_hubs(variants, joints0, fam, lim, poses_path, log):
+    """Print the family report; return (hub saved pose or None, hub legs
+    {"between", "start", "return"}). Raises ProbeError if a hub leg is
+    planned and the HUB pose is missing, outside the box, or within
+    TEACH_MARGIN_DEG of a joint limit. Starting at the hub (every joint
+    within POSE_REACHED_DEG), the start and return legs need no hub move."""
+    ok = [v for v in variants if not v["skip"]]
+    hub = armlib.load_poses(poses_path).get(HUB)
+    at_hub = hub is not None and joint_gap(joints0, hub["joints_deg"]) <= POSE_REACHED_DEG
+    legs = {"between": len(hub_legs([(v["family"], v["joints_deg"]) for v in ok], lim)),
+            "start": int(bool(ok) and not at_hub
+                         and joint_gap(joints0, ok[0]["joints_deg"], lim) > FAMILY_DEG),
+            "return": int(bool(ok) and not at_hub
+                          and joint_gap(ok[-1]["joints_deg"], joints0, lim) > FAMILY_DEG)}
+    log(f"families   {len(fam['families'])}: " +
+        ", ".join(f"{f} {len(m)} viewpoints" for f, m in enumerate(fam["families"], 1)) +
+        f"; hub transitions planned {sum(legs.values())} ({legs['between']} between "
+        f"viewpoints, {legs['start']} start, {legs['return']} return)")
+    if not sum(legs.values()):
+        return None, legs
+    if hub is None:
+        raise ProbeError(f"not starting: the plan goes through the hub {sum(legs.values())} "
+                         f"time(s) and {os.path.relpath(poses_path or armlib.POSES)} has no "
+                         f"'{HUB}' pose. Jog to a board-centred, mid-range pose and run "
+                         f"arm.py save-pose {HUB}.")
+    why = armlib.outside_box(lim, hub["pose"]) + \
+        armlib.joint_limit_checks(lim, hub["joints_deg"], TEACH_MARGIN_DEG)[0]
+    if why:
+        raise ProbeError(f"not starting: the '{HUB}' pose is unusable: " + "; ".join(why))
+    log(f"hub        {armlib.fmt_joints(hub['joints_deg'])} (saved {hub['saved_utc']})")
+    return hub, legs
+
+
+def _viewpoint(ses, v, here, todo, band, seekers, futile, corners, grid, image, taught):
+    """One viewpoint of run_session(): reach it, then pan to its cells
+    (todo), nearest first. Returns the last pose reached. Stops panning at
+    the reach edge (at_reach_edge()). Raises ViewpointAbandoned (from
+    visit()) if the board isn't in view where it would pan from next."""
+    arm, lim, g, scfg = ses.arm, ses.lim, ses.g, ses.scfg
+    s, here = ses.visit("variant", v["name"], v["pose"], here,
+                        joints=v["joints_deg"] if taught else None)
+    if taught and joint_gap([q for _, q in arm.measured_joints()],
+                            v["joints_deg"], lim) <= FAMILY_DEG:
+        ses.family = v["family"]
+    if s is None:
+        return here
+    base_pose, base_c = here, s["board"]["centroid_px"]
+    bbox = s["board"]["bbox_px"]
+    cur = base_c
+    pans = []                 # outcome of each cell pan tried from this viewpoint
+    while True:
+        s = ses.live()
+        if s["complete"]:
+            raise SessionStop("complete")
+        empty = set(s["coverage"]["empty_cells"])
+        # Drop what was filled since: a cell no longer empty stays only
+        # as a bin seeker still wanted.
+        todo = {c for c in todo if c in empty or c in seekers(s, band)}
+        if not todo:
+            return here
+        if at_reach_edge(pans):
+            e = ses.new_entry("abandon", v["name"])
+            e["outcome"] = "abandoned: viewpoint at reach edge"
+            e["note"] = (f"first {REACH_EDGE_PANS} cell pans IK-unreachable; "
+                         f"{len(todo)} cells not tried: {sorted(todo)}")
+            ses.left = ""
+            ses.finish(e, None)
+            ses.log(f"  {v['name']}: viewpoint at reach edge ({e['note']}); on to the next viewpoint")
+            return here
+        centre = lambda c: ((_cell_rect(c, grid)[0] + _cell_rect(c, grid)[2]) / 2,
+                            (_cell_rect(c, grid)[1] + _cell_rect(c, grid)[3]) / 2)
+        cell = min(todo, key=lambda c: (math.dist(centre(c), cur), c))
+        todo.discard(cell)
+        ses.left = f"  [{len(todo)} left]"
+        aim = aim_for_cell(cell, grid, image, bbox, base_c, scfg["edge_margin_px"], g)
+        if aim is None:
+            e = ses.new_entry("cell", v["name"], cell)
+            e["outcome"] = "skipped: board can't reach this cell at this distance"
+            ses.finish(e, None)
+            continue
+        corner_seek = cell in corners and cell not in empty
+        n = len(ses.entries)
+        s, here2 = ses.visit("cell", v["name"], None, here,
+                             cell=cell, aim=aim, base=(base_pose, base_c))
+        pans.append(ses.entries[n]["outcome"])
+        if s is not None:
+            cur = s["board"]["centroid_px"]
+            seen = s["decision"]["bin"].split("/")[0]
+            if corner_seek and seen != band and band not in futile:
+                futile.add(band)
+                ses.log(f"  capture-{band}: a corner view was binned "
+                        f"{s['decision']['bin']}; no more corner seeking for it "
+                        "(off-axis views look closer)")
+        here = here2
+
+
 def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None,
-                keys=None, log=print, from_pose=None, poses_path=None, mode="poses"):
+                keys=None, log=print, from_pose=None, poses_path=None, mode="poses",
+                speed_constraint=None):
     """
     Closed-loop intrinsics session. Returns the summary dict (None for a dry
     run). Raises ProbeError on a refusal before any move, armlib.ArmError on a
     fatal arm failure (after which the arm is not moved again).
 
     mode "poses": viewpoints from the taught poses (build_taught), reached by
-    joint moves at the viewpoint speeds; the arm may start anywhere, board in
-    view or not. P0 is then only where it started, and it returns there by a
-    joint move. mode "orbit": the orbit (build_orbit), or the lateral variants
+    joint moves to their IK solutions; the arm may
+    start anywhere, board in view or not. P0 is then only where it started,
+    and it returns there by a joint move. A move that changes configuration
+    family or any joint by over FAMILY_DEG goes through the saved HUB pose
+    first; a plan that needs one refuses to start without it. mode "orbit": the orbit (build_orbit), or the lateral variants
     (build_variants) if lateral_variants is set, starting from the probe's pose.
 
     For each viewpoint, in order: go to its base pose, read
@@ -1567,11 +1883,19 @@ def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None
     checked and IK validated from the measured pose; a target that fails is
     logged and skipped. An ACTION_ABORT on a validated target is logged, the
     arm returns to the last reached pose, and the session goes on; the
-    MAX_CONSECUTIVE_ABORTS-th abort in a row ends it.
+    MAX_CONSECUTIVE_ABORTS-th abort in a row ends it. If the board isn't in
+    view where the session would pan from next (after a return from a
+    skipped target, a correction or an abort), the viewpoint is abandoned
+    (ViewpointAbandoned) and the session goes on to the next. A viewpoint
+    whose first REACH_EDGE_PANS cell pans are IK-unreachable is left at the
+    reach edge. Taught viewpoints are visited mid, near, far (visit_order()).
 
     from_pose (orbit only): the name of a saved pose to move to first
     (go_to_saved_pose). Refuses to start with the wrist singular; a taught
     session makes joint moves from the start, and skips viewpoints near it.
+
+    speed_constraint: deg/s sent as JOINT_CONSTRAINT_SPEED with every joint
+    move; None (default) sends none and the arm picks the speed.
     """
     taught = mode == "poses"
     if taught and from_pose:
@@ -1588,7 +1912,8 @@ def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None
         if s0["dry_run"] or not s0.get("session_path"):
             raise ProbeError("not starting:\n  04_capture is not in --auto (no session folder "
                              "to write into)")
-        if not go_to_saved_pose(arm, lim, status_path, from_pose, g, scfg, yes, log, poses_path):
+        if not go_to_saved_pose(arm, lim, status_path, from_pose, g, scfg, yes, log, poses_path,
+                                speed_constraint):
             return None
         s0 = read_status(status_path)
     why = check_ready(s0, dry_run=False, board=not taught)
@@ -1625,7 +1950,15 @@ def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None
         ratio = far_near_ratio({n: p["square_px"] for n, p in poses.items()})
         log(f"taught     {len(poses)} poses, far/near square size {ratio:.2f}; grid "
             f"{scfg['n_lr']} x {scfg['n_hl']} x {scfg['n_nf']}")
-        variants = build_taught(arm, poses, p0, scfg, acfg)
+        variants, fam = build_taught(arm, poses, p0, scfg, acfg, lim)
+        ik = fam["ik"]
+        log(f"ik         {ik['corners_used']}/{ik['corners']} corners use their taught joints "
+            f"(no IK); {ik['others']} others: {ik['others_outside_box']} outside the box, "
+            f"{ik['solved_nearest_seed']} solved seeded by the nearest taught pose, "
+            f"{ik['solved_previous_seed']} by the previous viewpoint after that failed, "
+            f"{ik['failed']} failed with every seed")
+        for f in ik["failures"]:
+            log(f"  IK failed  {f['name']:<14} seeded {f['seed']}: {f['error']}")
     else:
         sq0 = s0["board"]["square_px"]
         square_m = board_config.load()["square_mm"]["measured"] / 1000.0
@@ -1659,20 +1992,20 @@ def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None
             "fill. Use the bands line's thresholds, or change orbit_radii_m.")
 
     joints0 = [v for _, v in arm.measured_joints()]
+    for w in armlib.joint_limit_checks(lim, joints0)[1]:
+        log(f"WARNING    at P0, {w}; the IK path check and every joint move check only the "
+            "confirmed limits")
     log(f"\nplan: {len(variants)} {'viewpoints' if orbit or taught else 'variants'}; cells are chosen when each one starts "
         f"({len(s0['coverage']['empty_cells'])} empty now)")
     for v in variants:
         if taught:
-            why = armlib.outside_box(lim, v["pose"])
-            singular = armlib.wrist_singular(v["joints_deg"])
-            if why or singular:
-                v["skip"] = "; ".join(why + ([singular] if singular else []))
             log(f"  {v['name']:<26} {'SKIP: ' + v['skip'] if v['skip'] else armlib.fmt_pose(v['pose'])}"
-                f"  square {v['predicted_square_px']:.1f} px, capture-{v['capture_band']}")
+                f"  square {v['predicted_square_px']:.1f} px, capture-{v['capture_band']}"
+                + (f", family {v['family']}" if v["family"] else ""))
             continue
         try:
             v["pose"] = armlib.check_move(arm, lim, p0, v["pose"], show=False)
-            reason, _ = ik_check(arm, p0, v["pose"], joints0)
+            reason, _ = ik_check(arm, lim, p0, v["pose"], joints0)
             if reason:
                 v["skip"] = f"unreachable: {reason}"
         except armlib.ArmError as e:
@@ -1692,9 +2025,12 @@ def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None
         log(f"cap        {n_ok}/{len(variants)} viewpoints reachable ({n_ok / len(variants):.0%}): "
             + ", ".join(f"{r} {a}/{b}" for r, (a, b) in cap["per_radius"].items())
             + f"; {off} outside the box, {cap['ik_refused']} refused by IK")
+    hub = None
     if taught:
-        log(f"checks     {n_ok}/{len(variants)} viewpoints in the box by the arm's FK and clear of "
-            "the wrist; every move is checked again before it is sent")
+        log(f"checks     {n_ok}/{len(variants)} viewpoints in the box, solved by the arm's IK "
+            f"at least {VIEWPOINT_MARGIN_DEG:g} deg inside every joint limit and clear of the "
+            "wrist; every move is checked again before it is sent")
+        hub, fam["hub_legs"] = _plan_hubs(variants, joints0, fam, lim, poses_path, log)
     else:
         log(f"checks     {n_ok}/{len(variants)} poses in the box and IK-reachable from P0; "
             "every target is checked again (box, IK along the path) before it is sent")
@@ -1702,13 +2038,13 @@ def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None
         log("\ndry run: nothing sent, nothing written. Add --yes to run the session.")
         return None
 
-    ses = _Session(arm, lim, status_path, g, scfg, acfg, keys, log)
-    ses.p0 = p0
+    ses = _Session(arm, lim, status_path, g, scfg, acfg, keys, log, speed_constraint)
+    ses.p0, ses.hub = p0, hub
     ses.record_path = os.path.join(s0["session_path"], SESSION_RECORD)
     ses.record = {
-        "schema": "panoptes.session_arm/4",
+        "schema": "panoptes.session_arm/6",
         "mode": "taught" if taught else "orbit" if orbit else "lateral",
-        "taught_poses": poses,
+        "taught_poses": poses, "families": fam if taught else None, "hub": hub,
         "created_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "status_file": status_path, "session_path": s0["session_path"],
         "camera_serial": s0["camera_serial"],
@@ -1722,12 +2058,15 @@ def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None
                   "cam_axes_in_tool": np.round(g["cam_axes"], 5).tolist(),
                   "square_px_per_m_tool_z": round(float(g["square_per_m"][2]), 3)},
         "config": {"session": scfg, "autocapture": acfg, "limits": lim,
+                   "joint_speed_constraint_dps": speed_constraint,
                    "ik": {"samples": IK_SAMPLES, "joint_margin_deg": IK_JOINT_MARGIN_DEG,
-                          "jump_deg": IK_JUMP_DEG, "joint_limits_deg": armlib.JOINT_LIMITS_DEG}},
+                          "jump_deg": IK_JUMP_DEG}},
         "variants": [{k: v[k] for k in ("name", "band", "depth", "t_m", "rot_deg", "pose",
                                         "predicted_square_px", "capture_band", "skip")}
                      | ({"orbit": v["orbit"]} if orbit else {})
-                     | ({k: v[k] for k in ("grid", "joints_deg")} if taught else {})
+                     | ({k: v[k] for k in ("grid", "joints_deg", "family", "ik_seed", "taught",
+                                           "ik_failed")}
+                        if taught else {})
                      for v in variants],
         "poses": [], "end": None}
     ses.write()
@@ -1771,46 +2110,21 @@ def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None
             ses.log(f"  {v['name']}: {len(todo)} targets "
                     f"({len(s['coverage']['empty_cells'])} empty cells), {later} variants after it")
             ses.left = f"  [{len(todo)} left]"
-            s, here = ses.visit("variant", v["name"], v["pose"], here,
-                                joints=v["joints_deg"] if taught else None)
-            if s is None:
-                continue
-            base_pose, base_c = here, s["board"]["centroid_px"]
-            bbox = s["board"]["bbox_px"]
-            cur = base_c
-            while True:
-                s = ses.live()
-                if s["complete"]:
-                    raise SessionStop("complete")
-                empty = set(s["coverage"]["empty_cells"])
-                # Drop what was filled since: a cell no longer empty stays only
-                # as a bin seeker still wanted.
-                todo = {c for c in todo if c in empty or c in seekers(s, band)}
-                if not todo:
-                    break
-                centre = lambda c: ((_cell_rect(c, grid)[0] + _cell_rect(c, grid)[2]) / 2,
-                                    (_cell_rect(c, grid)[1] + _cell_rect(c, grid)[3]) / 2)
-                cell = min(todo, key=lambda c: (math.dist(centre(c), cur), c))
-                todo.discard(cell)
-                ses.left = f"  [{len(todo)} left]"
-                aim = aim_for_cell(cell, grid, image, bbox, base_c, scfg["edge_margin_px"], g)
-                if aim is None:
-                    e = ses.new_entry("cell", v["name"], cell)
-                    e["outcome"] = "skipped: board can't reach this cell at this distance"
-                    ses.finish(e, None)
+            if taught:
+                if not ses.hub_if_needed(v["joints_deg"], v["family"], v["name"]):
                     continue
-                corner_seek = cell in corners and cell not in empty
-                s, here2 = ses.visit("cell", v["name"], None, here,
-                                     cell=cell, aim=aim, base=(base_pose, base_c))
-                if s is not None:
-                    cur = s["board"]["centroid_px"]
-                    seen = s["decision"]["bin"].split("/")[0]
-                    if corner_seek and seen != band and band not in futile:
-                        futile.add(band)
-                        ses.log(f"  capture-{band}: a corner view was binned "
-                                f"{s['decision']['bin']}; no more corner seeking for it "
-                                "(off-axis views look closer)")
-                here = here2
+                here = arm.measured_pose()
+            try:
+                here = _viewpoint(ses, v, here, todo, band, seekers, futile, corners, grid,
+                                  image, taught)
+            except ViewpointAbandoned as ex:
+                e = ses.new_entry("abandon", v["name"])
+                e["outcome"] = "abandoned: board not in view"
+                e["note"] = ex.reason
+                ses.left = ""
+                ses.finish(e, None)
+                ses.log(f"  {v['name']}: viewpoint abandoned ({ex.reason}); on to the next viewpoint")
+                here = arm.measured_pose()
         raise SessionStop("target list exhausted")
     except SessionStop as e:
         end = str(e)
@@ -1829,6 +2143,8 @@ def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None
     if arm_failed is None:
         log(f"\n{end}: returning to P0")
         try:
+            if taught and not ses.hub_if_needed(joints0, ses.family, "P0"):
+                raise armlib.ArmError("the hub move before the return failed")
             e = ses.new_entry("return", "P0")
             if ses.move_joints(joints0, e, False) if taught else ses.move(p0, e, is_target=False):
                 e["outcome"] = "reached"
@@ -1855,6 +2171,8 @@ def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None
         "skipped": sum(1 for o in outcomes if o.startswith("skipped") or o == "refused"),
         "unreachable": sum(1 for o in outcomes if o == "unreachable"),
         "aborted": sum(1 for o in outcomes if o.startswith("aborted")),
+        "abandoned": sum(1 for o in outcomes if o == "abandoned: board not in view"),
+        "reach_edge": sum(1 for o in outcomes if o == "abandoned: viewpoint at reach edge"),
         "total_s": round(total_s, 1),
         "timing": timing,
         "capture_accepted_total": last["accepted"],
@@ -1871,6 +2189,8 @@ def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None
     log(f"  redundant        {summary['redundant']}")
     log(f"  skipped          {summary['skipped']}   unreachable {summary['unreachable']}   "
         f"aborted {summary['aborted']}")
+    log(f"  viewpoints left  {summary['abandoned']} abandoned (board not in view)   "
+        f"{summary['reach_edge']} at the reach edge")
     log(f"  total time       {summary['total_s']:.0f} s")
     if timing["per_move_s"] is not None:
         log(f"  per move         {timing['per_move_s']:.1f} s  (arm moving {timing['motion_per_move_s']:.1f} s)")
@@ -1911,6 +2231,11 @@ def main():
     p.add_argument("--from-pose", metavar="NAME",
                    help="with --orbit: first move in joint space to this pose from "
                         "config/arm_poses.yaml")
+    p.add_argument("--speed-constraint", type=float, metavar="DEG_S",
+                   help="send JOINT_CONSTRAINT_SPEED at DEG_S with every joint move (0 < DEG_S "
+                        f"<= {armlib.ROTATION_CEILING_DPS:g}); default: none, the arm picks the "
+                        "speed. The arm rejects a short move whose implied acceleration is "
+                        "over its limit")
     p.add_argument("--ip", default=armlib.DEFAULT_IP)
     p.add_argument("--port", type=int, default=armlib.DEFAULT_PORT)
     p.add_argument("--username", default="admin")
@@ -1938,6 +2263,7 @@ def main():
                 with _Keys() as keys:
                     summary = run_session(arm, lim, args.status_file, args.yes, keys=keys,
                                           from_pose=args.from_pose,
+                                          speed_constraint=args.speed_constraint,
                                           mode="orbit" if args.orbit else "poses")
                 if summary is not None and not summary["returned_to_p0"]:
                     sys.exit(1)

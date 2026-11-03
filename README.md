@@ -69,6 +69,17 @@ positions and serials: [config/layout.yaml](config/layout.yaml).
   - **19% of the volume (the top of the room) cannot be triangulated** with
     the current aim.
 
+### Arm-driven calibration
+
+[![Camera on the Kinova arm during an intrinsics session, room view left, camera view right](media/arm_intrinsics_preview.gif)](media/arm_intrinsics_side_by_side.mp4)
+
+Camera 33664 rides on the Kinova arm, which visits the taught viewpoints
+around the board while capture accepts views and fills the coverage grid
+(room left, camera right, 4× speed; click for the full
+[2-minute video](media/arm_intrinsics_side_by_side.mp4)). Over three
+sessions the principal point cx repeated to 1.0 px; numbers in
+[FINDINGS §16](docs/FINDINGS.md#16-intrinsics-33661-hand-held-33664-arm-driven).
+
 **Not built yet**
 
 - Frame synchronisation across cameras
@@ -90,6 +101,7 @@ config/    Camera layout, mask and study settings, saved per-camera masks
 docs/      Runbook, architecture, measured findings, hardware
 analysis/  Accuracy study outputs (PNGs regenerated; JSON summary tracked)
 logs/      Mask coverage-walk logs
+media/     Session video (side-by-side MP4, preview GIF); raw recordings in media/raw/, not tracked
 ```
 
 Capture sessions are written to `$HOME/panoptes-data/sessions`, outside the

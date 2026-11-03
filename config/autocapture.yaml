@@ -47,8 +47,8 @@ flat_deg: 20.0
 #   near: square_px >= near_square_px
 #   far:  square_px <  far_square_px
 #   mid:  between
-near_square_px: 40.0
-far_square_px: 35.0
+near_square_px: 50.0
+far_square_px: 40.0
 
 # Focal length guess used only for the tilt angle, as in lib/coverage. A few
 # percent error barely moves the angle.

@@ -372,6 +372,20 @@ length and distance ambiguous, which shows up as fx drifting from fy
 tool shows the share of captures tilted more than 20° (aim for 30% or more)
 and a tilt histogram. It shows the number; it does not warn below 30%.
 
+**Start-up settings.** `04_capture` starts the camera with
+`mocap::Settings` (exposure 8133 µs, gain 7, intensity 15, 30 fps, IR
+filter in), overridden by `--exposure US`, `--gain N` (0–7) and
+`--intensity N` (0–15). They are sent in `Camera::start()`, frame rate
+first, before the first `grab()`. An exposure is checked twice: against
+`floor(1e6/fps) − 200` while parsing, so nothing touches the camera, and
+against `minExposure()`/`maxExposure()` (the SDK's
+`Minimum/MaximumExposureValue()`) once the rate is set, which exits non-zero.
+Then `actual()` is read back and printed as the `settings` line; a readback
+that differs from the request prints a `WARNING` but doesn't stop the tool,
+as the SDK may not report a new value at once. In auto mode gate 4's
+reference is the first evaluated frame's readback, so the flags are the
+baseline the `+ - [ ]` keys depart from.
+
 **Session output** (`Session`). Each accepted capture is written as
 `frame_NNNN.png`. `session.json` is rewritten after every change and records:
 
@@ -379,6 +393,9 @@ and a tilt histogram. It shows the number; it does not warn below 30%.
   (measured and nominal sizes, dictionary, `legacy_pattern`, provenance)
 - for each frame: marker and corner counts, and the exposure, gain,
   intensity, frame rate and filter state it was taken under
+- `baseline_settings`: the start-up settings, `source` (`flags` or
+  `defaults`), `requested`, `readback`, `readback_matches` and the camera's
+  `exposure_range`
 - in auto mode only, the extra records in section 5
 
 The rig will be moved and recalibrated repeatedly, and a folder of PNGs with
@@ -578,6 +595,20 @@ across them. **That spread is the accuracy figure.** Held-out error says how
 well the model fits its own data; it says nothing about whether a fresh
 capture would land on the same numbers.
 
+**The camera file** (`fit_intrinsics.py --write-camera`, `write_camera()`).
+After the per-session fits, one more Brown-Conrady fit over every frame of
+every session given, written to `config/intrinsics/<serial>.yaml`. That is
+the per-camera result; before it, nothing per-camera was written outside
+the session folders. The sessions must agree on camera serial, image size,
+board spec and read-back camera settings, or nothing is written. The file
+holds K and dist, the joint RMS and view count, `uncertainty_px` (the range
+of the per-session fits, as the spread is the accuracy figure), each
+session's own fit, the board, the settings, the capture dates, the fit time
+and the OpenCV version. It is plain `%YAML:1.0` that `cv2.FileStorage`
+reads, written atomically. An existing file is refused before any fitting
+unless `--force`. Nothing reads it yet: the synthetic studies still take
+`camera_model` from `config/layout.yaml`.
+
 **Is a difference real?** (`bootstrap_intrinsics.py`). This refits random
 subsets of one session. If resampling reproduces the across-session spread,
 pose sampling explains it and nothing physical changed. The principal point
@@ -719,7 +750,7 @@ forecast**. For scale, the previous rig measured 13.8 mm loop closure over a
 
 ## 9. Kinova Gen3 arm
 
-`python/arm.py` talks to a Kinova Gen3 (6 DOF, no gripper) over Kinova's
+`python/arm.py` talks to a Kinova Gen3 (6 DOF, Robotiq 2F-85 gripper) over Kinova's
 Kortex Python API. It reads state, and makes small Cartesian moves and
 joint-space moves whose end points are inside a box. Nothing in it reads PANOPTES output.
 
@@ -738,7 +769,8 @@ with:
 
 `ExecuteAction` accepts any Kortex `Action` (twist, wrench, software
 e-stop, sequences), so being on the list is not enough. `reach_pose()` and
-`reach_joints()` build the two actions sent, each with a speed constraint,
+`reach_joints()` build the two actions sent (`reach_pose` always with a
+Cartesian speed constraint, `reach_joints` with none unless asked),
 and `_execute()`, the only caller of `ExecuteAction`, checks
 `WhichOneof("action_parameters")` is one of those two before sending.
 
@@ -774,6 +806,32 @@ source; not exercised on the arm.)
    has several Euler triples, so it can look large while the orientation
    matches.
 
+**Joint limits** come from `config/arm.yaml`, `joint_1_limit_deg` …
+`joint_6_limit_deg`, because Kortex has no read for them: in the 2.6 API every
+limit read (`Base.GetAllJoints{Speed,Torque}{Hard,Soft}Limitation`,
+`Get{Twist,Wrench}{Hard,Soft}Limitation`, `ControlConfig.GetKinematic*Limits`)
+covers speed, acceleration, torque, force or twist (FINDINGS §20). So there
+is nothing to add to `BASE_READS`; the values are copied by hand from the Web
+App. They are asymmetric, so each is a `[low, high]` pair. `load_limits()`
+puts them in `lim["joint_limits_deg"]` as `{actuator: (low, high) |
+"continuous" | None}`; all six keys are required, so a missing one can't
+silently mean "no limit". One function, `joint_limit_checks(lim, joints,
+margin)`, returns `(refusals, warnings)`. It wraps each angle to ±180° and
+refuses one less than `margin` inside either end (`joint_margin_deg()`, the
+distance to the nearer end). All three callers use it:
+
+| Caller | Margin | Null limit |
+|---|---|---|
+| `check_joint_move()` | 0 | one `WARNING` line with the target's angles, to `warn` (default `print`) |
+| `arm_capture.joint_margin()`, teach | `TEACH_MARGIN_DEG` (10°) | `WARNING` with the pose's angles; the pose saves |
+| `arm_capture.ik_check()` | `IK_JOINT_MARGIN_DEG` (5°) | not checked per sample; the session plan logs one `WARNING    at P0` with P0's angles |
+| `arm_capture.build_taught()`, a viewpoint's IK solution | `VIEWPOINT_MARGIN_DEG` (10°) | not checked |
+| `arm_capture._plan_hubs()`, the hub | `TEACH_MARGIN_DEG` (10°) | not checked |
+
+A null limit (none now) warns rather than refuses, so a joint whose limit is
+unknown stays usable; a set limit always refuses. `status` prints
+each angle wrapped to ±180° with `fmt_joint_limit()`.
+
 **A joint move** (`joints`, `goto-pose`, `session --from-pose`) has the same
 shape, through `check_joint_move()` and `reach_joints()`. It exists because
 `reach_joint_angles` skips the Cartesian planner, which rejects a path from or
@@ -783,13 +841,44 @@ across a singularity (FINDINGS §20).
   arm, the same pose the arm would report there, and the current pose must be
   inside too. `reach_joints()` repeats the check. Between the end points the
   tool follows an arc in joint space, which nothing checks.
-- **Other checks:** six angles, actuators 2, 3 and 5 inside
-  `JOINT_LIMITS_DEG`, servoing mode. Angles are sent in [0, 360), as the arm
-  reports them.
-- **Time and speed.** The estimate is the largest wrapped joint change over
-  `max_rotation_dps`, and the action carries `JOINT_CONSTRAINT_SPEED` at that
-  value. The wait, timeout and Ctrl-C are `_execute()`, shared with
-  `reach_pose()`.
+- **Other checks:** six angles, the joint limits (below), servoing mode.
+  Limited joints are sent in [0, 360), as the arm reports them. A continuous
+  joint (`continuous_joints()`, from `config/arm.yaml`) is sent as the
+  measured angle plus the wrapped difference, so it turns at most 180°
+  whatever the target's representation. IK returns continuous joints
+  unwrapped (−444° seen, FINDINGS §20). `reach_joint_angles` accepts a
+  continuous joint above 360° and turns the short way (FINDINGS §20,
+  2026-11-02).
+- **Speed.** `reach_joints(joints, lim, dps=None)` leaves the action's
+  `constraint` field unset unless `dps` is given, as in Kinova's
+  `102-Movement_high_level/01-move_angular_and_cartesian.py`; the arm then
+  plans its own profile. With `dps` it sends `JOINT_CONSTRAINT_SPEED`, which
+  the arm checks against its acceleration limit and rejects for a short move
+  (FINDINGS §20, rule 21). `--speed-constraint DEG_S` on `joints`,
+  `goto-pose` and `session` is the only way to set `dps`; `config/arm.yaml`
+  has no joint speed.
+- **Time.** `check_joint_move(dps=, rate_dps=)` estimates the largest wrapped
+  joint change over `dps`, else over `rate_dps`, a measured rate; with
+  neither there is no estimate and no `move_timeout_s` check, only the
+  timeout on the wait itself. `_execute()` stores `Arm.last_move_s`
+  (`ExecuteAction` to the end event); `arm.py` prints it as `duration`.
+  `_Session` keeps `joint_rates`, the largest joint change over the move's
+  time for each joint move that ended and changed some joint by at least
+  `JOINT_RATE_MIN_DEG` (1°), logs it as `measured_joint_dps`, and passes
+  the median as `rate_dps`. Short moves spend more of their time
+  accelerating, so the median tends to overestimate a long move's time. The
+  wait, timeout and Ctrl-C are `_execute()`, shared with `reach_pose()`.
+
+**Abort report.** `_execute()` copies every `ActionNotification` the
+callback receives for the action, not only the last. On `ACTION_ABORT`,
+`_abort_report()` reads `Base.GetTrajectoryErrorReport` (in `BASE_READS`: a
+read of the arm's validation errors for the last rejected trajectory; it may
+be stale if this action produced none) and builds two forms: `Arm.last_abort`,
+the action sent and each notification and the report as protobuf text, which
+`arm.py` prints under `what the arm reported:`; and the returned reason, one
+line (`SUBCODE; notifications: …; trajectory errors: …`), which
+`arm_capture.py` logs as before. `last_abort` is cleared when the next action
+starts.
 
 **Saved poses.** `config/arm_poses.yaml` holds, per name, the measured joints,
 the Cartesian pose and the time, plus `square_px` from `teach`. An existing
@@ -799,8 +888,9 @@ matrices. `goto-pose` moves to the joints; the Cartesian pose is shown and
 checked by the session, not sent.
 
 **Wrist check.** `wrist_singular()` wraps actuator 5 to ±180 and flags it
-within 10° of 0 or 180: there actuators 4 and 6 line up. 180 is past the
-±120.3° guide limit, so only 0 can occur on this arm. `run_session()` checks
+within 10° of 0 or 180: there actuators 4 and 6 line up. 180 is outside
+actuator 5's limit, [−120, 128] (`config/arm.yaml`), so only 0 can occur on
+this arm; both are checked anyway. `run_session()` checks
 the measured joints. With `from_pose`, `go_to_saved_pose()` checks the saved
 joints and its distance from the probe's start pose first, makes the joint
 move, waits for a settled board, and the normal start checks then run from
@@ -817,24 +907,73 @@ sees the board at each. Orbit stays behind `--orbit`.
   connected while the Web App jogs. There is no direct read of who holds the
   arm: "free" means `CreateSession` and `Base.Stop` succeed and the servoing
   mode is single-level. `settled_reading()` then gives the square size,
-  stored as `square_px` with the pose. `joint_margin()` wants 10° from the
-  limits in `JOINT_LIMITS_DEG`.
-- **Grid.** `unwrapped()` puts each joint within half a turn of the first
-  corner, so continuous joints take the short way, and `trilinear()` blends
-  the eight vectors. A blend stays within the corners' range on each joint, so
-  the margin holds on all viewpoints. `square_px` blends the same way, only to
-  predict the capture band. `MAX_SPREAD_DEG` refuses a spread near half a
-  turn, where "short way" stops meaning anything.
-- **Order.** `serpentine()`: the left-right index reverses each row, high-low
-  each layer, so each step changes one index by one.
-- **Viewpoint moves.** `_Session.move_joints()` and `_reach_joints()`. A failed
+  stored as `square_px` with the pose. `joint_margin()` wants 10° from each
+  confirmed limit in `config/arm.yaml` (see *Joint limits*).
+- **Grid, in pose space.** `trilinear_pose()` blends the eight taught
+  Cartesian (tool) poses: along left-right, then high-low, then near-far,
+  each step `interpolate()`. That gives linear position and rotation along the
+  shortest arc, `R_a·exp(t·log(R_aᵀR_b))`, which is the curve quaternion slerp
+  traces. The camera is rigid on the tool, so the camera's orientation
+  blends identically; its position differs only by the tool-frame offset,
+  which is unknown (FINDINGS Open items). `square_px` blends trilinearly, only
+  to predict the capture band. The earlier joint-space blend failed because
+  the taught poses span several arm configurations (FINDINGS §20).
+- **Corners take their taught joints** (`build_taught()`). A grid point with
+  every index at 0 or n−1 is a taught pose: its `pose` and `joints_deg` are
+  the saved ones, `ik_seed` is `"taught"` and `taught` names it. No IK is
+  asked, because the arm was there, and its IK has refused such poses even
+  seeded with their own joints (FINDINGS §20). The box, joint-limit and wrist
+  checks still apply.
+- **IK per other viewpoint** (`build_taught()`, at planning, on the arm). A
+  viewpoint outside the box is skipped before IK. Otherwise
+  `Arm.inverse_kinematics()` is seeded with the joints of the nearest taught
+  pose by `pose_distance()`: metres plus `POSE_DIST_M_PER_RAD` (0.5) per
+  radian, an arbitrary weighting. If that fails, it is seeded with the last
+  viewpoint's joints. Each failed attempt is kept in `ik_failed` as
+  `{seed, error}`, also when the second seed then solves. A solution within
+  `VIEWPOINT_MARGIN_DEG` (10°) of a joint limit (`joint_limit_checks()`) is
+  "unreachable", as is no solution; the wrist check runs on the solution.
+  `ik_summary()` counts corners used, non-corners outside the box, solved by
+  the nearest seed, solved by the previous seed, and failed with every seed,
+  and lists each failure; the plan prints it as the `ik` line and one
+  `IK failed` line per failed attempt, and the record keeps it as `ik`.
+- **Families and order.** `families()`: in serpentine order, a solution
+  joins the first family with a member within `FAMILY_DEG` (90°) of it on
+  every limited joint (2, 3, 5: `joint_gap(..., lim)`, wrapped), or starts
+  one. Continuous joints are left out: they define no configuration, and
+  `check_joint_move()` turns them the short way. `visit_order()` orders the
+  viewpoints by capture band (`BAND_ORDER`: mid, then near, then far, by the
+  predicted `capture_band`), family by family within a band, and serpentine
+  within each family (`serpentine()`: the left-right index reverses each
+  row, high-low each layer). Consecutive viewpoints of one family are near
+  each other, though not always one grid step apart. Mid comes first because
+  its views reach the most cells; the near corners sit at the reach edge
+  (FINDINGS §20). The price is hub moves: a family that spans two bands is
+  entered once per band (6 → 9 between viewpoints on the 2026-11-02 plan).
+- **The hub.** `hub_legs()` counts the planned transitions: a change of
+  family, or a limited-joint gap over `FAMILY_DEG` between consecutive
+  viewpoints, plus the start and return legs by gap. None for start and
+  return when the arm starts at the hub (every joint within
+  `POSE_REACHED_DEG`), and at run time no hub move is made from or to the
+  hub itself. `_plan_hubs()` prints the
+  `families` report and refuses to start if any is planned without a usable
+  `hub` pose: present, in the box, `TEACH_MARGIN_DEG` inside every limit.
+  Viewpoints can be skipped at run time (their cells already full), so the
+  plan isn't the visiting order. `_Session.hub_if_needed()` therefore
+  decides again before each viewpoint move and the return. It compares the
+  measured joints and the family of the last viewpoint reached with the
+  target, and makes a joint move to the hub first if needed. A failed hub
+  move skips the viewpoint (an abort counts towards the three-in-a-row
+  stop). Cell pans don't change family.
+- **Viewpoint moves.** `_Session.move_joints()` and `_reach_joints()`, to the
+  planned IK solution. A failed
   viewpoint isn't recovered from, because the next one is a joint move and
   needs nothing from this one; three aborts in a row still end it. Cell pans are
   unchanged, Cartesian, from the pose reached.
-- **Speed.** `reach_joint_angles` carries one joint speed, so
-  `check_joint_move(viewpoint=True)` converts: `viewpoint_rotation_dps`,
-  lowered to `largest joint change × viewpoint_translation_mps / tool chord`.
-  That bounds the average along the chord, not the tool's peak on the arc.
+- **Speed.** Viewpoint, hub and return moves go through
+  `_Session.move_joints()` with the session's `dps` (`--speed-constraint`,
+  default none) and its measured rate (above). Nothing bounds the tool's
+  speed along the arc; the arm's own joint profile does.
 - **Gains.** The probe's rotation gains and camera axes come from one pose and
   are used at all of them. The camera axes are fixed in the tool, so those
   carry; the px/deg and its f are not exact away from P0, and the pan's
@@ -975,10 +1114,10 @@ recorded exactly like one held by hand. Mechanism, in `run_session()`:
   rotation. The first is seeded with the measured joints, each later one
   with the previous solution. Rejected:
   - no solution;
-  - any joint with a limit (Gen3 6 DoF, user guide Table 45: joint 2
-    ±128.9°, 3 ±147.8°, 5 ±120.3°; `arm.JOINT_LIMITS_DEG`) within
+  - any joint with a confirmed limit in `config/arm.yaml` within
     `IK_JOINT_MARGIN_DEG` (5°) of it, after wrapping to ±180° (Kortex
-    reports 0–360°; *inferred* from its docs);
+    reports 0–360°; *inferred* from its docs). Null limits aren't checked
+    here (see *Joint limits*);
   - any joint changing by more than `IK_JUMP_DEG` (45°) between samples,
     a branch change near a singularity.
 
@@ -992,13 +1131,33 @@ recorded exactly like one held by hand. Mechanism, in `run_session()`:
   session skips 3 frames, then waits for full and still. Three consecutive
   frames under 88/88 mean the board left the view: one step to
   `halfway()` (mean position, half the relative rotation), then back to the
-  last good pose. It waits `min_interval_ms` and up to 4 frames for
-  `accepted` to rise.
+  last good pose. If the board doesn't settle there, or that way back fails
+  its checks, the viewpoint is abandoned (below). It waits
+  `min_interval_ms` and up to 4 frames for `accepted` to rise.
+- **Abandoning a viewpoint** (`ViewpointAbandoned`). Raised wherever the
+  next pan would start from a pose without the board in view: after the
+  return from a skipped target, after the return from a lost correction,
+  and after the return following an abort (`recover()`), whether the return
+  ran and the board didn't settle or the return failed its checks.
+  `run_session()` catches it per viewpoint, adds an `abandon` entry
+  (`abandoned: board not in view`, the reason in `note`), logs `NAME:
+  viewpoint abandoned (...)`, and goes on. In a taught session the next
+  viewpoint is a joint move, which needs nothing from this pose. Before
+  2026-11-02 the first of these ended the session (FINDINGS §20).
+- **Reach edge** (`at_reach_edge()`, in `_viewpoint()`). If the first
+  `REACH_EDGE_PANS` (2) cell pans tried from a viewpoint are both
+  `unreachable` (the IK path check: no solution, a joint within the margin,
+  or a branch jump), the rest of its cells aren't tried. An `abandon` entry
+  (`abandoned: viewpoint at reach edge`, the untried cells in `note`) and a
+  `NAME: viewpoint at reach edge` line record it. Only the first two pans
+  count: a viewpoint whose first pan reached goes on to all its cells.
 - **Aborts.** `ACTION_ABORT`, or a refused `ExecuteAction`
   (`arm.ActionRefused`), on a validated move raises `TargetAborted`.
   `visit()` logs the entry `aborted: <reason>` with the joints read after
   it. `recover()` then moves back to the last reached pose, validated the
-  same way, and the session continues with the next target. The count of
+  same way, and the session continues with the next target; if that way
+  back fails its checks or the board isn't in view there, the viewpoint is
+  abandoned. The count of
   consecutive aborts includes aborted returns, and only a reached *target*
   resets it. At `MAX_CONSECUTIVE_ABORTS` (3) the session raises a fatal
   `ArmError`. A move timeout stays fatal: `Base.Stop` has been sent and the
@@ -1014,32 +1173,45 @@ recorded exactly like one held by hand. Mechanism, in `run_session()`:
   `arm.ArmInterrupted` from a move, after `Base.Stop`) or a stale status
   file, returns to P0. A stale file whose last word was `complete: true` is
   a normal end, since capture exits on completion. A fatal `arm.ArmError`
-  (three consecutive aborts, a move timeout, a failed return after an
-  abort) ends the session without another move.
-- **Record.** `session_arm.json`, schema `panoptes.session_arm/4`, in the
+  (three consecutive aborts, or a move ending other than `ACTION_END` /
+  `ACTION_ABORT`, such as a timeout) ends the session without another move.
+  A board out of view never ends it; it abandons the viewpoint.
+- **Record.** `session_arm.json`, schema `panoptes.session_arm/6`, in the
   capture's session folder (`session_path` from the status file), rewritten
   atomically after every target. It holds:
   - P0 and its joints;
-  - the config used, including the IK parameters;
+  - for a taught session, `families` (names per family and `hub_legs`) and
+    the `hub` pose used (null if none was needed);
+  - the config used, including the IK parameters and the joint limits
+    (`limits.joint_limits_deg`: `[low, high]`, `"continuous"` or null);
   - the gains' source and axes, `f_px` and `cam_axes_in_tool`;
   - `mode` (`taught`, `orbit` or `lateral`) and `taught_poses`, by name and
     value (null otherwise);
   - `board_estimate` and `cap` (null for a taught session);
   - the viewpoints or variants, with both bands (viewpoints also `orbit`, or
-    `grid` and `joints_deg`);
-  - every target: kind (`variant`, `cell`, `back`, `return`), variant,
+    `grid`, the joints `joints_deg` (taught at a corner, else IK), `family`,
+    `ik_seed`, `taught` and `ik_failed`); `families.ik`, the `ik_summary()`;
+  - every target: kind (`variant`, `cell`, `back`, `hub`, `abandon`,
+    `return`), variant,
     cell, aim, outcome, the measured pose, capture's verdict, bin and
     accept, and the timers. Each commanded pose carries its absolute and
     `rel_p0` forms (translation and rotation vector in P0's tool frame), the
     joints before it, the IK solution, and whether it was `sent`; a joint
     move has `joints_deg` and `joint_speed_dps` instead of the IK solution. Aimed
     entries carry `aim_error` (leg, centroid, error, miss) and any
-    `aim_refit_px`. Aborted entries also carry `joints_after_abort_deg`.
+    `aim_refit_px`. Aborted entries also carry `joints_after_abort_deg`. A
+    joint move past a null limit adds its warning to the entry's `warnings`.
 
   The summary is stored too: `accepted` is capture's own count delta;
-  `timing` is `timing_breakdown()`. Schema 1 (2026-10-28) lacks joints, IK,
+  `timing` is `timing_breakdown()`; `abandoned` and `reach_edge` count the
+  two kinds of `abandon` entry. Schema 1 (2026-10-28) lacks joints, IK,
   `sent` and the timers; schema 2 lacks the board estimate, the cap and the
-  aim errors; schema 3 lacks `mode` and `taught_poses`.
+  aim errors; schema 3 lacks `mode` and `taught_poses`; schema 4 has the
+  user guide's limits as `ik.joint_limits_deg` instead of
+  `limits.joint_limits_deg`, no `warnings`, and a taught session's
+  `joints_deg` is a joint-space blend, with no `families`, `hub` or `hub`
+  entries; schema 5 has no `abandon` entries, no `abandoned` or
+  `reach_edge`, and visits taught viewpoints family by family.
 
 **Band limit (inferred, not measured).** `poseBin()` bands by
 `apparentSquarePx()`, which is size-in-image. A camera aimed so the board

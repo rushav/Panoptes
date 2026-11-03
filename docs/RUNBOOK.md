@@ -71,7 +71,7 @@ expect: `residual: none. Volume reads empty on every camera.` and no `LEAK`; `--
 ### 1.6 Corner jitter session
 Board and camera fixed on tripods, 200 captures. Details: §7.
 ```sh
-src/04_capture/build/capture [serial]
+src/04_capture/build/capture [serial] [--gain N] [--intensity N] [--exposure US]
 .venv/bin/python python/corner_jitter.py <session> [--max-fit PX] [--out DIR]
 .venv/bin/python python/corner_jitter.py <png_folder> --board config/charuco_board.yaml
 .venv/bin/python python/corner_jitter.py --self-test
@@ -83,7 +83,7 @@ Focus, check, capture, solve. Details: §8.
 ```sh
 src/06_focus/build/focus <serial>
 src/03_detect/build/detect <serial>
-src/04_capture/build/capture [serial] [--board FILE]
+src/04_capture/build/capture [serial] [--gain N] [--intensity N] [--exposure US] [--board FILE]
 .venv/bin/python python/fit_intrinsics.py <session> [<session> ...]
 ```
 expect: `empty cells 0/30` in green with `tilted` ≥ 30%; fx and fy within 1% of each other.
@@ -91,8 +91,8 @@ expect: `empty cells 0/30` in green with `tilted` ≥ 30%; fx and fy within 1% o
 ### 1.8 Auto intrinsics session (UNVALIDATED)
 Tune with `--auto-dry` (writes nothing), then run. Not yet validated against manual capture. Details: §9.
 ```sh
-src/04_capture/build/capture [serial] --auto-dry [--auto-config FILE] [--board FILE] [--status-file PATH]
-src/04_capture/build/capture [serial] --auto [--auto-config FILE] [--board FILE] [--status-file PATH]
+src/04_capture/build/capture [serial] [--gain N] [--intensity N] [--exposure US] --auto-dry [--auto-config FILE] [--board FILE] [--status-file PATH]
+src/04_capture/build/capture [serial] [--gain N] [--intensity N] [--exposure US] --auto [--auto-config FILE] [--board FILE] [--status-file PATH]
 .venv/bin/python python/fit_intrinsics.py <auto_session> <manual_session>
 .venv/bin/python python/capture_status.py PATH
 .venv/bin/python python/capture_status.py --self-test
@@ -103,6 +103,7 @@ expect: `ended: complete: 0 empty cells and every pose bin has >= 2 frames`; val
 venv interpreter only. Details: §10.
 ```sh
 .venv/bin/python python/fit_intrinsics.py <session> [<session> ...]
+.venv/bin/python python/fit_intrinsics.py --write-camera [--force] <session> [<session> ...]
 .venv/bin/python python/compare_models.py <session>
 .venv/bin/python python/bootstrap_intrinsics.py <session> [n_subsets] [subset_size]
 .venv/bin/python python/board.py [board.yaml]
@@ -125,23 +126,23 @@ git log --oneline -10
 expect: `git status` clean after the commit; no `build/`, `.venv/` or `analysis/*.png` staged.
 
 ### 1.11 Arm (Kinova Gen3)
-E-stop pendant in reach, nothing inside the box. Motion only with `--yes`; first move is `move --dz 0.02 --yes`. Teach the eight viewpoints once per camera setup; again if the easel or arm base moves. Never start an `--orbit` session from Home: `save-pose` a board-centred pose and start from it. Camera on the arm, board on an easel ~1.0 m from the camera, leaned back 10–12°, P0 near x 0.43 m. The probe needs `capture --auto-dry --status-file`, the session `capture --auto --status-file`; board centred and fully visible for both. Details: §13.
+E-stop pendant in reach, nothing inside the box. After power-up the arm rests on its joint stops: run `status`, and if a `limits` margin is negative, jog that joint to mid-range with the Web App before anything else. Motion only with `--yes`; first move is `move --dz 0.02 --yes`. Teach the eight viewpoints once per easel position, not per camera; again if the easel or arm base moves. Per camera: unmount it from the rig, mount it on the arm, unfold the arm, teach (once per easel position), probe, session twice, fit, remount, re-learn masks; capture at `--gain 0 --intensity 15 --exposure 8133` (procedure in §13). Save a `hub` pose (board-centred, every joint mid-range) with `save-pose hub`: a session whose viewpoints span several arm configurations goes through it, and refuses to start without it. Never start an `--orbit` session from Home: `save-pose` a board-centred pose and start from it. Camera on the arm, board on an easel ~1.0 m from the camera, leaned back 10–12°, P0 near x 0.43 m. The probe needs `capture --auto-dry --status-file`, the session `capture --auto --status-file`; board centred and fully visible for both. Details: §13.
 ```sh
 .venv/bin/pip install --no-deps -r python/requirements-arm.txt
 ip -brief addr show enp6s0
 .venv/bin/python python/arm.py status [--ip IP] [--port PORT] [--username U] [--password P]
 .venv/bin/python python/arm.py move [--dx M] [--dy M] [--dz M] [--dtx DEG] [--dty DEG] [--dtz DEG] [--yes]
 .venv/bin/python python/arm.py goto X Y Z TX TY TZ [--yes]
-.venv/bin/python python/arm.py joints J1 J2 J3 J4 J5 J6 [--yes]
+.venv/bin/python python/arm.py joints J1 J2 J3 J4 J5 J6 [--speed-constraint DEG_S] [--yes]
 .venv/bin/python python/arm.py save-pose NAME [--force]
 .venv/bin/python python/arm.py list-poses
-.venv/bin/python python/arm.py goto-pose NAME [--yes]
+.venv/bin/python python/arm.py goto-pose NAME [--speed-constraint DEG_S] [--yes]
 .venv/bin/python python/arm.py stop
 .venv/bin/python python/arm_capture.py probe --status-file PATH [--yes] [--ip IP] [--port PORT] [--username U] [--password P]
 .venv/bin/python python/arm_capture.py teach --status-file PATH [--force] [--ip IP] [--port PORT] [--username U] [--password P]
-.venv/bin/python python/arm_capture.py session --status-file PATH [--yes] [--poses | --orbit] [--from-pose NAME] [--ip IP] [--port PORT] [--username U] [--password P]
+.venv/bin/python python/arm_capture.py session --status-file PATH [--yes] [--poses | --orbit] [--from-pose NAME] [--speed-constraint DEG_S] [--ip IP] [--port PORT] [--username U] [--password P]
 ```
-expect: `enp6s0` lists `192.168.1.11/24` and a `169.254.x.x` address; `status` ends `session closed`; `move`/`goto`/`joints`/`goto-pose` without `--yes` end `dry run: nothing sent`; with `--yes`, `result     END` and an `error` line; `save-pose` ends `saved      NAME in config/arm_poses.yaml`; `probe --yes` prints six probe lines, the mapping, and `wrote config/arm_camera.yaml`; `teach` ends with `far/near` and `spread` lines; `session` prints the `taught` line and all 27 viewpoints before anything moves (`--orbit`: `board` and `cap`); `session --yes` ends with a `summary` block and writes `session_arm.json` into the capture's session folder.
+expect: `enp6s0` lists `192.168.1.11/24` and a `169.254.x.x` address; `status` prints a `limits` line per actuator (`limit [low, high], margin M deg` or `continuous`) and ends `session closed`; `move`/`goto`/`joints`/`goto-pose` without `--yes` end `dry run: nothing sent`; with `--yes`, `result     END` and an `error` line; `save-pose` ends `saved      NAME in config/arm_poses.yaml`; `probe --yes` prints six probe lines, the mapping, and `wrote config/arm_camera.yaml`; `teach` ends with `far/near` and `families` lines; `session` prints the `taught` line, all 27 viewpoints, `checks` and `families` (and `hub` if one is needed) before anything moves (`--orbit`: `board` and `cap`); `session --yes` prints `NAME: viewpoint abandoned (...)` or `NAME: viewpoint at reach edge (...)` when it gives up a viewpoint and moves on, and ends with a `summary` block and writes `session_arm.json` into the capture's session folder.
 
 ---
 
@@ -430,7 +431,7 @@ Every mode opens every camera at the `config/mask.yaml` settings (§12).
 ## 7. Corner jitter session
 
 ```sh
-src/04_capture/build/capture [serial]
+src/04_capture/build/capture [serial] [--gain N] [--intensity N] [--exposure US]
 .venv/bin/python python/corner_jitter.py <session> [--max-fit PX] [--out DIR]
 .venv/bin/python python/corner_jitter.py <png_folder> --board config/charuco_board.yaml
 .venv/bin/python python/corner_jitter.py --self-test
@@ -486,13 +487,27 @@ script also rejects byte-identical frames.
 ```sh
 src/06_focus/build/focus <serial>
 src/03_detect/build/detect <serial>
-src/04_capture/build/capture [serial] [--board FILE]
+src/04_capture/build/capture [serial] [--gain N] [--intensity N] [--exposure US] [--board FILE]
 .venv/bin/python python/fit_intrinsics.py <session> [<session> ...]
 ```
 
 `capture` prints the board it loaded and refuses to start if the board file
 is missing or a measured size is blank. It starts at the grayscale operating
-point (§12), creates `$HOME/panoptes-data/sessions/intrinsics_<serial>_<YYYYmmdd_HHMMSS>/`
+point (§12) unless given start-up flags, all modes:
+
+| Flag | Default | Range |
+|---|---|---|
+| `--exposure US` | 8133 | 1 to `floor(1e6/fps) − 200` (33133 at 30 fps), and within the camera's own range once started |
+| `--gain N` | 7 | 0–7 |
+| `--intensity N` | 15 | IR ring, 0–15 |
+
+A value out of range exits with `need an integer lo..hi` before the camera
+starts. At start-up it prints `settings  exposure E us (camera MIN..MAX)  gain
+G  intensity I  frame rate 30  IR filter in   [from flags; read back]` (or
+`[defaults; read back]`): the camera's readback, not the request. A
+`WARNING   read back differs from the request` lists what differs; check it
+before capturing. `session.json` records them under `baseline_settings`.
+The `+ - [ ]` keys still change exposure and gain from there. It creates `$HOME/panoptes-data/sessions/intrinsics_<serial>_<YYYYmmdd_HHMMSS>/`
 (local time) and prints the path. The overlay shows corners, captures, empty
 cells, exposure against its ceiling, gain, the tilted share, the coverage grid
 (red = empty) and a tilt histogram (amber = under 20°). Use
@@ -531,8 +546,11 @@ cells, exposure against its ceiling, gain, the tilted share, the coverage grid
    - Look for a bad capture in `per_view_error` in `intrinsics.json`.
    - fx and fy more than ~1% apart means too little tilt.
    - Compare with the previous fits in FINDINGS §16.
-7. **Use it** by editing `camera_model` in `config/layout.yaml` by hand;
-   nothing writes it automatically. Record the fit in FINDINGS §16.
+7. **Use it.** For the camera's own file, rerun with all its accepted
+   sessions and `--write-camera`: one joint fit, written to
+   `config/intrinsics/<serial>.yaml` (`--force` to replace). The synthetic
+   studies' shared model is still `camera_model` in `config/layout.yaml`,
+   edited by hand. Record the fit in FINDINGS §16.
 
 **Troubleshooting**
 
@@ -546,8 +564,8 @@ cells, exposure against its ceiling, gain, the tilted share, the coverage grid
 ## 9. Auto intrinsics session
 
 ```sh
-src/04_capture/build/capture [serial] --auto-dry [--auto-config FILE] [--board FILE] [--status-file PATH]
-src/04_capture/build/capture [serial] --auto [--auto-config FILE] [--board FILE] [--status-file PATH]
+src/04_capture/build/capture [serial] [--gain N] [--intensity N] [--exposure US] --auto-dry [--auto-config FILE] [--board FILE] [--status-file PATH]
+src/04_capture/build/capture [serial] [--gain N] [--intensity N] [--exposure US] --auto [--auto-config FILE] [--board FILE] [--status-file PATH]
 .venv/bin/python python/fit_intrinsics.py <auto_session> <manual_session>
 .venv/bin/python python/capture_status.py PATH
 .venv/bin/python python/capture_status.py --self-test
@@ -674,6 +692,7 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
 
 ```sh
 .venv/bin/python python/fit_intrinsics.py <session> [<session> ...]
+.venv/bin/python python/fit_intrinsics.py --write-camera [--force] <session> [<session> ...]
 .venv/bin/python python/compare_models.py <session>
 .venv/bin/python python/bootstrap_intrinsics.py <session> [n_subsets] [subset_size]
 .venv/bin/python python/board.py [board.yaml]
@@ -684,13 +703,13 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
 
 | Command | Does |
 |---|---|
-| `fit_intrinsics.py` | Brown-Conrady on all frames; writes `<session>/intrinsics.json`, prints a table, and with several sessions the spread across them |
+| `fit_intrinsics.py` | Brown-Conrady on all frames; writes `<session>/intrinsics.json`, prints a table, and with several sessions the spread across them. `--write-camera`: also one joint fit over all the sessions' frames, written to `config/intrinsics/<serial>.yaml` with provenance and the cross-session range as `uncertainty_px`; refused if the sessions differ in camera, image size, board or settings, or if the file exists (`--force` replaces it). Prints `joint fit, all sessions: …` and `wrote config/intrinsics/<serial>.yaml` |
 | `compare_models.py` | Brown-Conrady vs rational vs fisheye: held-out error and edge straightness printed; writes `<session>/model_comparison.json` (training RMS only) |
 | `bootstrap_intrinsics.py` | Refits random subsets (defaults 20 subsets of 50) to see whether pose sampling explains a cross-session difference |
 | `board.py` | Prints the board a yaml describes (default `config/charuco_board.yaml`), or the error |
 | `triangulate.py` | Triangulation self-test, 12 checks; exit 0 only if all pass |
 | `accuracy_study.py` | Synthetic study (defaults `config/layout.yaml`, `config/study.yaml`); writes `analysis/` PNGs, `accuracy_study.json` and `.npz`; refuses to run if the self-test fails |
-| `test_arm_capture.py` | Arm session tests, no arm or camera: a simulated camera on the arm and a stand-in capture; replays the 2026-10-28 abort from `tests/fixtures/session_arm_33664_20261028_185017.json` and reads the corner run in `..._191025.json`; aiming and orbit on a second, rig-like geometry; joint moves, saved poses, the wrist check; teach and taught sessions; 115 checks, exit 0 only if all pass |
+| `test_arm_capture.py` | Arm session tests, no arm or camera: a simulated camera on the arm and a stand-in capture; replays the 2026-10-28 abort from `tests/fixtures/session_arm_33664_20261028_185017.json` and reads the corner run in `..._191025.json`; aiming and orbit on a second, rig-like geometry; joint moves, saved poses, the wrist check; teach and taught sessions (pose-space grid, IK, families and the hub); joint limits from `config/arm.yaml`, asymmetric and null; continuous joints the short way; the abort report; joint moves with and without `--speed-constraint`, and the measured joint rate; grid corners from taught joints and the IK summary; replays the 2026-11-02 taught sessions `..._20261102_150512.json` and `..._175213.json` through the mid-near-far visit order and the reach-edge rule; abandoning a viewpoint when the board isn't back (17:52's ending, simulated) and at the reach edge; 165 checks, exit 0 only if all pass |
 
 1. Run from the repo root with `.venv/bin/python` only. Each script prints the
    board it resolved: from the session's `session.json`, or
@@ -776,14 +795,14 @@ ip -brief addr show enp6s0
 .venv/bin/python python/arm.py status [--ip IP] [--port PORT] [--username U] [--password P]
 .venv/bin/python python/arm.py move [--dx M] [--dy M] [--dz M] [--dtx DEG] [--dty DEG] [--dtz DEG] [--yes]
 .venv/bin/python python/arm.py goto X Y Z TX TY TZ [--yes]
-.venv/bin/python python/arm.py joints J1 J2 J3 J4 J5 J6 [--yes]
+.venv/bin/python python/arm.py joints J1 J2 J3 J4 J5 J6 [--speed-constraint DEG_S] [--yes]
 .venv/bin/python python/arm.py save-pose NAME [--force]
 .venv/bin/python python/arm.py list-poses
-.venv/bin/python python/arm.py goto-pose NAME [--yes]
+.venv/bin/python python/arm.py goto-pose NAME [--speed-constraint DEG_S] [--yes]
 .venv/bin/python python/arm.py stop
 .venv/bin/python python/arm_capture.py probe --status-file PATH [--yes] [--ip IP] [--port PORT] [--username U] [--password P]
 .venv/bin/python python/arm_capture.py teach --status-file PATH [--force] [--ip IP] [--port PORT] [--username U] [--password P]
-.venv/bin/python python/arm_capture.py session --status-file PATH [--yes] [--poses | --orbit] [--from-pose NAME] [--ip IP] [--port PORT] [--username U] [--password P]
+.venv/bin/python python/arm_capture.py session --status-file PATH [--yes] [--poses | --orbit] [--from-pose NAME] [--speed-constraint DEG_S] [--ip IP] [--port PORT] [--username U] [--password P]
 ```
 
 > **Safety: the E-stop pendant must be within reach whenever anything in
@@ -792,7 +811,7 @@ ip -brief addr show enp6s0
 
 | Command | Does |
 |---|---|
-| `status` | Prints firmware, serial, build, devices, pose, joints, servoing mode. Never moves. |
+| `status` | Prints firmware, serial, build, devices, pose, joints, each joint's limit and margin, servoing mode. Never moves. |
 | `move` | Relative Cartesian move from the **measured** pose. Each of `--dx --dy --dz` (m) and `--dtx --dty --dtz` (deg) defaults to 0. |
 | `goto` | Absolute Cartesian move: `X Y Z` in m, `TX TY TZ` in deg, base frame. |
 | `stop` | Sends `Base.Stop`. Not the E-stop: see below. |
@@ -809,14 +828,24 @@ ip -brief addr show enp6s0
 
 | Field | Default | Meaning |
 |---|---|---|
-| `x_min` `x_max` | 0.25, 0.70 m | workspace box, base frame |
-| `y_min` `y_max` | −0.35, 0.35 m | |
-| `z_min` `z_max` | 0.15, 0.70 m | |
-| `max_translation_mps` | 0.05 | speed constraint sent with every move; `arm.py` refuses above 0.20 |
-| `max_rotation_dps` | 10.0 | refused above 30 |
-| `viewpoint_translation_mps` | 0.15 | taught session's viewpoint moves; refused above 0.20 |
-| `viewpoint_rotation_dps` | 25.0 | taught session's viewpoint moves; refused above 30 |
+| `x_min` `x_max` | 0.25, 0.95 m | workspace box, base frame |
+| `y_min` `y_max` | −0.45, 0.45 m | |
+| `z_min` `z_max` | 0.15, 0.85 m | |
+| `max_translation_mps` | 0.05 | speed constraint sent with every Cartesian move; `arm.py` refuses above 0.20 |
+| `max_rotation_dps` | 10.0 | refused above 30. Not used by joint moves |
 | `move_timeout_s` | 30.0 | wait for the end of a move; refused above 300 |
+| `joint_1_limit_deg` … `joint_6_limit_deg` | 1, 4, 6 `"continuous"`; 2 `[-129, 138]`; 3 `[-148, 152]`; 5 `[-120, 128]` | position limit of each actuator, deg, on the angle wrapped to ±180: `[low, high]` with −180 ≤ low < high ≤ 180, `"continuous"`, or null (unconfirmed). All six are required |
+
+**Joint limits** are copied from the Web App: Safeties → Actuators, "Joint
+Limit Low/High". A 0/0 pair there means disabled; write `"continuous"`.
+Kortex can't read them (FINDINGS §20), so if the Web App's values change,
+copy them again. A limit refuses:
+
+- a `joints` / `goto-pose` target outside it;
+- a taught pose within 10° of either end;
+- a session IK sample within 5° of either end.
+
+A null limit only prints a `WARNING` with the angle.
 
 There is no flag to disable the box or to use another config file. To change
 a limit, edit `config/arm.yaml`.
@@ -876,12 +905,21 @@ or anyone is at risk, use the E-stop.
    - `firmware`: the main bundle version, then each component's version
    - `serial`: the base's serial number
    - `build`: degrees of freedom and end effector as the arm reports them
-     (expect 6 DOF, `END_EFFECTOR_TYPE_NOT_INSTALLED`)
+     (expect 6 DOF, `END_EFFECTOR_TYPE_ROBOTIQ_2F_85`)
    - `devices`: every device the base lists, by type and id
    - `pose`: measured Cartesian pose, x y z in m, theta_x/y/z in deg
    - `joints`: measured joint angles, deg, by joint id
+   - `limits`: one line per actuator (1–6): the angle wrapped to ±180, then
+     `limit [low, high], margin M deg` (M to the nearer end, negative
+     outside), `continuous`, or `limit unconfirmed`
    - `servoing`: the current servoing mode, e.g. `SINGLE_LEVEL_SERVOING`
    - `session closed` on exit
+
+   **After power-up the arm rests on its joint stops** (it has no brakes),
+   at or past the limits of actuators 2, 3 and 5. If any `limits` margin is
+   negative or small, jog that joint toward mid-range with the Web App
+   first: `arm.py` refuses a target outside a limit, and a session's IK
+   check refuses paths near one.
 
    Check that `pose` is inside the box in `config/arm.yaml`. If it isn't,
    bring the arm into the box with Kinova's own tools first; `arm.py`
@@ -903,20 +941,34 @@ Cartesian planner, which refuses a path from or across a singularity
 (`ACTION_ABORT INVALID_PARAM`). A joint move doesn't.
 
 - `arm.py joints J1 J2 J3 J4 J5 J6`: deg, actuator order, 0–360 or ±180.
-  Same `--yes` rule, servoing check, wait and timeout as `goto`. The box
+  A continuous joint (`config/arm.yaml`) is sent the short way from its
+  measured angle, so the plan's `target` can show it outside 0–360 (e.g.
+  `370` for 10 from 350); the others are sent in 0–360. Same `--yes` rule, servoing check, wait and timeout as `goto`. The box
   applies to the arm's forward kinematics of the angles. The plan prints
-  that pose as `target FK`; `dry run` sends nothing.
+  that pose as `target FK`; `dry run` sends nothing. No speed constraint
+  is sent: the arm picks the speed, the `change` line says `no speed
+  constraint` and has no time estimate, and after the move `duration`
+  gives the time and average deg/s. A target outside a
+  joint limit is refused, naming the joint; with a null limit the plan
+  starts with `WARNING    target joint limit unconfirmed` and the angles.
+  The plan ends with `sent as    id 0: … id 5: …`, the `joint_identifier`
+  and value of each angle exactly as they go into the action.
+- `--speed-constraint DEG_S` (`joints`, `goto-pose`): sends
+  `JOINT_CONSTRAINT_SPEED` at `DEG_S` (0 < `DEG_S` ≤ 30). The plan then
+  estimates the time at that speed and refuses past `move_timeout_s`. The
+  arm aborts a short move with it, `METHOD_FAILED`, when that speed implies
+  too high an acceleration; leave it off unless you need it.
 - `arm.py save-pose NAME`: stores the measured joints and pose in
   `config/arm_poses.yaml`. `NAME` is letters, digits and `_`, starting with a
   letter. An existing name is refused unless `--force`, which prints what it
   replaced. It doesn't move the arm.
 - `arm.py list-poses`: prints the file. It doesn't talk to the arm.
-- `arm.py goto-pose NAME`: a joint move to the saved joints.
+- `arm.py goto-pose NAME`: a joint move to the saved joints, as `joints`.
 
 > **The box checks only the end points of a joint move.** Between them the
 > tool swings through an arc, which can leave the box, and the move can be
-> large. Clear the whole sweep, and stay on the E-stop. Speed is
-> `max_rotation_dps` per joint.
+> large. Clear the whole sweep, and stay on the E-stop. The arm picks the
+> speed unless `--speed-constraint` is given.
 
 **Never start an `--orbit` session from Home.** The planner can refuse a
 Cartesian path from there. (A taught session's first move is a joint move, so
@@ -975,10 +1027,13 @@ twelve are checked before the first is sent. **It needs about a minute.**
    without `--yes` first.
 
 **Teach: eight viewpoints, by hand.** The session's viewpoints are a grid over
-eight poses you jog to. **Teach once per camera setup, and again if the easel
-or the arm base moves.** The probe is still needed, for the pan gains.
+the camera poses of eight poses you jog to; the arm's IK finds the joints for
+each. **Teach once per easel position, not per camera, and again if the
+easel or the arm base moves.** The probe is still needed once per camera
+mounting, for the pan gains.
 
-1. **Probe first** (above), with the board centred.
+1. **Probe** (above), before or after teaching: the session needs it, teach
+   doesn't.
 2. **Start capture,** either `--auto-dry` or `--auto`, with `--status-file`.
 3. **Run** `.venv/bin/python python/arm_capture.py teach --status-file "$HOME"/panoptes-data/capture_status.json`.
    Existing poses are refused unless `--force`. `q` at a prompt stops; poses
@@ -988,7 +1043,8 @@ or the arm base moves.** The probe is still needed, for the pan gains.
    - the arm is free: it connects, `Base.Stop` succeeds, and the servoing mode
      is `SINGLE_LEVEL_SERVOING`;
    - the board is 88/88 and still in the status file;
-   - joints 2, 3 and 5 are each at least 10° from their limits.
+   - every joint with a limit in `config/arm.yaml` is at least 10° inside
+     both ends of it.
 
    A failed check prints `REFUSED` and the same pose is asked again. A pose
    outside the box or with the wrist singular saves with a `WARNING`:
@@ -1010,21 +1066,50 @@ as you face the board.
 | `far_right_low` | Far, to its right, below it, looking up and left |
 
 Go well off to each side: tilted views come from these corners, and aim past
-20° from square-on. Keep the same kind of wrist configuration at all eight,
-as the viewpoints are joint-space blends of them.
+20° from square-on. Keeping a similar arm configuration at all eight means
+fewer families and fewer hub moves, but it isn't required.
 
 After the eighth it prints the far/near square-size ratio (want < 0.6, a
-`WARNING` otherwise) and the largest joint-space spread. A session refuses a
-spread over 170° on one joint.
+`WARNING` otherwise) and `families`: how many arm configurations the eight
+span (more than 90° apart on joint 2, 3 or 5; the continuous joints 1, 4
+and 6 never split one), and which pose is in which. With more than one, and no `hub` saved yet, it prints a `NOTE`.
+
+**The hub.** A taught session passes through `config/arm_poses.yaml`'s `hub`
+pose whenever a viewpoint move changes family or joint 2, 3 or 5 by over
+90°. Starting the session at the hub saves the start and return hub moves.
+Jog to a pose with the board centred and every limited joint well inside its
+limits, then `.venv/bin/python python/arm.py save-pose hub` (`--force` to
+replace it). The session refuses to start if it plans a hub move and `hub`
+is missing, outside the box, or within 10° of a joint limit.
 
 **Session: an intrinsics session driven by the arm.** `arm_capture.py
 session` moves the camera through views while `capture --auto` decides which
 frames to keep, and reads its status file after every move. It uses the
 probe's `config/arm_camera.yaml`, `config/arm_session.yaml` and
-`config/autocapture.yaml`, and `config/arm_poses.yaml`'s taught poses. Cell
-pans go through the same checks as `move` with `config/arm.yaml`'s box and
-speeds; viewpoint moves are joint moves through the same checks as `joints`,
-at the viewpoint speeds. `--yes` is asked once, for the whole session.
+`config/autocapture.yaml`, and `config/arm_poses.yaml`'s taught poses and
+`hub`. Cell pans go through the same checks as `move` with `config/arm.yaml`'s
+box and speeds; viewpoint moves are joint moves to the arm's IK solution,
+through the same checks as `joints`, at the viewpoint speeds.
+
+Planning a taught session:
+
+- **Viewpoints:** a 3 × 3 × 3 grid (`n_lr` × `n_hl` × `n_nf`) blended
+  from the eight taught Cartesian poses: position linear, rotation along the
+  shortest arc.
+- **IK:** each is solved by the arm (`ComputeInverseKinematics`), seeded
+  with the joints of the nearest taught pose, then the previous viewpoint's
+  solution.
+- **Skipped:** outside the box (`SKIP: x … outside`); no solution, or one
+  within 10° of a joint limit (`SKIP: unreachable: …`); wrist singular.
+- **Order:** mid-band viewpoints first, then near, then far (the predicted
+  capture band); within a band, family by family, serpentine within each. A
+  family that spans two bands needs a hub move for each.
+- **`families` line:** the families' sizes and the hub transitions planned
+  (between viewpoints, from the start, back to it; none for start and return
+  if the arm starts at the hub). A hub transition is decided again before
+  each move, from the measured joints. A null joint limit's warning on a viewpoint move goes
+into that entry's `warnings` in `session_arm.json`, not the log. `--yes` is
+asked once, for the whole session.
 
 | Flag | Default |
 |---|---|
@@ -1032,15 +1117,15 @@ at the viewpoint speeds. `--yes` is asked once, for the whole session.
 | `--yes` | off: check everything, print the plan, send nothing, write nothing |
 | `--poses` | the default: viewpoints from the taught poses |
 | `--orbit` | off: the older orbit planner, from the probe's P0; everything marked "orbit" below, "Easel and P0" included |
+| `--speed-constraint DEG_S` | off: joint moves (viewpoint, hub, return, `--from-pose`) carry no speed constraint and the arm picks the speed. With it, every joint move carries `JOINT_CONSTRAINT_SPEED` at `DEG_S` (0 < `DEG_S` ≤ 30), and the record's `config.joint_speed_constraint_dps` says so |
 | `--from-pose NAME` | `--orbit` only. Off: first a joint move to this pose from `config/arm_poses.yaml`. Refused before moving if the pose is wrist singular or outside `p0_tolerance_*` of the probe's start pose. Capture must already be running in `--auto`. Without `--yes`, it prints that move and stops, unless the arm is already there (every joint within 0.5°), as the session plan needs the arm in place |
 | `--ip` `--port` `--username` `--password` | as `arm.py` |
 
 `config/arm.yaml` speeds: `max_translation_mps` 0.05 and `max_rotation_dps`
-10 apply to cell pans, `joints` and `goto-pose`.
-`viewpoint_translation_mps` 0.15 and `viewpoint_rotation_dps` 25 apply to a
-taught session's viewpoint moves. Those are joint moves at up to 25°/s,
-slowed so that the tool's straight-line distance over the move's time stays
-within 0.15 m/s; the tool can peak above that along its arc.
+10 apply to cell pans (Cartesian). Viewpoint, hub and return moves are joint
+moves at the arm's own speed (above). Each joint move's time check uses the
+session's measured rate so far (`measured_joint_dps` per move in
+`session_arm.json`); the first has none.
 
 `config/arm_session.yaml`, all required:
 
@@ -1141,13 +1226,20 @@ apply to both modes:
 - **Before every move**, after the box check: the arm's own IK
   (`ComputeInverseKinematics`) at 1/4, 2/4, 3/4 of the path and at the end,
   each seeded with the previous solution (the first with the measured
-  joints). A failed IK, a joint within 5° of its limit (joints 2, 3, 5:
-  ±128.9°, ±147.8°, ±120.3°, Gen3 6 DoF), or a joint jumping over 45°
+  joints). A failed IK, a joint within 5° of either end of its limit in
+  `config/arm.yaml`, or a joint jumping over 45°
   between samples (a branch change near a singularity) marks the target
   `unreachable`. It is logged, not sent, and the session moves on.
 - **Skips:** a target outside the box or unreachable (logged); a board that
   leaves the view (it steps halfway back, retries once, then returns); a
   board not still within `still_timeout_s`.
+- **Abandons a viewpoint**, logs `NAME: viewpoint abandoned (reason)` and
+  goes on to the next viewpoint (a joint move, in a taught session) when the
+  board isn't in view after a return (from a skipped target, a correction or
+  an abort), or that return fails its checks.
+- **Leaves a viewpoint at the reach edge**, logging `NAME: viewpoint at
+  reach edge (first 2 cell pans IK-unreachable; N cells not tried: [...])`,
+  when its first two cell pans are both `unreachable`.
 - **An arm abort** (`ACTION_ABORT`, or `ExecuteAction` refused) on a
   validated target is logged as `aborted: <reason>`, with the joints after
   it. The arm then goes back to the last reached pose and the session
@@ -1155,6 +1247,7 @@ apply to both modes:
   target resets the count) ends the session without moving again.
 - **Ends** at capture's end condition, when nothing is left to visit, on
   `q`, on Ctrl-C, or when the status file is over 2 s old (capture died).
+  A board out of view does not end it (above).
   Each of these returns to P0. After three aborts in a row, or a move
   timeout, it does **not** move again and prints the `arm.py goto` command
   back to P0.
@@ -1164,7 +1257,8 @@ apply to both modes:
   validated with, the measured pose, the cell or variant it was for,
   capture's decision, timings (`ik_s`, `move_s`, `still_s`, `decide_s`),
   the aim error of each move, the board estimate, the cap, the mode, the
-  taught poses used, and the summary. Schema `panoptes.session_arm/4`.
+  taught poses used, every `abandon` entry, and the summary. Schema
+  `panoptes.session_arm/6`.
 
 **Limit: capture's bins are fixed, the planner's names are relative.**
 Capture bins distance by apparent square size against
@@ -1178,16 +1272,64 @@ the frame looks bigger (FINDINGS §20), so corner views can land a capture
 band closer. When the session sees that, it stops corner-seeking for that
 band.
 
+**Procedure, one camera's intrinsics on the arm**
+
+Per camera, in this order. Validated on 33664, 2026-11-02 (FINDINGS §16).
+`PATH` is `"$HOME"/panoptes-data/capture_status.json`.
+
+1. **Unmount** the camera from its rig position. Its mask (and any
+   extrinsics) is invalid from here on.
+2. **Mount** it on the arm's camera bracket and connect it.
+3. **Unfold the arm.** `arm.py status`; jog every joint with a negative or
+   small `limits` margin to mid-range with the Web App (steps 3–4 of
+   **Procedure** above). Close the Web App.
+4. **Teach, once per easel position**:
+   `arm_capture.py teach --status-file PATH` with capture running
+   (`--auto-dry --status-file PATH`). Skip if the easel and arm base haven't
+   moved since the last teach and `config/arm_poses.yaml` has all eight and
+   the `hub`. If a taught corner no longer shows the whole board with this
+   camera, teach again with `--force`.
+5. **Probe, once per mounting:** `arm.py goto-pose hub --yes`, board
+   centred and fully visible (jog if not), capture in `--auto-dry`; then
+   `arm_capture.py probe --status-file PATH`, read the plan, and again with
+   `--yes`. It writes `config/arm_camera.yaml`.
+6. **Session, twice.** Each time start capture fresh:
+   `src/04_capture/build/capture <serial> --gain 0 --intensity 15 --exposure 8133 --auto --status-file PATH`.
+   Then the taught-session dry run and `--yes` (below). Gain 0, not 7: at
+   near poses the IR ring glares off the board at higher gain
+   (FINDINGS §16). Quit capture with `q` when the session ends.
+7. **Fit:** `.venv/bin/python python/fit_intrinsics.py --write-camera <session_1> <session_2>`.
+   Expect RMS under ~0.2 px and the two within fx/fy ~1 px, cx/cy ~3 px
+   (on 33664: ranges 0.5 / 0.4 / 1.0 / 0.5 px), then `wrote
+   config/intrinsics/<serial>.yaml`. Record the fit in FINDINGS §16.
+8. **Remount** the camera at its rig position, filter in, ring at 15.
+9. **Re-learn masks** (§6): `src/07_mask/build/mask` with the volume empty;
+   it learns, applies, verifies and saves. Check the verify table reads
+   `residual: none` with no `LEAK` line. Learn runs on every camera, so all
+   ten are re-learned. A moved camera's mask is wrong (FINDINGS §15).
+
 **Procedure, taught session**
 
-1. **Probe, then teach** (above), unless the camera setup is unchanged.
+1. **Teach** once per easel position, and **probe** once per camera
+   mounting (above). The per-camera procedure below gives the order.
 2. **Start capture** with `--auto` and `--status-file`. Check
    `capture_status.py PATH` shows `session_path`, not `null`.
 3. **Dry run:** `.venv/bin/python python/arm_capture.py session --status-file "$HOME"/panoptes-data/capture_status.json`.
-   Read the `taught` line and the viewpoints; it ends `dry run: nothing sent`.
-4. **E-stop in reach; nothing and nobody in the sweep.** Viewpoint moves are
-   joint moves at up to 25°/s, and the box checks only their ends.
+   Read the `taught` line, the `ik` line, the viewpoints (each with its
+   `family`), the `checks` count and the `families` line; it ends `dry run:
+   nothing sent`. The `ik` line reads `8/8 corners use their taught joints
+   (no IK); N others: B outside the box, S solved seeded by the nearest
+   taught pose, P by the previous viewpoint after that failed, F failed with
+   every seed`; each failed attempt follows as `  IK failed  NAME  seeded
+   SEED: error`. Corners never go through IK.
+   `no 'hub' pose`: save one (above).
+4. **E-stop in reach; nothing and nobody in the sweep.** Viewpoint and hub
+   moves are joint moves at the arm's own speed, and the box checks only
+   their ends. A hub move swings the whole arm between configurations.
 5. **Run with `--yes`.** `q` or Ctrl-C returns to the start and ends cleanly.
+   Mid viewpoints come first. `viewpoint at reach edge` on the near corners
+   is expected; `viewpoint abandoned` on most viewpoints is not: stop (`q`)
+   and check the easel and the taught poses.
 
 **Procedure, `--orbit`**
 
@@ -1230,12 +1372,15 @@ band.
    - `unreachable` lines: the arm's IK refused the target (the note says
      why); many in a row mean P0 is near a joint limit or singularity;
    - `aborted:` lines: logged and recovered; three in a row end the session;
+   - `viewpoint abandoned` lines: the board wasn't in view after a return;
+     the session moves on to the next viewpoint;
    - a `capture-<band>: a corner view was binned ...` line: that band's
      tilted bins won't fill this way (the limit above).
 7. **It ends by itself** and returns to P0, or press `q` (after the current
    move) or Ctrl-C (immediately: `Base.Stop`, then back to P0; a second
    Ctrl-C stops the return too). The `summary` gives moves commanded,
-   accepted, redundant, skipped / unreachable / aborted, total time, the
+   accepted, redundant, skipped / unreachable / aborted, viewpoints
+   abandoned and at the reach edge, total time, the
    time per move (and how much of it the arm was moving), the share of the
    session spent moving, waiting for still, waiting for capture's decision
    and in IK checks, cells remaining and bins short.
@@ -1250,6 +1395,10 @@ band.
   or the arm isn't idle. Close it and press Enter again.
 - **`taught poses missing`.** Run `teach`. Poses from `save-pose` have no
   square size, so they don't count.
+- **`no 'hub' pose` / `the 'hub' pose is unusable`.** Save a board-centred,
+  mid-range pose with `arm.py save-pose hub` (`--force` to replace it).
+- **Many `SKIP: unreachable` or many families.** The taught corners are far
+  apart in arm configuration. Teach them again closer to one configuration.
 - **`not starting: arm is N mm / D deg from the probe's start pose`.** Move
   the arm back with `arm.py goto-pose NAME`, or rerun the probe here.
 - **`not starting: actuator 5 is at A deg, within 10 deg of 0 (wrist
@@ -1285,6 +1434,10 @@ band.
   after an E-stop). Clear faults in the Kinova Web App, then `status`.
 - **`ACTION_ABORT: <reason>`.** The arm rejected or stopped the trajectory
   (e.g. a joint or Cartesian limit). The arm stays where it stopped.
+  `<reason>` is `SUBCODE; notifications: …; trajectory errors: …`. Above
+  it, `arm.py` prints `what the arm reported:` with the action sent, every
+  notification in full (`abort_details`, `trajectory_info`) and
+  `GetTrajectoryErrorReport`. Copy that block into FINDINGS.
 - **`not starting: board not still`** with the arm at rest. Something is
   shaking the easel or the camera, or the mount flexes; fix that first.
 - **`came back N px from where it started`.** The camera moved in its

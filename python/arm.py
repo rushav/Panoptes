@@ -16,8 +16,22 @@ _ReadOnly, which refuses any method not on the allow-list it was built with:
 
 Within MOTION_CALLS, ExecuteAction accepts any Kortex Action (twist, wrench,
 software e-stop, sequences...). reach_pose() and reach_joints() build the
-only two sent here, each with a speed constraint, and _execute() refuses to
-send anything else.
+only two sent here, and _execute() refuses to send anything else.
+reach_pose() always carries a Cartesian speed constraint. reach_joints()
+carries none unless asked (--speed-constraint DEG_S), as in Kinova's joint
+example: with JOINT_CONSTRAINT_SPEED the arm rejects short moves whose
+implied acceleration is over its limit (METHOD_FAILED, FINDINGS §20).
+
+ABORTS. On ACTION_ABORT, _execute() keeps every ActionNotification it saw
+for the action (protobuf text, abort_details and trajectory_info included)
+and the arm's GetTrajectoryErrorReport, in Arm.last_abort; the returned
+reason is a one-line summary of both. arm.py prints last_abort in full.
+
+JOINT LIMITS. config/arm.yaml holds a position limit for each actuator, as
+[low, high] deg after wrapping to +-180, "continuous", or null: unconfirmed.
+Kortex cannot read them; the Web App shows them (FINDINGS §20). A joint move's target, a taught
+pose and every IK sample are refused past a confirmed limit (less a margin);
+past a null one they only warn, with the angle.
 
 THE BOX. config/arm.yaml bounds the tool point in the base frame. Both the
 current pose and the target must be inside it before anything is sent.
@@ -42,10 +56,10 @@ Usage:
   python arm.py status
   python arm.py move [--dx M] [--dy M] [--dz M] [--dtx DEG] [--dty DEG] [--dtz DEG] [--yes]
   python arm.py goto X Y Z TX TY TZ [--yes]
-  python arm.py joints J1 J2 J3 J4 J5 J6 [--yes]
+  python arm.py joints J1 J2 J3 J4 J5 J6 [--speed-constraint DEG_S] [--yes]
   python arm.py save-pose NAME [--force]
   python arm.py list-poses
-  python arm.py goto-pose NAME [--yes]
+  python arm.py goto-pose NAME [--speed-constraint DEG_S] [--yes]
   python arm.py stop
   (each also takes --ip, --port, --username, --password)
 
@@ -53,7 +67,7 @@ python/arm_capture.py moves the arm through Arm.reach_pose() too, after
 check_move(), with the same --yes rule.
 """
 
-import argparse, datetime, math, os, re, socket, sys, threading
+import argparse, datetime, math, os, re, socket, sys, threading, time
 
 import cv2
 
@@ -85,22 +99,26 @@ TIMEOUT_CEILING_S = 300.0
 # The only stub methods this module may call.
 # ComputeForward/InverseKinematics are computations on the arm's controller;
 # they command nothing.
+# GetTrajectoryErrorReport reads the arm's reasons for the last rejected
+# trajectory, after an ACTION_ABORT.
 BASE_READS = ("GetFirmwareBundleVersions", "GetProductConfiguration",
               "GetMeasuredCartesianPose", "GetMeasuredJointAngles", "GetServoingMode",
-              "ComputeForwardKinematics", "ComputeInverseKinematics")
+              "ComputeForwardKinematics", "ComputeInverseKinematics",
+              "GetTrajectoryErrorReport")
 DEVICE_CONFIG_READS = ("GetSerialNumber",)
 DEVICE_MANAGER_READS = ("ReadAllDevices",)
 MOTION_CALLS = ("OnNotificationActionTopic", "ExecuteAction", "Unsubscribe", "Stop")
 
-# Gen3 6 DoF joint position limits, deg, by actuator 1..6 (user guide, Table
-# 45 "Joint position limits"); actuators 1, 4 and 6 turn without limit. Not
-# readable through the API (ControlConfig exposes speed and acceleration
-# limits only).
-JOINT_LIMITS_DEG = {2: 128.9, 3: 147.8, 5: 120.3}
 STOP_CALLS = ("Stop",)
 
+
+# Joint position limits come from config/arm.yaml (joint_N_limit_deg), copied
+# from the Web App. Kortex 2.6 has no read for them: its limit reads cover
+# speed, acceleration, torque, force and twist only (FINDINGS §20).
+ACTUATORS = 6
+
 # Actuators 4 and 6 line up when actuator 5 is at 0 or 180: the wrist
-# singularity. Its guide limit, above, puts 180 out of reach on this arm.
+# singularity.
 WRIST_ACTUATOR = 5
 WRIST_SINGULAR_DEG = 10.0
 
@@ -158,11 +176,77 @@ def load_limits(path=LIMITS):
             raise ArmError(f"{path}: {axis}_min must be below {axis}_max")
     lim["max_translation_mps"] = number("max_translation_mps", 0, TRANSLATION_CEILING_MPS)
     lim["max_rotation_dps"] = number("max_rotation_dps", 0, ROTATION_CEILING_DPS)
-    lim["viewpoint_translation_mps"] = number("viewpoint_translation_mps", 0, TRANSLATION_CEILING_MPS)
-    lim["viewpoint_rotation_dps"] = number("viewpoint_rotation_dps", 0, ROTATION_CEILING_DPS)
     lim["move_timeout_s"] = number("move_timeout_s", 0, TIMEOUT_CEILING_S)
+
+    # {actuator: (low, high) deg, "continuous", or None (null: unconfirmed)}
+    lim["joint_limits_deg"] = {}
+    for a in range(1, ACTUATORS + 1):
+        key = f"joint_{a}_limit_deg"
+        n = fs.getNode(key)
+        if n.empty():
+            raise ArmError(f"{path}: {key} is missing ([low, high], \"continuous\" or null)")
+        if n.isNone():
+            lim["joint_limits_deg"][a] = None
+        elif n.isString() and n.string() == "continuous":
+            lim["joint_limits_deg"][a] = "continuous"
+        elif n.isSeq() and n.size() == 2 and all(n.at(i).isInt() or n.at(i).isReal()
+                                                  for i in range(2)):
+            low, high = n.at(0).real(), n.at(1).real()
+            if not -180.0 <= low < high <= 180.0:
+                raise ArmError(f"{path}: {key} = [{low:g}, {high:g}] needs "
+                               "-180 <= low < high <= 180")
+            lim["joint_limits_deg"][a] = (low, high)
+        else:
+            raise ArmError(f"{path}: {key} must be [low, high], \"continuous\" or null")
     fs.release()
     return lim
+
+
+def joint_limit_checks(lim, joints, margin=0.0):
+    """(refusals, warnings) for joints (deg, actuator order) against
+    lim["joint_limits_deg"] less margin, after wrapping to +-180. A null
+    (unconfirmed) limit never refuses: it adds one warning naming the angle."""
+    refuse, unconfirmed = [], []
+    for actuator, limit in lim["joint_limits_deg"].items():
+        if actuator > len(joints) or limit == "continuous":
+            continue
+        a = wrap180(joints[actuator - 1])
+        if limit is None:
+            unconfirmed.append(f"{actuator} at {a:+.1f}")
+        elif joint_margin_deg(limit, a) < margin:
+            refuse.append(f"joint {actuator} at {a:+.1f} deg is {joint_margin_deg(limit, a):.1f} "
+                          f"deg from its limit {fmt_range(limit)}"
+                          + (f"; need {margin:g}" if margin else ""))
+    warn = []
+    if unconfirmed:
+        warn.append("joint limit unconfirmed, not checked (config/arm.yaml): joint "
+                    + ", ".join(unconfirmed) + " deg")
+    return refuse, warn
+
+
+def continuous_joints(lim):
+    """Actuator numbers whose limit in config/arm.yaml is "continuous"."""
+    return {a for a, limit in lim["joint_limits_deg"].items() if limit == "continuous"}
+
+
+def joint_margin_deg(limit, angle):
+    """Distance, deg, from angle (wrapped to +-180) to the nearer end of
+    limit (low, high); negative outside it."""
+    a = wrap180(angle)
+    return min(a - limit[0], limit[1] - a)
+
+
+def fmt_range(limit):
+    return f"[{limit[0]:+g}, {limit[1]:+g}]"
+
+
+def fmt_joint_limit(limit, angle):
+    """'limit [-148, +152], margin -12.2 deg', 'continuous' or 'limit unconfirmed'."""
+    if limit is None:
+        return "limit unconfirmed"
+    if limit == "continuous":
+        return "continuous"
+    return f"limit {fmt_range(limit)}, margin {joint_margin_deg(limit, angle):+.1f} deg"
 
 
 def outside_box(lim, pose):
@@ -307,6 +391,8 @@ class Arm:
         self._credentials = (username, password)
         self._transport = None
         self._session = None
+        self.last_abort = None        # full text of the last ACTION_ABORT, see _execute()
+        self.last_move_s = None       # ExecuteAction to ACTION_END/ABORT of the last action
 
     def __enter__(self):
         self.connect()
@@ -477,12 +563,17 @@ class Arm:
 
     def reach_joints(self, joints_deg, lim, dps=None):
         """
-        Send one reach_joint_angles action, at dps per joint (default
-        max_rotation_dps), and block until it ends. Returns and stops as
-        reach_pose(). The caller
-        must already have run check_joint_move(); this checks the box again,
-        on the arm's FK of joints_deg.
+        Send one reach_joint_angles action and block until it ends. Returns
+        and stops as reach_pose(). dps None (the default): no constraint
+        field, as in Kinova's 102-Movement_high_level/01 example; the arm
+        picks the speed. dps: JOINT_CONSTRAINT_SPEED at dps deg/s, which the
+        arm rejects for a short move if the implied acceleration is over its
+        limit. The caller must already have run check_joint_move(); this
+        checks the box again, on the arm's FK of joints_deg.
         """
+        if dps is not None and not 0 < dps <= ROTATION_CEILING_DPS:
+            raise ArmError(f"joint speed constraint {dps:g} deg/s is outside "
+                           f"(0, {ROTATION_CEILING_DPS:g}]")
         problems = outside_box(lim, self.forward_kinematics(joints_deg))
         if problems:
             raise ArmError("target outside the box: " + "; ".join(problems))
@@ -494,9 +585,10 @@ class Arm:
             a = action.reach_joint_angles.joint_angles.joint_angles.add()
             a.joint_identifier = i
             a.value = v
-        constraint = action.reach_joint_angles.constraint
-        constraint.type = Base_pb2.JOINT_CONSTRAINT_SPEED
-        constraint.value = dps or lim["max_rotation_dps"]
+        if dps is not None:
+            c = action.reach_joint_angles.constraint
+            c.type = Base_pb2.JOINT_CONSTRAINT_SPEED
+            c.value = dps
         return self._execute(action, "reach_joint_angles", lim)
 
     def _execute(self, action, kind, lim):
@@ -505,13 +597,18 @@ class Arm:
                 action.WhichOneof("action_parameters") != kind:
             raise ArmError(f"refusing to send an action that is not {kind}")
         motion = _ReadOnly(self._base_stub, MOTION_CALLS)
+        self.last_abort = self.last_move_s = None
 
         done = threading.Event()
         outcome = {}
+        seen = []                     # every notification for this action, in order
 
         def on_action(n):
             if done.is_set():
                 return
+            copy = Base_pb2.ActionNotification()
+            copy.CopyFrom(n)
+            seen.append(copy)
             if n.action_event in (Base_pb2.ACTION_END, Base_pb2.ACTION_ABORT):
                 outcome["event"] = n.action_event
                 outcome["abort"] = n.abort_details
@@ -520,6 +617,7 @@ class Arm:
         handle = motion.OnNotificationActionTopic(on_action, Base_pb2.NotificationOptions(),
                                                   options=self._options())
         try:
+            t0 = time.monotonic()
             try:
                 motion.ExecuteAction(action, options=self._options())
             except KServerException as e:
@@ -527,6 +625,7 @@ class Arm:
             if not done.wait(lim["move_timeout_s"]):
                 motion.Stop(options=self._options())
                 return "timeout", None
+            self.last_move_s = time.monotonic() - t0
         except KeyboardInterrupt:
             motion.Stop(options=self._options())
             raise ArmInterrupted("interrupted (Ctrl-C): Base.Stop sent")
@@ -535,7 +634,50 @@ class Arm:
 
         if outcome["event"] == Base_pb2.ACTION_END:
             return "end", None
-        return "abort", Errors_pb2.SubErrorCodes.Name(outcome["abort"])
+        return "abort", self._abort_report(action, seen, outcome["abort"])
+
+    def _abort_report(self, action, seen, abort_details):
+        """Fill self.last_abort with everything the arm said about an abort;
+        return a one-line summary for logs."""
+        code = Errors_pb2.SubErrorCodes.Name(abort_details)
+        full = [f"ACTION_ABORT, abort_details {code} ({abort_details})",
+                f"action sent ({action.WhichOneof('action_parameters')}):",
+                _indent(str(action))]
+        events = []
+        for i, n in enumerate(seen, 1):
+            full.append(f"notification {i} of {len(seen)}:")
+            full.append(_indent(str(n)))
+            ev = Base_pb2.ActionEvent.Name(n.action_event)
+            info = [f"{Base_pb2.TrajectoryInfoType.Name(t.trajectory_info_type)}"
+                    f" joint_index {t.joint_index} waypoint_index {t.waypoint_index}"
+                    for t in n.trajectory_info]
+            if n.abort_details:
+                ev += f"({Errors_pb2.SubErrorCodes.Name(n.abort_details)})"
+            events.append(ev + (f" [{'; '.join(info)}]" if info else ""))
+
+        errors = []
+        try:
+            report = self._base.GetTrajectoryErrorReport(options=self._options())
+            full.append("GetTrajectoryErrorReport (as read after the abort; it may "
+                        "describe an earlier rejected trajectory):")
+            full.append(_indent(str(report)) if report.trajectory_error_elements
+                        else "    (empty)")
+            for e in report.trajectory_error_elements:
+                errors.append(
+                    f"{Base_pb2.TrajectoryErrorType.Name(e.error_type)}"
+                    f" {Base_pb2.TrajectoryErrorIdentifier.Name(e.error_identifier)}"
+                    f" index {e.index} value {e.error_value:g} min {e.min_value:g}"
+                    f" max {e.max_value:g}" + (f" '{e.message}'" if e.message else ""))
+        except KServerException as e:
+            full.append(f"GetTrajectoryErrorReport refused by the arm: {e}")
+            errors.append(f"report refused ({e})")
+        self.last_abort = "\n".join(full)
+        return (f"{code}; notifications: {', '.join(events) or 'none'}; "
+                f"trajectory errors: {' | '.join(errors) or 'none'}")
+
+
+def _indent(text, prefix="    "):
+    return "\n".join(prefix + line for line in text.rstrip("\n").splitlines())
 
 
 # ---------------------------------------------------------------- commands
@@ -545,6 +687,7 @@ def _connect(args):
 
 
 def status(args):
+    lim = load_limits()
     with _connect(args) as arm:
         print(f"arm {arm.ip}:{arm.port}  session open "
               f"(inactivity timeout {SESSION_INACTIVITY_MS} ms)\n")
@@ -562,6 +705,11 @@ def status(args):
         print(f"\npose       x {x:+.4f}  y {y:+.4f}  z {z:+.4f} m")
         print(f"           theta_x {tx:+8.3f}  theta_y {ty:+8.3f}  theta_z {tz:+8.3f} deg")
         print("joints     " + "  ".join(f"{i}: {v:8.3f}" for i, v in arm.measured_joints()) + "  deg")
+        print("limits     actuator, angle wrapped to +-180, limit from config/arm.yaml")
+        for i, v in arm.measured_joints():
+            a = i + 1
+            print(f"             {a}  {wrap180(v):+8.3f} deg  "
+                  f"{fmt_joint_limit(lim['joint_limits_deg'].get(a), v)}")
         print(f"servoing   {arm.servoing_mode()}")
     print("\nsession closed")
 
@@ -603,45 +751,60 @@ def check_move(arm, lim, current, target, show=True):
     return target
 
 
-def check_joint_move(arm, lim, current, joints_now, joints, show=True, viewpoint=False):
+def check_joint_move(arm, lim, current, joints_now, joints, show=True, dps=None,
+                     rate_dps=None, warn=print):
     """
     Every check made before a joint move is sent; the only path to
     reach_joints(). current and joints_now are the measured pose and joints;
     joints is the target, deg, actuator order. The box applies to the arm's FK
-    of the target; the time estimate is the largest wrapped joint change at
-    max_rotation_dps. Otherwise as check_move(). viewpoint: use the viewpoint
-    speeds, the joint speed lowered until the tool's straight-line distance
-    over the move's time is within viewpoint_translation_mps. Returns (joints
-    in [0, 360), FK pose, joint speed deg/s).
+    of the target. dps: the speed constraint to send (None: none, the arm
+    picks the speed). The time estimate is the largest wrapped joint change
+    over dps, or else over rate_dps, a measured rate (largest joint change
+    over ExecuteAction-to-ACTION_END time) of earlier moves; with neither
+    there is no estimate and no timeout check. Otherwise as check_move().
+    Returns (joints as sent: continuous joints within 180 of the measured
+    angle, the others in [0, 360); FK pose; dps). A target past a confirmed
+    joint limit is refused; an unconfirmed one is passed to warn (always,
+    even with show=False).
     """
+    if dps is not None and not 0 < dps <= ROTATION_CEILING_DPS:
+        raise ArmError(f"REFUSED, nothing sent:\n  joint speed constraint {dps:g} deg/s "
+                       f"is outside (0, {ROTATION_CEILING_DPS:g}]")
     if len(joints) != len(joints_now):
         raise ArmError(f"REFUSED, nothing sent:\n  {len(joints)} joint angles for a "
                        f"{len(joints_now)}-joint arm")
-    joints = [v % 360.0 for v in joints]             # as the arm reports them
-    refuse = []
-    for actuator, limit in JOINT_LIMITS_DEG.items():
-        a = wrap180(joints[actuator - 1])
-        if abs(a) > limit:
-            refuse.append(f"target: joint {actuator} {a:+.1f} deg is past its limit +-{limit:g}")
+    # Continuous joints: the shortest way from the measured angle (may leave
+    # [0, 360)); the others in [0, 360), as the arm reports them.
+    cont = continuous_joints(lim)
+    joints = [now + wrap180(v - now) if i in cont else v % 360.0
+              for i, (v, now) in enumerate(zip(joints, joints_now), 1)]
+    refuse, warnings = joint_limit_checks(lim, joints)
+    refuse = [f"target: {r}" for r in refuse]
+    for w in warnings:
+        warn(f"WARNING    target {w}")
     if refuse:
         raise ArmError("REFUSED, nothing sent:\n  " + "\n  ".join(refuse))
 
     target = arm.forward_kinematics(joints)
     rot = max(abs(v) for v in joint_error(joints_now, joints))
-    dps = lim["max_rotation_dps"]
-    if viewpoint:
-        dps = lim["viewpoint_rotation_dps"]
-        dist = math.dist(current[:3], target[:3])
-        if rot > 0 and dist > 0:
-            dps = min(dps, rot * lim["viewpoint_translation_mps"] / dist)
-    est = rot / dps
+    rate = dps or rate_dps
+    est = rot / rate if rate else None
     if show:
         print(f"current    {fmt_joints(joints_now)}")
         print(f"target     {fmt_joints(joints)}")
         print(f"current    {fmt_pose(current)}")
         print(f"target FK  {fmt_pose(target)}")
-        print(f"change     up to {rot:.2f} deg on a joint; at {dps:.1f} deg/s "
-              f"about {est:.1f} s (timeout {lim['move_timeout_s']:g} s)")
+        if dps:
+            speed = f"constraint JOINT_CONSTRAINT_SPEED {dps:g} deg/s"
+        else:
+            speed = "no speed constraint: the arm picks the speed"
+        if est is None:
+            when = "duration measured after the move"
+        else:
+            when = (f"about {est:.1f} s at {rate:.1f} deg/s"
+                    + ("" if dps else " (measured)"))
+        print(f"change     up to {rot:.2f} deg on a joint; {speed}; {when} "
+              f"(timeout {lim['move_timeout_s']:g} s)")
         print(f"box        x [{lim['x_min']:+.3f}, {lim['x_max']:+.3f}]  "
               f"y [{lim['y_min']:+.3f}, {lim['y_max']:+.3f}]  "
               f"z [{lim['z_min']:+.3f}, {lim['z_max']:+.3f}] m  (config/arm.yaml); "
@@ -649,7 +812,7 @@ def check_joint_move(arm, lim, current, joints_now, joints, show=True, viewpoint
 
     refuse = [f"current pose: {p}" for p in outside_box(lim, current)]
     refuse += [f"target: {p}" for p in outside_box(lim, target)]
-    if est > lim["move_timeout_s"]:
+    if est is not None and est > lim["move_timeout_s"]:
         refuse.append(f"estimated {est:.1f} s exceeds move_timeout_s; split the move")
     mode = arm.servoing_mode()
     if mode != "SINGLE_LEVEL_SERVOING":
@@ -674,10 +837,10 @@ def _motion(args, make_target):
 
         print("\nsending reach_pose ...")
         result, reason = arm.reach_pose(target, lim)
-        _report(target, arm.measured_pose(), result, reason, lim)
+        _report(target, arm.measured_pose(), result, reason, lim, arm.last_abort)
 
 
-def _report(target, reached, result, reason, lim):
+def _report(target, reached, result, reason, lim, detail=None):
     d, dist, dt = pose_error(target, reached)
     print(f"result     {result.upper()}" + (f"  ({reason})" if reason else ""))
     print(f"measured   {fmt_pose(reached)}")
@@ -688,26 +851,36 @@ def _report(target, reached, result, reason, lim):
         raise ArmError(f"no ACTION_END or ACTION_ABORT within {lim['move_timeout_s']:g} s; "
                        "Base.Stop sent")
     if result == "abort":
+        if detail:
+            print("\nwhat the arm reported:\n" + _indent(detail))
         raise ArmError(f"ACTION_ABORT: {reason}")
 
 
 def _joint_motion(args, joints):
-    """Shared by joints and goto-pose: plan, check, then send only with --yes."""
+    """Shared by joints and goto-pose: plan, check, then send only with --yes.
+    No speed constraint unless --speed-constraint."""
     lim = load_limits()
+    dps = args.speed_constraint
     with _connect(args) as arm:
         current = arm.measured_pose()
         now = [v for _, v in arm.measured_joints()]
-        joints, target, _ = check_joint_move(arm, lim, current, now, joints)
+        joints, target, _ = check_joint_move(arm, lim, current, now, joints, dps=dps)
+        print("sent as    " + "  ".join(f"id {i}: {v:.3f}" for i, v in enumerate(joints))
+              + "  (joint_identifier: value deg)")
 
         if not args.yes:
             print("\ndry run: nothing sent. Add --yes to move.")
             return
 
         print("\nsending reach_joint_angles ...")
-        result, reason = arm.reach_joints(joints, lim)
+        result, reason = arm.reach_joints(joints, lim, dps)
         err = joint_error(joints, [v for _, v in arm.measured_joints()])
-        _report(target, arm.measured_pose(), result, reason, lim)
+        _report(target, arm.measured_pose(), result, reason, lim, arm.last_abort)
         print(f"joints     largest error {max(abs(v) for v in err):.3f} deg")
+        rot = max(abs(v) for v in joint_error(now, joints))
+        if arm.last_move_s:
+            print(f"duration   {arm.last_move_s:.2f} s for up to {rot:.2f} deg on a joint "
+                  f"({rot / arm.last_move_s:.2f} deg/s average)")
 
 
 def move(args):
@@ -772,6 +945,13 @@ def main():
         p.add_argument("--username", default="admin")
         p.add_argument("--password", default="admin")
 
+    def speed_constraint(p):
+        p.add_argument("--speed-constraint", type=float, metavar="DEG_S",
+                       help="send JOINT_CONSTRAINT_SPEED at DEG_S (0 < DEG_S <= "
+                            f"{ROTATION_CEILING_DPS:g}); default: no constraint, the arm picks "
+                            "the speed. The arm rejects a short move whose implied "
+                            "acceleration is over its limit")
+
     p = sub.add_parser("status", help="print firmware, serial, pose, joints, servoing mode")
     connection(p)
 
@@ -792,6 +972,7 @@ def main():
     p = sub.add_parser("joints", help="joint-space move; the box applies to the arm's FK of the angles")
     p.add_argument("joints", type=float, nargs=6, metavar="J",
                    help="J1 to J6, deg, actuator order")
+    speed_constraint(p)
     p.add_argument("--yes", action="store_true", help="actually move; without it, print the plan")
     connection(p)
 
@@ -804,6 +985,7 @@ def main():
 
     p = sub.add_parser("goto-pose", help="joint-space move to a saved pose")
     p.add_argument("name", metavar="NAME")
+    speed_constraint(p)
     p.add_argument("--yes", action="store_true", help="actually move; without it, print the plan")
     connection(p)
 

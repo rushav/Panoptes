@@ -1,0 +1,7561 @@
+{
+ "schema": "panoptes.session_arm/5",
+ "mode": "taught",
+ "taught_poses": {
+  "near_left_high": {
+   "joints_deg": [
+    156.506,
+    290.082,
+    0.536,
+    233.618,
+    322.242,
+    38.001
+   ],
+   "pose": [
+    0.91585,
+    0.23194,
+    0.4969,
+    95.87336,
+    -3.53883,
+    82.63503
+   ],
+   "saved_utc": "2026-11-02T21:38:44Z",
+   "square_px": 58.845
+  },
+  "near_right_high": {
+   "joints_deg": [
+    203.866,
+    282.119,
+    346.664,
+    127.356,
+    317.547,
+    130.633
+   ],
+   "pose": [
+    0.91061,
+    -0.24228,
+    0.4853,
+    93.37433,
+    -6.51587,
+    97.62337
+   ],
+   "saved_utc": "2026-11-02T21:39:39Z",
+   "square_px": 55.337
+  },
+  "near_left_low": {
+   "joints_deg": [
+    146.626,
+    250.691,
+    344.968,
+    281.618,
+    319.554,
+    343.443
+   ],
+   "pose": [
+    0.875,
+    0.3431,
+    0.13581,
+    87.026,
+    -5.7131,
+    82.60931
+   ],
+   "saved_utc": "2026-11-02T21:40:24Z",
+   "square_px": 56.77
+  },
+  "near_right_low": {
+   "joints_deg": [
+    214.395,
+    258.539,
+    1.431,
+    254.437,
+    66.886,
+    17.299
+   ],
+   "pose": [
+    0.83204,
+    -0.27394,
+    0.17307,
+    81.26845,
+    -2.01732,
+    117.9978
+   ],
+   "saved_utc": "2026-11-02T21:41:05Z",
+   "square_px": 50.695
+  },
+  "far_left_high": {
+   "joints_deg": [
+    90.769,
+    331.267,
+    57.862,
+    81.305,
+    112.553,
+    183.527
+   ],
+   "pose": [
+    0.27536,
+    0.39952,
+    0.60599,
+    101.22942,
+    3.91915,
+    66.88238
+   ],
+   "saved_utc": "2026-11-02T21:42:16Z",
+   "square_px": 31.837
+  },
+  "far_right_high": {
+   "joints_deg": [
+    286.924,
+    11.425,
+    131.991,
+    103.919,
+    258.848,
+    211.962
+   ],
+   "pose": [
+    0.23295,
+    -0.18309,
+    0.49928,
+    95.50022,
+    -0.69019,
+    88.88892
+   ],
+   "saved_utc": "2026-11-02T21:44:17Z",
+   "square_px": 31.807
+  },
+  "far_left_low": {
+   "joints_deg": [
+    260.808,
+    122.716,
+    76.706,
+    110.377,
+    260.926,
+    46.114
+   ],
+   "pose": [
+    0.19044,
+    0.51065,
+    0.30929,
+    83.32842,
+    -0.32144,
+    78.75835
+   ],
+   "saved_utc": "2026-11-02T21:45:11Z",
+   "square_px": 30.591
+  },
+  "far_right_low": {
+   "joints_deg": [
+    79.544,
+    123.039,
+    137.507,
+    268.056,
+    271.845,
+    72.856
+   ],
+   "pose": [
+    0.32804,
+    -0.19364,
+    0.3659,
+    89.55296,
+    -3.40371,
+    103.31012
+   ],
+   "saved_utc": "2026-11-02T21:49:12Z",
+   "square_px": 34.074
+  }
+ },
+ "families": {
+  "families": [
+   [
+    "lr0_hl0_nf0",
+    "lr2_hl0_nf0",
+    "lr2_hl1_nf0",
+    "lr1_hl1_nf0",
+    "lr0_hl1_nf0",
+    "lr0_hl1_nf1",
+    "lr0_hl0_nf1"
+   ],
+   [
+    "lr2_hl2_nf0",
+    "lr0_hl2_nf1",
+    "lr0_hl0_nf2"
+   ],
+   [
+    "lr2_hl2_nf1",
+    "lr1_hl2_nf1"
+   ],
+   [
+    "lr1_hl1_nf1"
+   ],
+   [
+    "lr2_hl1_nf1",
+    "lr2_hl0_nf1",
+    "lr1_hl0_nf2",
+    "lr2_hl1_nf2",
+    "lr2_hl2_nf2"
+   ],
+   [
+    "lr1_hl0_nf1"
+   ]
+  ],
+  "ik": {
+   "corners": 8,
+   "corners_used": 5,
+   "others": 19,
+   "others_outside_box": 1,
+   "solved_nearest_seed": 13,
+   "solved_previous_seed": 2,
+   "failed": 3,
+   "failures": [
+    {
+     "name": "lr1_hl0_nf0",
+     "seed": "near_left_high",
+     "error": "no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n)"
+    },
+    {
+     "name": "lr1_hl0_nf0",
+     "seed": "previous",
+     "error": "no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n)"
+    },
+    {
+     "name": "lr1_hl2_nf0",
+     "seed": "near_left_low",
+     "error": "no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => IK solution found but it is outside of joint position limits - Try to change initial guess to find a valid solution \n)"
+    },
+    {
+     "name": "lr1_hl2_nf0",
+     "seed": "previous",
+     "error": "no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => IK solution found but it is outside of joint position limits - Try to change initial guess to find a valid solution \n)"
+    },
+    {
+     "name": "lr1_hl2_nf1",
+     "seed": "far_right_low",
+     "error": "no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => IK solution found but it is outside of joint position limits - Try to change initial guess to find a valid solution \n)"
+    },
+    {
+     "name": "lr0_hl2_nf1",
+     "seed": "far_left_low",
+     "error": "no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => IK solution found but it is outside of joint position limits - Try to change initial guess to find a valid solution \n)"
+    },
+    {
+     "name": "lr1_hl2_nf2",
+     "seed": "far_right_high",
+     "error": "no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => IK solution found but it is outside of joint position limits - Try to change initial guess to find a valid solution \n)"
+    },
+    {
+     "name": "lr1_hl2_nf2",
+     "seed": "previous",
+     "error": "no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => IK solution found but it is outside of joint position limits - Try to change initial guess to find a valid solution \n)"
+    }
+   ]
+  },
+  "hub_legs": {
+   "between": 6,
+   "start": 0,
+   "return": 0
+  }
+ },
+ "hub": {
+  "joints_deg": [
+   347.732,
+   105.458,
+   118.525,
+   16.075,
+   257.866,
+   90.496
+  ],
+  "pose": [
+   0.60787,
+   0.05602,
+   0.47339,
+   90.74017,
+   -3.10146,
+   87.11544
+  ],
+  "saved_utc": "2026-11-02T21:51:41Z"
+ },
+ "created_utc": "2026-11-03T01:52:18Z",
+ "status_file": "/tmp/panoptes_status.json",
+ "session_path": "/home/rushav/panoptes-data/sessions/intrinsics_33664_20261102_175213",
+ "camera_serial": 33664,
+ "p0": {
+  "abs": [
+   0.60792,
+   0.05605,
+   0.4732,
+   90.75936,
+   -3.09462,
+   87.11684
+  ],
+  "joints_deg": [
+   347.73,
+   105.47,
+   118.53,
+   16.07,
+   257.86,
+   90.5
+  ],
+  "board": {
+   "centroid_px": [
+    616.38,
+    435.55
+   ],
+   "bbox_px": [
+    410.02,
+    272.55,
+    841.01,
+    598.33
+   ],
+   "square_px": 43.927,
+   "roll_deg": 0.462
+  },
+  "note": "every pose's rel_p0 is in P0's tool frame: t_m (m), rotvec_deg"
+ },
+ "board_estimate": null,
+ "cap": null,
+ "gains": {
+  "source": "config/arm_camera.yaml",
+  "created_utc": "2026-10-30T21:34:42Z",
+  "rot_axes": [
+   "theta_y",
+   "theta_x"
+  ],
+  "lateral_axes": [
+   "x",
+   "y"
+  ],
+  "f_px": [
+   591.79,
+   764.36
+  ],
+  "cam_axes_in_tool": [
+   [
+    -0.99928,
+    -0.02305,
+    0.03023
+   ],
+   [
+    0.01775,
+    -0.98611,
+    -0.16516
+   ],
+   [
+    0.03362,
+    -0.16451,
+    0.9858
+   ]
+  ],
+  "square_px_per_m_tool_z": 29.711
+ },
+ "config": {
+  "session": {
+   "lateral_variants": 0.0,
+   "lateral_m": 0.12,
+   "depth_m": 0.15,
+   "orbit_roll_every": 3.0,
+   "two_move_px": 300.0,
+   "first_move_fraction": 0.6,
+   "mid_band_fraction": 0.08,
+   "band_spread_min": 0.15,
+   "still_timeout_s": 10.0,
+   "max_rotation_deg": 35.0,
+   "centre_tol_px": 40.0,
+   "edge_margin_px": 40.0,
+   "p0_tolerance_m": 0.05,
+   "p0_tolerance_deg": 10.0,
+   "n_lr": 3,
+   "n_hl": 3,
+   "n_nf": 3,
+   "orbit_angles_deg": [
+    0.0,
+    12.0,
+    -12.0,
+    24.0,
+    -24.0
+   ],
+   "orbit_radii_m": [
+    0.0,
+    0.2,
+    -0.2
+   ],
+   "orbit_rolls_deg": [
+    0.0,
+    15.0,
+    -15.0
+   ]
+  },
+  "autocapture": {
+   "min_interval_ms": 300.0,
+   "min_per_bin": 2.0,
+   "near_square_px": 50.0,
+   "far_square_px": 40.0
+  },
+  "limits": {
+   "x_min": 0.25,
+   "x_max": 0.95,
+   "y_min": -0.45,
+   "y_max": 0.45,
+   "z_min": 0.15,
+   "z_max": 0.85,
+   "max_translation_mps": 0.05,
+   "max_rotation_dps": 10.0,
+   "move_timeout_s": 30.0,
+   "joint_limits_deg": {
+    "1": "continuous",
+    "2": [
+     -129.0,
+     138.0
+    ],
+    "3": [
+     -148.0,
+     152.0
+    ],
+    "4": "continuous",
+    "5": [
+     -120.0,
+     128.0
+    ],
+    "6": "continuous"
+   }
+  },
+  "joint_speed_constraint_dps": null,
+  "ik": {
+   "samples": 4,
+   "joint_margin_deg": 5.0,
+   "jump_deg": 45.0
+  }
+ },
+ "variants": [
+  {
+   "name": "lr0_hl0_nf0",
+   "band": "near",
+   "depth": "nf0",
+   "t_m": [
+    0.19216,
+    0.0173,
+    0.29849
+   ],
+   "rot_deg": [
+    4.8521,
+    -4.4425,
+    0.7023
+   ],
+   "pose": [
+    0.91585,
+    0.23194,
+    0.4969,
+    95.87336,
+    -3.53883,
+    82.63503
+   ],
+   "predicted_square_px": 58.845,
+   "capture_band": "near",
+   "skip": null,
+   "grid": [
+    0,
+    0,
+    0
+   ],
+   "joints_deg": [
+    156.506,
+    290.082,
+    0.536,
+    233.618,
+    322.242,
+    38.001
+   ],
+   "family": 1,
+   "ik_seed": "taught",
+   "taught": "near_left_high",
+   "ik_failed": []
+  },
+  {
+   "name": "lr2_hl0_nf0",
+   "band": "near",
+   "depth": "nf0",
+   "t_m": [
+    -0.28166,
+    0.03155,
+    0.31692
+   ],
+   "rot_deg": [
+    3.4872,
+    10.5889,
+    3.0322
+   ],
+   "pose": [
+    0.91061,
+    -0.24228,
+    0.4853,
+    93.37433,
+    -6.51587,
+    97.62337
+   ],
+   "predicted_square_px": 55.337,
+   "capture_band": "near",
+   "skip": null,
+   "grid": [
+    2,
+    0,
+    0
+   ],
+   "joints_deg": [
+    203.866,
+    282.119,
+    346.664,
+    127.356,
+    317.547,
+    130.633
+   ],
+   "family": 1,
+   "ik_seed": "taught",
+   "taught": "near_right_high",
+   "ik_failed": []
+  },
+  {
+   "name": "lr2_hl1_nf0",
+   "band": "near",
+   "depth": "nf0",
+   "t_m": [
+    -0.30785,
+    -0.12387,
+    0.28054
+   ],
+   "rot_deg": [
+    -2.1735,
+    20.7459,
+    2.0772
+   ],
+   "pose": [
+    0.871325,
+    -0.25811,
+    0.329185,
+    87.11080763088401,
+    -4.8046902256329975,
+    107.94580347385403
+   ],
+   "predicted_square_px": 53.016000000000005,
+   "capture_band": "near",
+   "skip": null,
+   "grid": [
+    2,
+    1,
+    0
+   ],
+   "joints_deg": [
+    209.58412170410156,
+    -102.59542083740234,
+    -35.662437438964844,
+    105.91365814208984,
+    -50.497169494628906,
+    148.5873260498047
+   ],
+   "family": 1,
+   "ik_seed": "near_right_high",
+   "taught": null,
+   "ik_failed": []
+  },
+  {
+   "name": "lr1_hl1_nf0",
+   "band": "near",
+   "depth": "nf0",
+   "t_m": [
+    -0.03552,
+    -0.14504,
+    0.27913
+   ],
+   "rot_deg": [
+    -0.9156,
+    8.1219,
+    1.8535
+   ],
+   "pose": [
+    0.883375,
+    0.01470500000000001,
+    0.32277,
+    89.26982005415555,
+    -4.953348977467041,
+    95.25794729067437
+   ],
+   "predicted_square_px": 55.41175,
+   "capture_band": "near",
+   "skip": null,
+   "grid": [
+    1,
+    1,
+    0
+   ],
+   "joints_deg": [
+    180.71673583984375,
+    -116.05059051513672,
+    -69.98883819580078,
+    170.57284545898438,
+    -42.83446502685547,
+    92.68187713623047
+   ],
+   "family": 1,
+   "ik_seed": "near_right_high",
+   "taught": null,
+   "ik_failed": []
+  },
+  {
+   "name": "lr0_hl1_nf0",
+   "band": "near",
+   "depth": "nf0",
+   "t_m": [
+    0.23681,
+    -0.16621,
+    0.27773
+   ],
+   "rot_deg": [
+    0.3878,
+    -4.4963,
+    1.6172
+   ],
+   "pose": [
+    0.895425,
+    0.28752,
+    0.316355,
+    91.45295497970508,
+    -4.625468725275527,
+    82.58005289639792
+   ],
+   "predicted_square_px": 57.807500000000005,
+   "capture_band": "near",
+   "skip": null,
+   "grid": [
+    0,
+    1,
+    0
+   ],
+   "joints_deg": [
+    151.4925079345703,
+    -102.1099853515625,
+    -36.41020584106445,
+    239.33787536621094,
+    -41.723873138427734,
+    34.58416748046875
+   ],
+   "family": 1,
+   "ik_seed": "near_left_high",
+   "taught": null,
+   "ik_failed": []
+  },
+  {
+   "name": "lr0_hl1_nf1",
+   "band": "mid",
+   "depth": "nf1",
+   "t_m": [
+    0.30754,
+    -0.10373,
+    -0.05819
+   ],
+   "rot_deg": [
+    0.8907,
+    -9.5382,
+    -1.1922
+   ],
+   "pose": [
+    0.5641625,
+    0.3713025,
+    0.3869975,
+    92.04820476270322,
+    -1.665878576438435,
+    77.60284630229779
+   ],
+   "predicted_square_px": 44.51075,
+   "capture_band": "mid",
+   "skip": null,
+   "grid": [
+    0,
+    1,
+    1
+   ],
+   "joints_deg": [
+    122.61827850341797,
+    -114.09521484375,
+    -87.7906265258789,
+    250.8636474609375,
+    -81.88896179199219,
+    63.90338134765625
+   ],
+   "family": 1,
+   "ik_seed": "near_left_high",
+   "taught": null,
+   "ik_failed": []
+  },
+  {
+   "name": "lr0_hl0_nf1",
+   "band": "mid",
+   "depth": "nf1",
+   "t_m": [
+    0.26258,
+    0.06382,
+    -0.02621
+   ],
+   "rot_deg": [
+    7.6796,
+    -12.6656,
+    -2.0416
+   ],
+   "pose": [
+    0.595605,
+    0.31573,
+    0.551445,
+    98.80804413111301,
+    0.0059590525859415195,
+    74.67195031823292
+   ],
+   "predicted_square_px": 45.341,
+   "capture_band": "mid",
+   "skip": null,
+   "grid": [
+    0,
+    0,
+    1
+   ],
+   "joints_deg": [
+    128.6805877685547,
+    -27.801326751708984,
+    71.29322052001953,
+    266.5312805175781,
+    -64.73125457763672,
+    -6.171153545379639
+   ],
+   "family": 1,
+   "ik_seed": "near_left_high",
+   "taught": null,
+   "ik_failed": []
+  },
+  {
+   "name": "lr2_hl2_nf0",
+   "band": "near",
+   "depth": "nf0",
+   "t_m": [
+    -0.33404,
+    -0.2793,
+    0.24416
+   ],
+   "rot_deg": [
+    -7.8829,
+    30.8734,
+    1.0969
+   ],
+   "pose": [
+    0.83204,
+    -0.27394,
+    0.17307,
+    81.26845,
+    -2.01732,
+    117.9978
+   ],
+   "predicted_square_px": 50.695,
+   "capture_band": "near",
+   "skip": null,
+   "grid": [
+    2,
+    2,
+    0
+   ],
+   "joints_deg": [
+    214.395,
+    258.539,
+    1.431,
+    254.437,
+    66.886,
+    17.299
+   ],
+   "family": 2,
+   "ik_seed": "taught",
+   "taught": "near_right_low",
+   "ik_failed": []
+  },
+  {
+   "name": "lr0_hl2_nf1",
+   "band": "mid",
+   "depth": "nf1",
+   "t_m": [
+    0.35251,
+    -0.27129,
+    -0.09017
+   ],
+   "rot_deg": [
+    -5.8724,
+    -6.3779,
+    -0.3322
+   ],
+   "pose": [
+    0.53272,
+    0.426875,
+    0.22255,
+    85.22030148746585,
+    -2.9862572923597246,
+    80.72501935877852
+   ],
+   "predicted_square_px": 43.6805,
+   "capture_band": "mid",
+   "skip": null,
+   "grid": [
+    0,
+    2,
+    1
+   ],
+   "joints_deg": [
+    117.3270034790039,
+    -63.421142578125,
+    84.52935028076172,
+    109.95294952392578,
+    85.10331726074219,
+    117.7834243774414
+   ],
+   "family": 2,
+   "ik_seed": "previous",
+   "taught": null,
+   "ik_failed": [
+    {
+     "seed": "far_left_low",
+     "error": "no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => IK solution found but it is outside of joint position limits - Try to change initial guess to find a valid solution \n)"
+    }
+   ]
+  },
+  {
+   "name": "lr0_hl0_nf2",
+   "band": "far",
+   "depth": "nf2",
+   "t_m": [
+    0.333,
+    0.11034,
+    -0.35091
+   ],
+   "rot_deg": [
+    10.4936,
+    -20.8902,
+    -4.7952
+   ],
+   "pose": [
+    0.27536,
+    0.39952,
+    0.60599,
+    101.22942,
+    3.91915,
+    66.88238
+   ],
+   "predicted_square_px": 31.837,
+   "capture_band": "far",
+   "skip": null,
+   "grid": [
+    0,
+    0,
+    2
+   ],
+   "joints_deg": [
+    90.769,
+    331.267,
+    57.862,
+    81.305,
+    112.553,
+    183.527
+   ],
+   "family": 2,
+   "ik_seed": "taught",
+   "taught": "far_left_high",
+   "ik_failed": []
+  },
+  {
+   "name": "lr2_hl2_nf1",
+   "band": "mid",
+   "depth": "nf1",
+   "t_m": [
+    -0.30145,
+    -0.18787,
+    -0.01078
+   ],
+   "rot_deg": [
+    -4.0706,
+    23.5264,
+    0.6791
+   ],
+   "pose": [
+    0.58004,
+    -0.23379000000000003,
+    0.269485,
+    85.36491865616152,
+    -2.9761219032218262,
+    110.68126927267545
+   ],
+   "predicted_square_px": 42.3845,
+   "capture_band": "mid",
+   "skip": null,
+   "grid": [
+    2,
+    2,
+    1
+   ],
+   "joints_deg": [
+    226.7342071533203,
+    -52.59553909301758,
+    102.7314682006836,
+    248.94650268554688,
+    85.88419342041016,
+    64.805908203125
+   ],
+   "family": 3,
+   "ik_seed": "near_right_low",
+   "taught": null,
+   "ik_failed": []
+  },
+  {
+   "name": "lr1_hl2_nf1",
+   "band": "mid",
+   "depth": "nf1",
+   "t_m": [
+    0.02553,
+    -0.22958,
+    -0.05047
+   ],
+   "rot_deg": [
+    -5.0068,
+    8.5741,
+    0.1772
+   ],
+   "pose": [
+    0.5563800000000001,
+    0.0965425,
+    0.2460175,
+    85.28784604626536,
+    -2.975776373120058,
+    95.70130906592989
+   ],
+   "predicted_square_px": 43.0325,
+   "capture_band": "mid",
+   "skip": null,
+   "grid": [
+    1,
+    2,
+    1
+   ],
+   "joints_deg": [
+    165.7201385498047,
+    -52.2232666015625,
+    136.12208557128906,
+    172.92385864257812,
+    103.6283187866211,
+    86.69210052490234
+   ],
+   "family": 3,
+   "ik_seed": "previous",
+   "taught": null,
+   "ik_failed": [
+    {
+     "seed": "far_right_low",
+     "error": "no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => IK solution found but it is outside of joint position limits - Try to change initial guess to find a valid solution \n)"
+    }
+   ]
+  },
+  {
+   "name": "lr1_hl1_nf1",
+   "band": "mid",
+   "depth": "nf1",
+   "t_m": [
+    0.01121,
+    -0.0905,
+    -0.03754
+   ],
+   "rot_deg": [
+    0.4601,
+    2.653,
+    -0.3591
+   ],
+   "pose": [
+    0.57003625,
+    0.0740325,
+    0.38394249999999996,
+    91.08313147440325,
+    -2.7781688289734743,
+    89.77878796989486
+   ],
+   "predicted_square_px": 43.7445,
+   "capture_band": "mid",
+   "skip": null,
+   "grid": [
+    1,
+    1,
+    1
+   ],
+   "joints_deg": [
+    165.25320434570312,
+    -20.363115310668945,
+    131.67857360839844,
+    344.9222106933594,
+    -62.223976135253906,
+    -84.6665267944336
+   ],
+   "family": 4,
+   "ik_seed": "near_left_high",
+   "taught": null,
+   "ik_failed": []
+  },
+  {
+   "name": "lr2_hl1_nf1",
+   "band": "mid",
+   "depth": "nf1",
+   "t_m": [
+    -0.28512,
+    -0.07726,
+    -0.0169
+   ],
+   "rot_deg": [
+    0.0514,
+    14.8287,
+    0.4749
+   ],
+   "pose": [
+    0.57591,
+    -0.2232375,
+    0.38088750000000005,
+    89.93091165601682,
+    -3.661970967707481,
+    101.9683302610988
+   ],
+   "predicted_square_px": 42.97825,
+   "capture_band": "mid",
+   "skip": null,
+   "grid": [
+    2,
+    1,
+    1
+   ],
+   "joints_deg": [
+    44.018707275390625,
+    120.65961456298828,
+    110.61060333251953,
+    304.0785827636719,
+    -83.386962890625,
+    95.55271911621094
+   ],
+   "family": 5,
+   "ik_seed": "far_right_low",
+   "taught": null,
+   "ik_failed": []
+  },
+  {
+   "name": "lr2_hl0_nf1",
+   "band": "mid",
+   "depth": "nf1",
+   "t_m": [
+    -0.26879,
+    0.03335,
+    -0.02302
+   ],
+   "rot_deg": [
+    4.1461,
+    6.1148,
+    0.2655
+   ],
+   "pose": [
+    0.57178,
+    -0.21268499999999996,
+    0.49229,
+    94.55029841074644,
+    -3.6434463324331596,
+    93.22203052886283
+   ],
+   "predicted_square_px": 43.572,
+   "capture_band": "mid",
+   "skip": null,
+   "grid": [
+    2,
+    0,
+    1
+   ],
+   "joints_deg": [
+    39.28257751464844,
+    100.90629577636719,
+    107.86958312988281,
+    317.3367004394531,
+    -98.46539306640625,
+    82.0858383178711
+   ],
+   "family": 5,
+   "ik_seed": "far_right_low",
+   "taught": null,
+   "ik_failed": []
+  },
+  {
+   "name": "lr1_hl0_nf2",
+   "band": "far",
+   "depth": "nf2",
+   "t_m": [
+    0.03854,
+    0.07274,
+    -0.35694
+   ],
+   "rot_deg": [
+    7.6627,
+    -9.621,
+    -3.6554
+   ],
+   "pose": [
+    0.254155,
+    0.108215,
+    0.552635,
+    98.58541929804234,
+    1.3387017093855211,
+    77.83372079076423
+   ],
+   "predicted_square_px": 31.822,
+   "capture_band": "far",
+   "skip": null,
+   "grid": [
+    1,
+    0,
+    2
+   ],
+   "joints_deg": [
+    260.5872802734375,
+    76.02482604980469,
+    123.21566009521484,
+    111.73225402832031,
+    -80.13702392578125,
+    135.14108276367188
+   ],
+   "family": 5,
+   "ik_seed": "far_right_high",
+   "taught": null,
+   "ik_failed": []
+  },
+  {
+   "name": "lr2_hl1_nf2",
+   "band": "far",
+   "depth": "nf2",
+   "t_m": [
+    -0.26239,
+    -0.03065,
+    -0.31434
+   ],
+   "rot_deg": [
+    2.2661,
+    8.9061,
+    -1.1213
+   ],
+   "pose": [
+    0.28049500000000005,
+    -0.188365,
+    0.43259000000000003,
+    92.61345622722749,
+    -2.2341933632055455,
+    96.06108273029905
+   ],
+   "predicted_square_px": 32.9405,
+   "capture_band": "far",
+   "skip": null,
+   "grid": [
+    2,
+    1,
+    2
+   ],
+   "joints_deg": [
+    91.56322479248047,
+    103.66954803466797,
+    138.12393188476562,
+    263.1299743652344,
+    -87.0335693359375,
+    54.231178283691406
+   ],
+   "family": 5,
+   "ik_seed": "far_right_low",
+   "taught": null,
+   "ik_failed": []
+  },
+  {
+   "name": "lr2_hl2_nf2",
+   "band": "far",
+   "depth": "nf2",
+   "t_m": [
+    -0.26886,
+    -0.09645,
+    -0.26571
+   ],
+   "rot_deg": [
+    -0.2806,
+    16.1679,
+    0.263
+   ],
+   "pose": [
+    0.32804,
+    -0.19364,
+    0.3659,
+    89.55296,
+    -3.40371,
+    103.31012
+   ],
+   "predicted_square_px": 34.074,
+   "capture_band": "far",
+   "skip": null,
+   "grid": [
+    2,
+    2,
+    2
+   ],
+   "joints_deg": [
+    79.544,
+    123.039,
+    137.507,
+    268.056,
+    271.845,
+    72.856
+   ],
+   "family": 5,
+   "ik_seed": "taught",
+   "taught": "far_right_low",
+   "ik_failed": []
+  },
+  {
+   "name": "lr1_hl0_nf1",
+   "band": "mid",
+   "depth": "nf1",
+   "t_m": [
+    -0.0031,
+    0.04859,
+    -0.02461
+   ],
+   "rot_deg": [
+    5.9256,
+    -3.2726,
+    -0.8918
+   ],
+   "pose": [
+    0.5836925,
+    0.05152250000000001,
+    0.5218674999999999,
+    96.82903843301054,
+    -1.9884229957032453,
+    83.90876690294655
+   ],
+   "predicted_square_px": 44.4565,
+   "capture_band": "mid",
+   "skip": null,
+   "grid": [
+    1,
+    0,
+    1
+   ],
+   "joints_deg": [
+    164.77993774414062,
+    -93.49331665039062,
+    -112.48064422607422,
+    22.82146453857422,
+    114.34077453613281,
+    -444.3859558105469
+   ],
+   "family": 6,
+   "ik_seed": "near_left_high",
+   "taught": null,
+   "ik_failed": []
+  },
+  {
+   "name": "lr1_hl0_nf0",
+   "band": "near",
+   "depth": "nf0",
+   "t_m": [
+    -0.04475,
+    0.02443,
+    0.30771
+   ],
+   "rot_deg": [
+    4.1762,
+    3.0735,
+    1.8694
+   ],
+   "pose": [
+    0.91323,
+    -0.00516999999999998,
+    0.4911,
+    94.72315943639097,
+    -5.108845464885301,
+    90.10425755737347
+   ],
+   "predicted_square_px": 57.091,
+   "capture_band": "near",
+   "skip": "unreachable: seeded near_left_high: no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n); seeded previous: no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n)",
+   "grid": [
+    1,
+    0,
+    0
+   ],
+   "joints_deg": null,
+   "family": null,
+   "ik_seed": null,
+   "taught": null,
+   "ik_failed": [
+    {
+     "seed": "near_left_high",
+     "error": "no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n)"
+    },
+    {
+     "seed": "previous",
+     "error": "no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n)"
+    }
+   ]
+  },
+  {
+   "name": "lr0_hl2_nf0",
+   "band": "near",
+   "depth": "nf0",
+   "t_m": [
+    0.28147,
+    -0.34972,
+    0.25696
+   ],
+   "rot_deg": [
+    -4.0769,
+    -4.5453,
+    2.5303
+   ],
+   "pose": [
+    0.875,
+    0.3431,
+    0.13581,
+    87.026,
+    -5.7131,
+    82.60931
+   ],
+   "predicted_square_px": 56.77,
+   "capture_band": "near",
+   "skip": "z +0.1358 m is outside [+0.150, +0.850]",
+   "grid": [
+    0,
+    2,
+    0
+   ],
+   "joints_deg": null,
+   "family": null,
+   "ik_seed": null,
+   "taught": "near_left_low",
+   "ik_failed": []
+  },
+  {
+   "name": "lr1_hl2_nf0",
+   "band": "near",
+   "depth": "nf0",
+   "t_m": [
+    -0.02628,
+    -0.31451,
+    0.25056
+   ],
+   "rot_deg": [
+    -6.0168,
+    13.1608,
+    1.8329
+   ],
+   "pose": [
+    0.8535200000000001,
+    0.03458,
+    0.15444000000000002,
+    83.85552021752108,
+    -4.31207695825248,
+    100.37067242009763
+   ],
+   "predicted_square_px": 53.7325,
+   "capture_band": "near",
+   "skip": "unreachable: seeded near_left_low: no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => IK solution found but it is outside of joint position limits - Try to change initial guess to find a valid solution \n); seeded previous: no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => IK solution found but it is outside of joint position limits - Try to change initial guess to find a valid solution \n)",
+   "grid": [
+    1,
+    2,
+    0
+   ],
+   "joints_deg": null,
+   "family": null,
+   "ik_seed": null,
+   "taught": null,
+   "ik_failed": [
+    {
+     "seed": "near_left_low",
+     "error": "no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => IK solution found but it is outside of joint position limits - Try to change initial guess to find a valid solution \n)"
+    },
+    {
+     "seed": "previous",
+     "error": "no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => IK solution found but it is outside of joint position limits - Try to change initial guess to find a valid solution \n)"
+    }
+   ]
+  },
+  {
+   "name": "lr2_hl0_nf2",
+   "band": "far",
+   "depth": "nf2",
+   "t_m": [
+    -0.25591,
+    0.03515,
+    -0.36296
+   ],
+   "rot_deg": [
+    4.7983,
+    1.6378,
+    -2.4981
+   ],
+   "pose": [
+    0.23295,
+    -0.18309,
+    0.49928,
+    95.50022,
+    -0.69019,
+    88.88892
+   ],
+   "predicted_square_px": 31.807,
+   "capture_band": "far",
+   "skip": "x +0.2329 m is outside [+0.250, +0.950]",
+   "grid": [
+    2,
+    0,
+    2
+   ],
+   "joints_deg": null,
+   "family": null,
+   "ik_seed": null,
+   "taught": "far_right_high",
+   "ik_failed": []
+  },
+  {
+   "name": "lr1_hl1_nf2",
+   "band": "far",
+   "depth": "nf2",
+   "t_m": [
+    0.05794,
+    -0.03595,
+    -0.35422
+   ],
+   "rot_deg": [
+    1.834,
+    -2.8172,
+    -2.5696
+   ],
+   "pose": [
+    0.2566975,
+    0.13336,
+    0.445115,
+    92.67858085941891,
+    -0.44127661136550406,
+    84.37708214933157
+   ],
+   "predicted_square_px": 32.07725,
+   "capture_band": "far",
+   "skip": "unreachable: joint 3 at +144.5 deg is 7.5 deg from its limit [-148, +152]; need 10",
+   "grid": [
+    1,
+    1,
+    2
+   ],
+   "joints_deg": [
+    258.3552551269531,
+    92.42345428466797,
+    144.5347442626953,
+    103.18780517578125,
+    -77.84901428222656,
+    140.03343200683594
+   ],
+   "family": null,
+   "ik_seed": "far_right_high",
+   "taught": null,
+   "ik_failed": []
+  },
+  {
+   "name": "lr0_hl1_nf2",
+   "band": "far",
+   "depth": "nf2",
+   "t_m": [
+    0.37827,
+    -0.04126,
+    -0.3941
+   ],
+   "rot_deg": [
+    1.3934,
+    -14.5771,
+    -4.0068
+   ],
+   "pose": [
+    0.2329,
+    0.455085,
+    0.45764000000000005,
+    92.3844052283781,
+    1.3340124132042241,
+    72.65734110414914
+   ],
+   "predicted_square_px": 31.214,
+   "capture_band": "far",
+   "skip": "x +0.2329 m is outside [+0.250, +0.950]; y +0.4551 m is outside [-0.450, +0.450]",
+   "grid": [
+    0,
+    1,
+    2
+   ],
+   "joints_deg": null,
+   "family": null,
+   "ik_seed": null,
+   "taught": null,
+   "ik_failed": []
+  },
+  {
+   "name": "lr0_hl2_nf2",
+   "band": "far",
+   "depth": "nf2",
+   "t_m": [
+    0.42355,
+    -0.19286,
+    -0.4373
+   ],
+   "rot_deg": [
+    -7.6655,
+    -8.2078,
+    -3.1979
+   ],
+   "pose": [
+    0.19044,
+    0.51065,
+    0.30929,
+    83.32842,
+    -0.32144,
+    78.75835
+   ],
+   "predicted_square_px": 30.591,
+   "capture_band": "far",
+   "skip": "x +0.1904 m is outside [+0.250, +0.950]; y +0.5107 m is outside [-0.450, +0.450]",
+   "grid": [
+    0,
+    2,
+    2
+   ],
+   "joints_deg": null,
+   "family": null,
+   "ik_seed": null,
+   "taught": "far_left_low",
+   "ik_failed": []
+  },
+  {
+   "name": "lr1_hl2_nf2",
+   "band": "far",
+   "depth": "nf2",
+   "t_m": [
+    0.07734,
+    -0.14465,
+    -0.3515
+   ],
+   "rot_deg": [
+    -3.9927,
+    3.9871,
+    -1.475
+   ],
+   "pose": [
+    0.25924,
+    0.158505,
+    0.337595,
+    86.60526606321012,
+    -1.52800141517262,
+    91.07121755285583
+   ],
+   "predicted_square_px": 32.332499999999996,
+   "capture_band": "far",
+   "skip": "unreachable: seeded far_right_high: no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => IK solution found but it is outside of joint position limits - Try to change initial guess to find a valid solution \n); seeded previous: no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => IK solution found but it is outside of joint position limits - Try to change initial guess to find a valid solution \n)",
+   "grid": [
+    1,
+    2,
+    2
+   ],
+   "joints_deg": null,
+   "family": null,
+   "ik_seed": null,
+   "taught": null,
+   "ik_failed": [
+    {
+     "seed": "far_right_high",
+     "error": "no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => IK solution found but it is outside of joint position limits - Try to change initial guess to find a valid solution \n)"
+    },
+    {
+     "seed": "previous",
+     "error": "no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => IK solution found but it is outside of joint position limits - Try to change initial guess to find a valid solution \n)"
+    }
+   ]
+  }
+ ],
+ "poses": [
+  {
+   "i": 0,
+   "kind": "variant",
+   "variant": "lr0_hl0_nf0",
+   "cell": null,
+   "aim_px": null,
+   "outcome": "reached",
+   "note": null,
+   "times": {
+    "start_s": 0.049,
+    "move_s": 7.875,
+    "still_s": 0.753,
+    "decide_s": 0.3,
+    "total_s": 9.076
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91585,
+      0.23194,
+      0.4969,
+      95.87307,
+      -3.53882,
+      82.63543
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19216,
+       0.01731,
+       0.29849
+      ],
+      "rotvec_deg": [
+       4.8518,
+       -4.4421,
+       0.7022
+      ]
+     },
+     "joints_before_deg": [
+      347.73,
+      105.47,
+      118.53,
+      16.07,
+      257.86,
+      90.5
+     ],
+     "joints_deg": [
+      516.51,
+      290.08,
+      0.54,
+      -126.38,
+      322.24,
+      38.0
+     ],
+     "joint_speed_dps": null,
+     "sent": true,
+     "measured_joint_dps": 22.27
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.9159,
+     0.23198,
+     0.49663,
+     95.88972,
+     -3.533,
+     82.63538
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.19219,
+      0.01703,
+      0.29854
+     ],
+     "rotvec_deg": [
+      4.8687,
+      -4.4424,
+      0.6971
+     ]
+    }
+   },
+   "camera": {
+    "frame": 106,
+    "corners": 88,
+    "centroid_px": [
+     529.67,
+     543.82
+    ],
+    "verdict": "too_soon",
+    "reason": "too_soon (< 300 ms since accept)",
+    "bin": "near/flat",
+    "accepted": true
+   }
+  },
+  {
+   "i": 1,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 17,
+   "aim_px": [
+    640.0,
+    597.3
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 25% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 9.151,
+    "ik_s": 0.122,
+    "total_s": 0.176
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      91.27567,
+      -7.18893,
+      92.69354
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       1.0156,
+       5.6273,
+       3.9918
+      ]
+     },
+     "joints_before_deg": [
+      156.51,
+      290.07,
+      0.54,
+      233.62,
+      322.24,
+      38.0
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.9159,
+     0.23198,
+     0.49663,
+     95.88971,
+     -3.533,
+     82.63519
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.19219,
+      0.01703,
+      0.29854
+     ],
+     "rotvec_deg": [
+      4.8687,
+      -4.4426,
+      0.6971
+     ]
+    }
+   }
+  },
+  {
+   "i": 2,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 12,
+   "aim_px": [
+    640.0,
+    426.7
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 25% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 9.329,
+    "ik_s": 0.123,
+    "total_s": 0.174
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      103.9519,
+      -5.61567,
+      92.89911
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       13.6184,
+       6.0553,
+       1.7641
+      ]
+     },
+     "joints_before_deg": [
+      156.51,
+      290.07,
+      0.54,
+      233.62,
+      322.24,
+      38.0
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.9159,
+     0.23198,
+     0.49663,
+     95.88966,
+     -3.53303,
+     82.63515
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.19219,
+      0.01703,
+      0.29854
+     ],
+     "rotvec_deg": [
+      4.8686,
+      -4.4426,
+      0.6971
+     ]
+    }
+   }
+  },
+  {
+   "i": 3,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 27,
+   "aim_px": [
+    640.0,
+    730.9
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 75% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 9.505,
+    "ik_s": 0.42,
+    "move_s": 10.048,
+    "still_s": 1.004,
+    "total_s": 11.621
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      81.70413,
+      -8.35359,
+      92.61797
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       -8.4931,
+       5.1231,
+       5.6086
+      ]
+     },
+     "joints_before_deg": [
+      156.51,
+      290.07,
+      0.54,
+      233.62,
+      322.24,
+      38.0
+     ],
+     "ik_deg": [
+      159.85,
+      -90.93,
+      -36.25,
+      216.6,
+      -30.71,
+      53.15
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      88.91864,
+      -6.25091,
+      87.46532
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       -1.8119,
+       0.3385,
+       3.1574
+      ]
+     },
+     "joints_before_deg": [
+      159.9,
+      300.32,
+      36.13,
+      311.27,
+      337.3,
+      312.33
+     ],
+     "ik_deg": [
+      158.15,
+      -60.4,
+      28.08,
+      272.51,
+      -23.18,
+      353.4
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      95.8899,
+      -3.53301,
+      82.63563
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       4.8689,
+       -4.4421,
+       0.6971
+      ]
+     },
+     "joints_before_deg": [
+      158.14,
+      299.59,
+      28.09,
+      272.51,
+      336.82,
+      353.39
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91594,
+     0.23202,
+     0.49639,
+     88.9334,
+     -6.24566,
+     87.46461
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.19221,
+      0.01679,
+      0.29858
+     ],
+     "rotvec_deg": [
+      -1.7972,
+      0.3382,
+      3.1521
+     ]
+    }
+   },
+   "camera": {
+    "frame": 195,
+    "corners": 68,
+    "centroid_px": [
+     554.03,
+     761.7
+    ],
+    "verdict": "not_full",
+    "reason": "not_full 68 corners",
+    "bin": "none",
+    "accepted": null
+   }
+  },
+  {
+   "i": 4,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 26,
+   "aim_px": [
+    514.1,
+    721.9
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 50% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The second convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 21.129,
+    "ik_s": 0.377,
+    "move_s": 3.262,
+    "still_s": 0.453,
+    "total_s": 4.216
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      83.57171,
+      -5.96004,
+      81.09811
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       -7.6547,
+       -6.1394,
+       2.5645
+      ]
+     },
+     "joints_before_deg": [
+      158.14,
+      299.59,
+      28.09,
+      272.51,
+      336.82,
+      353.39
+     ],
+     "ik_deg": [
+      155.66,
+      -66.13,
+      20.5,
+      279.22,
+      -32.64,
+      349.26
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      89.72804,
+      -4.70531,
+      81.80203
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       -1.392,
+       -5.2959,
+       1.6321
+      ]
+     },
+     "joints_before_deg": [
+      155.66,
+      293.86,
+      20.51,
+      279.22,
+      327.36,
+      349.26
+     ],
+     "ik_deg": null,
+     "sent": false
+    },
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      95.8899,
+      -3.53301,
+      82.63563
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       4.8689,
+       -4.4421,
+       0.6971
+      ]
+     },
+     "joints_before_deg": [
+      155.66,
+      293.86,
+      20.51,
+      279.22,
+      327.36,
+      349.26
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91595,
+     0.23201,
+     0.49635,
+     83.58826,
+     -5.95179,
+     81.09648
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.1922,
+      0.01675,
+      0.29859
+     ],
+     "rotvec_deg": [
+      -7.6379,
+      -6.1402,
+      2.557
+     ]
+    }
+   },
+   "camera": {
+    "frame": 225,
+    "corners": 48,
+    "centroid_px": [
+     476.07,
+     804.72
+    ],
+    "verdict": "not_full",
+    "reason": "not_full 48 corners",
+    "bin": "none",
+    "accepted": null
+   }
+  },
+  {
+   "i": 5,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 2,
+   "aim_px": [
+    640.0,
+    293.1
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 50% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 25.347,
+    "ik_s": 0.151,
+    "total_s": 0.188
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      113.50837,
+      -4.38906,
+      93.08151
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       23.1167,
+       6.1325,
+       0.0134
+      ]
+     },
+     "joints_before_deg": [
+      155.66,
+      293.86,
+      20.51,
+      279.22,
+      327.36,
+      349.26
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91595,
+     0.23201,
+     0.49635,
+     83.58791,
+     -5.95201,
+     81.0963
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.1922,
+      0.01675,
+      0.29859
+     ],
+     "rotvec_deg": [
+      -7.6383,
+      -6.1404,
+      2.5572
+     ]
+    }
+   }
+  },
+  {
+   "i": 6,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 1,
+   "aim_px": [
+    514.1,
+    302.1
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 25% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 25.537,
+    "ik_s": 0.124,
+    "total_s": 0.167
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      112.83103,
+      0.62158,
+      82.49465
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       21.9521,
+       -5.3161,
+       -2.7075
+      ]
+     },
+     "joints_before_deg": [
+      155.66,
+      293.86,
+      20.51,
+      279.22,
+      327.36,
+      349.26
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91595,
+     0.23201,
+     0.49635,
+     83.58776,
+     -5.9521,
+     81.09615
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.1922,
+      0.01675,
+      0.29859
+     ],
+     "rotvec_deg": [
+      -7.6384,
+      -6.1406,
+      2.5573
+     ]
+    }
+   }
+  },
+  {
+   "i": 7,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 5,
+   "aim_px": [
+    425.3,
+    404.6
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 25% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 25.709,
+    "ik_s": 0.124,
+    "total_s": 0.17
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      105.36883,
+      2.08113,
+      74.52178
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       14.4291,
+       -13.2325,
+       -3.3454
+      ]
+     },
+     "joints_before_deg": [
+      155.66,
+      293.86,
+      20.51,
+      279.22,
+      327.36,
+      349.26
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91595,
+     0.23201,
+     0.49636,
+     83.58767,
+     -5.95215,
+     81.09611
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.1922,
+      0.01676,
+      0.29859
+     ],
+     "rotvec_deg": [
+      -7.6385,
+      -6.1406,
+      2.5573
+     ]
+    }
+   }
+  },
+  {
+   "i": 8,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 28,
+   "aim_px": [
+    765.9,
+    721.9
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 50% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The second convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 25.881,
+    "ik_s": 0.352,
+    "move_s": 8.346,
+    "still_s": 0.502,
+    "total_s": 9.35
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      80.89879,
+      -10.29662,
+      104.26263
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       -7.7745,
+       16.4869,
+       8.3746
+      ]
+     },
+     "joints_before_deg": [
+      155.66,
+      293.86,
+      20.51,
+      279.22,
+      327.36,
+      349.26
+     ],
+     "ik_deg": [
+      164.65,
+      -57.82,
+      40.71,
+      356.03,
+      -18.05,
+      265.2
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      88.74537,
+      -7.61875,
+      93.18492
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       -1.4444,
+       6.0237,
+       4.5461
+      ]
+     },
+     "joints_before_deg": [
+      164.65,
+      302.17,
+      40.72,
+      356.03,
+      341.95,
+      265.2
+     ],
+     "ik_deg": null,
+     "sent": false
+    },
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      95.8899,
+      -3.53301,
+      82.63563
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       4.8689,
+       -4.4421,
+       0.6971
+      ]
+     },
+     "joints_before_deg": [
+      164.65,
+      302.17,
+      40.72,
+      356.03,
+      341.95,
+      265.2
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91594,
+     0.232,
+     0.49638,
+     80.91678,
+     -10.29736,
+     104.25996
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.19219,
+      0.01678,
+      0.29859
+     ],
+     "rotvec_deg": [
+      -7.7569,
+      16.4854,
+      8.3726
+     ]
+    }
+   },
+   "camera": {
+    "frame": 299,
+    "corners": 7,
+    "centroid_px": [
+     925.53,
+     926.91
+    ],
+    "verdict": "not_full",
+    "reason": "not_full 7 corners",
+    "bin": "none",
+    "accepted": null
+   }
+  },
+  {
+   "i": 9,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 25,
+   "aim_px": [
+    432.7,
+    684.7
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 100% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 35.233,
+    "ik_s": 0.197,
+    "total_s": 0.245
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      86.60446,
+      -3.6831,
+      74.09358
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       -4.9069,
+       -13.0145,
+       0.2868
+      ]
+     },
+     "joints_before_deg": [
+      164.65,
+      302.17,
+      40.72,
+      356.03,
+      341.95,
+      265.2
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91594,
+     0.232,
+     0.49638,
+     80.91681,
+     -10.29736,
+     104.26018
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.19219,
+      0.01678,
+      0.29859
+     ],
+     "rotvec_deg": [
+      -7.7568,
+      16.4857,
+      8.3726
+     ]
+    }
+   }
+  },
+  {
+   "i": 10,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 3,
+   "aim_px": [
+    765.9,
+    302.1
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 50% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 35.48,
+    "ik_s": 0.14,
+    "total_s": 0.196
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      105.58231,
+      -6.42129,
+      95.48071
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       15.4864,
+       8.7502,
+       2.1087
+      ]
+     },
+     "joints_before_deg": [
+      164.65,
+      302.17,
+      40.72,
+      356.03,
+      341.95,
+      265.2
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91594,
+     0.232,
+     0.49638,
+     80.91689,
+     -10.29736,
+     104.26021
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.19219,
+      0.01678,
+      0.29859
+     ],
+     "rotvec_deg": [
+      -7.7567,
+      16.4857,
+      8.3726
+     ]
+    }
+   }
+  },
+  {
+   "i": 11,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 0,
+   "aim_px": [
+    432.7,
+    339.3
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 25% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The second convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 35.678,
+    "ik_s": 0.088,
+    "total_s": 0.116
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      109.75643,
+      3.01389,
+      75.66772
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       18.9075,
+       -12.4122,
+       -3.9691
+      ]
+     },
+     "joints_before_deg": [
+      164.65,
+      302.17,
+      40.72,
+      356.03,
+      341.95,
+      265.2
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91594,
+     0.232,
+     0.49638,
+     80.91695,
+     -10.29744,
+     104.26021
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.19219,
+      0.01678,
+      0.29859
+     ],
+     "rotvec_deg": [
+      -7.7567,
+      16.4857,
+      8.3726
+     ]
+    }
+   }
+  },
+  {
+   "i": 12,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 19,
+   "aim_px": [
+    858.9,
+    548.5
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 75% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 35.796,
+    "ik_s": 0.171,
+    "total_s": 0.206
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      94.1821,
+      -8.9927,
+      100.421
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       4.8059,
+       13.4805,
+       5.2969
+      ]
+     },
+     "joints_before_deg": [
+      164.65,
+      302.17,
+      40.72,
+      356.03,
+      341.95,
+      265.2
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91594,
+     0.232,
+     0.49638,
+     80.91698,
+     -10.29742,
+     104.26021
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.19219,
+      0.01678,
+      0.29859
+     ],
+     "rotvec_deg": [
+      -7.7567,
+      16.4857,
+      8.3726
+     ]
+    }
+   }
+  },
+  {
+   "i": 13,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 14,
+   "aim_px": [
+    858.9,
+    475.5
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 50% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 36.005,
+    "ik_s": 0.144,
+    "total_s": 0.195
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      97.39514,
+      -8.81097,
+      100.40074
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       7.9791,
+       13.5996,
+       4.7403
+      ]
+     },
+     "joints_before_deg": [
+      164.65,
+      302.17,
+      40.72,
+      356.03,
+      341.95,
+      265.2
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91594,
+     0.232,
+     0.49638,
+     80.91698,
+     -10.29741,
+     104.26021
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.19219,
+      0.01678,
+      0.29859
+     ],
+     "rotvec_deg": [
+      -7.7567,
+      16.4857,
+      8.3726
+     ]
+    }
+   }
+  },
+  {
+   "i": 14,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 24,
+   "aim_px": [
+    854.7,
+    619.4
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 75% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 36.202,
+    "ik_s": 0.17,
+    "total_s": 0.205
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      91.11838,
+      -9.09157,
+      100.1581
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       1.742,
+       13.0698,
+       5.7577
+      ]
+     },
+     "joints_before_deg": [
+      164.65,
+      302.17,
+      40.72,
+      356.03,
+      341.95,
+      265.2
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91594,
+     0.232,
+     0.49638,
+     80.91695,
+     -10.29741,
+     104.26025
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.19219,
+      0.01678,
+      0.29859
+     ],
+     "rotvec_deg": [
+      -7.7567,
+      16.4857,
+      8.3726
+     ]
+    }
+   }
+  },
+  {
+   "i": 15,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 9,
+   "aim_px": [
+    854.7,
+    404.6
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 50% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 36.409,
+    "ik_s": 0.15,
+    "total_s": 0.173
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      100.53528,
+      -8.53555,
+      100.10543
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       11.0435,
+       13.4176,
+       4.1256
+      ]
+     },
+     "joints_before_deg": [
+      164.65,
+      302.17,
+      40.72,
+      356.03,
+      341.95,
+      265.2
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91594,
+     0.232,
+     0.49638,
+     80.91695,
+     -10.29741,
+     104.26025
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.19219,
+      0.01678,
+      0.29859
+     ],
+     "rotvec_deg": [
+      -7.7567,
+      16.4857,
+      8.3726
+     ]
+    }
+   }
+  },
+  {
+   "i": 16,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 29,
+   "aim_px": [
+    847.3,
+    684.7
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 100% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The second convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 36.584,
+    "ik_s": 0.204,
+    "total_s": 0.251
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      88.37712,
+      -9.13295,
+      99.66705
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       -1.0334,
+       12.4388,
+       6.108
+      ]
+     },
+     "joints_before_deg": [
+      164.65,
+      302.17,
+      40.72,
+      356.03,
+      341.95,
+      265.2
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91594,
+     0.232,
+     0.49638,
+     80.91692,
+     -10.29741,
+     104.26027
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.19219,
+      0.01678,
+      0.29859
+     ],
+     "rotvec_deg": [
+      -7.7567,
+      16.4858,
+      8.3726
+     ]
+    }
+   }
+  },
+  {
+   "i": 17,
+   "kind": "cell",
+   "variant": "lr0_hl0_nf0",
+   "cell": 4,
+   "aim_px": [
+    847.3,
+    339.3
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 50% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 36.837,
+    "ik_s": 0.147,
+    "total_s": 0.192
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.9159,
+      0.23199,
+      0.49662,
+      103.41031,
+      -8.17866,
+      99.60216
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.19219,
+       0.01702,
+       0.29854
+      ],
+      "rotvec_deg": [
+       13.8196,
+       12.9901,
+       3.5007
+      ]
+     },
+     "joints_before_deg": [
+      164.65,
+      302.17,
+      40.72,
+      356.03,
+      341.95,
+      265.2
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91594,
+     0.232,
+     0.49638,
+     80.91692,
+     -10.29741,
+     104.26027
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.19219,
+      0.01678,
+      0.29859
+     ],
+     "rotvec_deg": [
+      -7.7567,
+      16.4858,
+      8.3726
+     ]
+    }
+   }
+  },
+  {
+   "i": 18,
+   "kind": "variant",
+   "variant": "lr2_hl0_nf0",
+   "cell": null,
+   "aim_px": null,
+   "outcome": "reached",
+   "note": null,
+   "times": {
+    "start_s": 37.077,
+    "move_s": 5.75,
+    "still_s": 0.702,
+    "decide_s": 0.3,
+    "total_s": 6.875
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91061,
+      -0.24229,
+      0.48531,
+      93.37396,
+      -6.51519,
+      97.62333
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28167,
+       0.03156,
+       0.31692
+      ],
+      "rotvec_deg": [
+       3.4867,
+       10.5888,
+       3.0316
+      ]
+     },
+     "joints_before_deg": [
+      164.65,
+      302.17,
+      40.72,
+      356.03,
+      341.95,
+      265.2
+     ],
+     "joints_deg": [
+      203.87,
+      282.12,
+      346.66,
+      487.36,
+      317.55,
+      130.63
+     ],
+     "joint_speed_dps": null,
+     "sent": true,
+     "measured_joint_dps": 23.4
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91066,
+     -0.24229,
+     0.48503,
+     93.39204,
+     -6.52332,
+     97.62284
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28168,
+      0.03128,
+      0.31698
+     ],
+     "rotvec_deg": [
+      3.5055,
+      10.5891,
+      3.038
+     ]
+    }
+   },
+   "camera": {
+    "frame": 367,
+    "corners": 88,
+    "centroid_px": [
+     638.38,
+     541.74
+    ],
+    "verdict": "too_soon",
+    "reason": "too_soon (< 300 ms since accept)",
+    "bin": "near/+x-y",
+    "accepted": true
+   }
+  },
+  {
+   "i": 19,
+   "kind": "cell",
+   "variant": "lr2_hl0_nf0",
+   "cell": 17,
+   "aim_px": [
+    640.0,
+    597.3
+   ],
+   "outcome": "reached",
+   "note": null,
+   "times": {
+    "start_s": 43.978,
+    "ik_s": 0.126,
+    "move_s": 1.674,
+    "still_s": 0.351,
+    "decide_s": 0.3,
+    "total_s": 2.525
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      89.23184,
+      -6.71055,
+      97.84452
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       -0.6056,
+       10.6899,
+       3.6062
+      ]
+     },
+     "joints_before_deg": [
+      203.87,
+      282.1,
+      346.67,
+      127.36,
+      317.54,
+      130.63
+     ],
+     "ik_deg": [
+      203.8,
+      -82.75,
+      -20.95,
+      125.67,
+      -40.98,
+      130.21
+     ],
+     "sent": true
+    }
+   ],
+   "aim_error": [
+    {
+     "leg": "final",
+     "centroid_px": [
+      637.6,
+      593.2
+     ],
+     "error_px": [
+      -2.4,
+      -4.1
+     ],
+     "miss_px": 4.8
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91072,
+     -0.24231,
+     0.48475,
+     89.2485,
+     -6.72052,
+     97.84309
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28172,
+      0.031,
+      0.31704
+     ],
+     "rotvec_deg": [
+      -0.5882,
+      10.6889,
+      3.6146
+     ]
+    }
+   },
+   "camera": {
+    "frame": 386,
+    "corners": 88,
+    "centroid_px": [
+     637.68,
+     593.06
+    ],
+    "verdict": "redundant",
+    "reason": "redundant (no empty cell, bin near/+x-y filled)",
+    "bin": "near/+x-y",
+    "accepted": true
+   }
+  },
+  {
+   "i": 20,
+   "kind": "cell",
+   "variant": "lr2_hl0_nf0",
+   "cell": 12,
+   "aim_px": [
+    640.0,
+    426.7
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 50% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 46.505,
+    "ik_s": 0.147,
+    "total_s": 0.198
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      101.64605,
+      -6.30811,
+      97.88737
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       11.7348,
+       11.0383,
+       2.0289
+      ]
+     },
+     "joints_before_deg": [
+      203.8,
+      277.23,
+      339.05,
+      125.67,
+      319.02,
+      130.21
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91071,
+     -0.24231,
+     0.48477,
+     89.24773,
+     -6.72004,
+     97.8431
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28171,
+      0.03102,
+      0.31703
+     ],
+     "rotvec_deg": [
+      -0.589,
+      10.6889,
+      3.6141
+     ]
+    }
+   }
+  },
+  {
+   "i": 21,
+   "kind": "cell",
+   "variant": "lr2_hl0_nf0",
+   "cell": 27,
+   "aim_px": [
+    640.0,
+    701.8
+   ],
+   "outcome": "reached",
+   "note": "missed aim by 52 px; corrected; correction lost the board, back to the last good pose",
+   "times": {
+    "start_s": 46.706,
+    "ik_s": 0.502,
+    "move_s": 7.593,
+    "still_s": 1.606,
+    "decide_s": 0.3,
+    "total_s": 10.222
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      81.31595,
+      -7.03617,
+      98.22495
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       -8.4294,
+       10.7786,
+       4.6887
+      ]
+     },
+     "joints_before_deg": [
+      203.8,
+      277.24,
+      339.05,
+      125.67,
+      319.02,
+      130.21
+     ],
+     "ik_deg": [
+      203.44,
+      -88.71,
+      -27.6,
+      117.78,
+      -35.47,
+      135.72
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      85.27484,
+      -6.87989,
+      98.02903
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       -4.5172,
+       10.7384,
+       4.1488
+      ]
+     },
+     "joints_before_deg": [
+      203.44,
+      271.27,
+      332.4,
+      117.78,
+      324.53,
+      135.73
+     ],
+     "ik_deg": [
+      203.65,
+      -86.08,
+      -25.12,
+      122.44,
+      -38.45,
+      132.07
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      81.53697,
+      -6.92473,
+      97.86767
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       -8.2531,
+       10.44,
+       4.5337
+      ]
+     },
+     "joints_before_deg": [
+      203.65,
+      273.91,
+      334.89,
+      122.44,
+      321.54,
+      132.07
+     ],
+     "ik_deg": [
+      203.33,
+      -88.81,
+      -28.06,
+      118.96,
+      -35.45,
+      134.76
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      85.27484,
+      -6.87989,
+      98.02903
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       -4.5172,
+       10.7384,
+       4.1488
+      ]
+     },
+     "joints_before_deg": [
+      203.33,
+      271.18,
+      331.94,
+      118.96,
+      324.55,
+      134.76
+     ],
+     "ik_deg": [
+      203.65,
+      -86.08,
+      -25.12,
+      122.44,
+      -38.45,
+      132.07
+     ],
+     "sent": true
+    }
+   ],
+   "aim_error": [
+    {
+     "leg": "final",
+     "centroid_px": [
+      642.6,
+      649.4
+     ],
+     "error_px": [
+      2.6,
+      -52.4
+     ],
+     "miss_px": 52.5
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91071,
+     -0.24229,
+     0.4848,
+     85.29011,
+     -6.8854,
+     98.02924
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28169,
+      0.03105,
+      0.31703
+     ],
+     "rotvec_deg": [
+      -4.5015,
+      10.7389,
+      4.1529
+     ]
+    }
+   },
+   "camera": {
+    "frame": 464,
+    "corners": 88,
+    "centroid_px": [
+     642.83,
+     649.44
+    ],
+    "verdict": "same_pose",
+    "reason": "same_pose (moved 0.5 < 20.0 px since accept)",
+    "bin": "near/-x-y",
+    "accepted": true
+   }
+  },
+  {
+   "i": 22,
+   "kind": "cell",
+   "variant": "lr2_hl0_nf0",
+   "cell": 26,
+   "aim_px": [
+    530.8,
+    694.0
+   ],
+   "outcome": "reached",
+   "note": "missed aim by 108 px; corrected; correction lost the board, back to the last good pose",
+   "times": {
+    "start_s": 56.931,
+    "ik_s": 0.377,
+    "move_s": 10.974,
+    "still_s": 1.256,
+    "decide_s": 0.3,
+    "total_s": 13.073
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      82.81047,
+      -4.48378,
+      87.90065
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       -7.8966,
+       0.7035,
+       1.4319
+      ]
+     },
+     "joints_before_deg": [
+      203.65,
+      273.91,
+      334.89,
+      122.44,
+      321.54,
+      132.07
+     ],
+     "ik_deg": [
+      199.73,
+      -92.35,
+      -38.43,
+      145.97,
+      -32.63,
+      113.75
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      78.887,
+      -7.23641,
+      96.34638
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       -11.0105,
+       8.7971,
+       4.9531
+      ]
+     },
+     "joints_before_deg": [
+      199.73,
+      267.63,
+      321.57,
+      145.97,
+      327.37,
+      113.75
+     ],
+     "ik_deg": [
+      202.56,
+      -91.27,
+      -31.51,
+      119.58,
+      -32.21,
+      133.86
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      82.81047,
+      -4.48378,
+      87.90065
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       -7.8966,
+       0.7035,
+       1.4319
+      ]
+     },
+     "joints_before_deg": [
+      202.56,
+      268.72,
+      328.49,
+      119.58,
+      327.79,
+      133.87
+     ],
+     "ik_deg": [
+      199.73,
+      -92.35,
+      -38.43,
+      145.97,
+      -32.63,
+      113.75
+     ],
+     "sent": true
+    }
+   ],
+   "aim_error": [
+    {
+     "leg": "final",
+     "centroid_px": [
+      434.6,
+      644.5
+     ],
+     "error_px": [
+      -96.1,
+      -49.5
+     ],
+     "miss_px": 108.1
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91072,
+     -0.24228,
+     0.48482,
+     82.82539,
+     -4.48765,
+     87.90128
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28168,
+      0.03107,
+      0.31704
+     ],
+     "rotvec_deg": [
+      -7.8816,
+      0.7041,
+      1.4358
+     ]
+    }
+   },
+   "camera": {
+    "frame": 562,
+    "corners": 88,
+    "centroid_px": [
+     434.65,
+     644.58
+    ],
+    "verdict": "redundant",
+    "reason": "redundant (no empty cell, bin near/-x-y filled)",
+    "bin": "near/-x-y",
+    "accepted": true
+   }
+  },
+  {
+   "i": 23,
+   "kind": "cell",
+   "variant": "lr2_hl0_nf0",
+   "cell": 25,
+   "aim_px": [
+    442.8,
+    676.4
+   ],
+   "outcome": "reached",
+   "note": null,
+   "times": {
+    "start_s": 70.007,
+    "ik_s": 0.125,
+    "move_s": 1.025,
+    "still_s": 0.502,
+    "decide_s": 0.802,
+    "total_s": 2.522
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      80.72693,
+      -5.39608,
+      88.61258
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       -9.9198,
+       1.3184,
+       2.4087
+      ]
+     },
+     "joints_before_deg": [
+      199.73,
+      267.64,
+      321.57,
+      145.97,
+      327.37,
+      113.75
+     ],
+     "ik_deg": [
+      199.85,
+      -93.31,
+      -38.64,
+      142.45,
+      -30.46,
+      115.97
+     ],
+     "sent": true
+    }
+   ],
+   "aim_error": [
+    {
+     "leg": "final",
+     "centroid_px": [
+      453.3,
+      678.4
+     ],
+     "error_px": [
+      10.5,
+      2.0
+     ],
+     "miss_px": 10.7
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.91073,
+     -0.24229,
+     0.48475,
+     80.74622,
+     -5.40129,
+     88.61284
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28169,
+      0.031,
+      0.31705
+     ],
+     "rotvec_deg": [
+      -9.9004,
+      1.3187,
+      2.4137
+     ]
+    }
+   },
+   "camera": {
+    "frame": 581,
+    "corners": 88,
+    "centroid_px": [
+     453.47,
+     678.44
+    ],
+    "verdict": "redundant",
+    "reason": "redundant (no empty cell, bin near/-x-y filled)",
+    "bin": "near/-x-y",
+    "accepted": false
+   }
+  },
+  {
+   "i": 24,
+   "kind": "cell",
+   "variant": "lr2_hl0_nf0",
+   "cell": 5,
+   "aim_px": [
+    376.4,
+    380.2
+   ],
+   "outcome": "reached",
+   "note": null,
+   "times": {
+    "start_s": 72.532,
+    "ik_s": 0.255,
+    "move_s": 7.795,
+    "still_s": 0.904,
+    "decide_s": 0.3,
+    "total_s": 9.352
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      92.25689,
+      -0.16214,
+      85.01409
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       1.4373,
+       -2.1786,
+       -2.8759
+      ]
+     },
+     "joints_before_deg": [
+      199.85,
+      266.67,
+      321.37,
+      142.45,
+      329.54,
+      115.97
+     ],
+     "ik_deg": [
+      198.82,
+      -86.71,
+      -34.34,
+      157.96,
+      -41.5,
+      108.21
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      99.51802,
+      3.11085,
+      86.92321
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       8.7501,
+       -0.7495,
+       -6.1692
+      ]
+     },
+     "joints_before_deg": [
+      198.82,
+      273.28,
+      325.67,
+      157.96,
+      318.5,
+      108.21
+     ],
+     "ik_deg": [
+      199.3,
+      -79.3,
+      -23.28,
+      157.3,
+      -45.62,
+      113.19
+     ],
+     "sent": true
+    }
+   ],
+   "aim_error": [
+    {
+     "leg": "first",
+     "centroid_px": [
+      362.0,
+      498.9
+     ],
+     "error_px": [
+      -14.4,
+      118.7
+     ],
+     "miss_px": 119.6
+    },
+    {
+     "leg": "final",
+     "centroid_px": [
+      395.9,
+      395.5
+     ],
+     "error_px": [
+      19.5,
+      15.3
+     ],
+     "miss_px": 24.8
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.9107,
+     -0.24233,
+     0.48478,
+     99.53594,
+     3.10897,
+     86.92297
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28173,
+      0.03103,
+      0.31702
+     ],
+     "rotvec_deg": [
+      8.768,
+      -0.7505,
+      -6.1672
+     ]
+    }
+   },
+   "camera": {
+    "frame": 651,
+    "corners": 88,
+    "centroid_px": [
+     395.88,
+     395.28
+    ],
+    "verdict": "redundant",
+    "reason": "redundant (no empty cell, bin near/+x-y filled)",
+    "bin": "near/+x-y",
+    "accepted": true
+   }
+  },
+  {
+   "i": 25,
+   "kind": "cell",
+   "variant": "lr2_hl0_nf0",
+   "cell": 1,
+   "aim_px": [
+    530.8,
+    330.0
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 50% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 81.887,
+    "ik_s": 0.148,
+    "total_s": 0.199
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      104.58922,
+      2.33027,
+      98.92734
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       13.8492,
+       11.0139,
+       -6.952
+      ]
+     },
+     "joints_before_deg": [
+      199.31,
+      280.68,
+      336.73,
+      157.3,
+      314.37,
+      113.19
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.9107,
+     -0.24233,
+     0.48479,
+     99.53562,
+     3.10905,
+     86.92317
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28173,
+      0.03104,
+      0.31702
+     ],
+     "rotvec_deg": [
+      8.7677,
+      -0.7503,
+      -6.1673
+     ]
+    }
+   }
+  },
+  {
+   "i": 26,
+   "kind": "cell",
+   "variant": "lr2_hl0_nf0",
+   "cell": 2,
+   "aim_px": [
+    640.0,
+    322.2
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 25% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 82.089,
+    "ik_s": 0.122,
+    "total_s": 0.167
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      105.54549,
+      0.14341,
+      108.861
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       15.164,
+       21.1289,
+       -6.2681
+      ]
+     },
+     "joints_before_deg": [
+      199.31,
+      280.68,
+      336.73,
+      157.3,
+      314.37,
+      113.19
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.9107,
+     -0.24232,
+     0.48479,
+     99.53553,
+     3.10908,
+     86.92331
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28172,
+      0.03104,
+      0.31702
+     ],
+     "rotvec_deg": [
+      8.7676,
+      -0.7502,
+      -6.1673
+     ]
+    }
+   }
+  },
+  {
+   "i": 27,
+   "kind": "cell",
+   "variant": "lr2_hl0_nf0",
+   "cell": 0,
+   "aim_px": [
+    442.8,
+    347.6
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 75% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The second convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 82.259,
+    "ik_s": 0.142,
+    "total_s": 0.198
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      102.84195,
+      3.58503,
+      91.16234
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       12.0465,
+       3.2346,
+       -7.1223
+      ]
+     },
+     "joints_before_deg": [
+      199.31,
+      280.68,
+      336.73,
+      157.3,
+      314.37,
+      113.19
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.9107,
+     -0.24232,
+     0.48479,
+     99.5355,
+     3.10909,
+     86.92335
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28172,
+      0.03104,
+      0.31702
+     ],
+     "rotvec_deg": [
+      8.7676,
+      -0.7501,
+      -6.1673
+     ]
+    }
+   }
+  },
+  {
+   "i": 28,
+   "kind": "cell",
+   "variant": "lr2_hl0_nf0",
+   "cell": 3,
+   "aim_px": [
+    749.2,
+    330.0
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 25% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The second convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 82.46,
+    "ik_s": 0.081,
+    "total_s": 0.106
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      103.14062,
+      0.19528,
+      106.08782
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       12.7444,
+       18.4721,
+       -5.5425
+      ]
+     },
+     "joints_before_deg": [
+      199.31,
+      280.68,
+      336.73,
+      157.3,
+      314.37,
+      113.19
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.9107,
+     -0.24232,
+     0.48479,
+     99.53548,
+     3.10915,
+     86.92336
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28172,
+      0.03104,
+      0.31702
+     ],
+     "rotvec_deg": [
+      8.7676,
+      -0.7501,
+      -6.1674
+     ]
+    }
+   }
+  },
+  {
+   "i": 29,
+   "kind": "cell",
+   "variant": "lr2_hl0_nf0",
+   "cell": 14,
+   "aim_px": [
+    908.7,
+    467.2
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 25% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The second convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 82.568,
+    "ik_s": 0.123,
+    "total_s": 0.164
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      97.09422,
+      -2.73781,
+      114.31773
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       7.5995,
+       27.0976,
+       -2.2112
+      ]
+     },
+     "joints_before_deg": [
+      199.31,
+      280.68,
+      336.73,
+      157.3,
+      314.37,
+      113.19
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.9107,
+     -0.24232,
+     0.48479,
+     99.53548,
+     3.10915,
+     86.92338
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28172,
+      0.03104,
+      0.31702
+     ],
+     "rotvec_deg": [
+      8.7676,
+      -0.7501,
+      -6.1674
+     ]
+    }
+   }
+  },
+  {
+   "i": 30,
+   "kind": "cell",
+   "variant": "lr2_hl0_nf0",
+   "cell": 9,
+   "aim_px": [
+    903.6,
+    380.2
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 25% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 82.736,
+    "ik_s": 0.122,
+    "total_s": 0.171
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      100.93348,
+      -1.9715,
+      113.97149
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       11.1738,
+       26.6196,
+       -3.8357
+      ]
+     },
+     "joints_before_deg": [
+      199.31,
+      280.68,
+      336.73,
+      157.3,
+      314.37,
+      113.19
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.9107,
+     -0.24232,
+     0.48479,
+     99.53547,
+     3.1091,
+     86.92345
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28172,
+      0.03104,
+      0.31702
+     ],
+     "rotvec_deg": [
+      8.7675,
+      -0.75,
+      -6.1674
+     ]
+    }
+   }
+  },
+  {
+   "i": 31,
+   "kind": "cell",
+   "variant": "lr2_hl0_nf0",
+   "cell": 19,
+   "aim_px": [
+    908.7,
+    556.8
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 50% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 82.91,
+    "ik_s": 0.146,
+    "total_s": 0.194
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      93.0977,
+      -3.4493,
+      114.276
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       3.8446,
+       27.1156,
+       -0.5648
+      ]
+     },
+     "joints_before_deg": [
+      199.31,
+      280.68,
+      336.73,
+      157.3,
+      314.37,
+      113.19
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.9107,
+     -0.24232,
+     0.48479,
+     99.53545,
+     3.10911,
+     86.92345
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28172,
+      0.03104,
+      0.31702
+     ],
+     "rotvec_deg": [
+      8.7675,
+      -0.75,
+      -6.1674
+     ]
+    }
+   }
+  },
+  {
+   "i": 32,
+   "kind": "cell",
+   "variant": "lr2_hl0_nf0",
+   "cell": 4,
+   "aim_px": [
+    837.2,
+    347.6
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 25% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 83.107,
+    "ik_s": 0.123,
+    "total_s": 0.151
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      102.39363,
+      -0.99625,
+      110.68176
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       12.3096,
+       23.2045,
+       -4.7617
+      ]
+     },
+     "joints_before_deg": [
+      199.31,
+      280.68,
+      336.73,
+      157.3,
+      314.37,
+      113.19
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.9107,
+     -0.24232,
+     0.48479,
+     99.53546,
+     3.1091,
+     86.92341
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28172,
+      0.03104,
+      0.31702
+     ],
+     "rotvec_deg": [
+      8.7675,
+      -0.7501,
+      -6.1674
+     ]
+    }
+   }
+  },
+  {
+   "i": 33,
+   "kind": "cell",
+   "variant": "lr2_hl0_nf0",
+   "cell": 24,
+   "aim_px": [
+    903.6,
+    643.8
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 50% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 83.261,
+    "ik_s": 0.144,
+    "total_s": 0.192
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      89.25564,
+      -4.09503,
+      113.8381
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       0.199,
+       26.6682,
+       0.9787
+      ]
+     },
+     "joints_before_deg": [
+      199.31,
+      280.68,
+      336.73,
+      157.3,
+      314.37,
+      113.19
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.9107,
+     -0.24232,
+     0.48479,
+     99.53546,
+     3.1091,
+     86.92345
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28172,
+      0.03104,
+      0.31702
+     ],
+     "rotvec_deg": [
+      8.7675,
+      -0.75,
+      -6.1674
+     ]
+    }
+   }
+  },
+  {
+   "i": 34,
+   "kind": "cell",
+   "variant": "lr2_hl0_nf0",
+   "cell": 29,
+   "aim_px": [
+    837.2,
+    676.4
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 50% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 83.456,
+    "ik_s": 0.146,
+    "total_s": 0.175
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.91066,
+      -0.24229,
+      0.48502,
+      87.78975,
+      -4.09101,
+      110.37539
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.28168,
+       0.03128,
+       0.31698
+      ],
+      "rotvec_deg": [
+       -1.4713,
+       23.1988,
+       1.2765
+      ]
+     },
+     "joints_before_deg": [
+      199.31,
+      280.68,
+      336.73,
+      157.3,
+      314.37,
+      113.19
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.9107,
+     -0.24232,
+     0.48479,
+     99.53545,
+     3.10911,
+     86.92349
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.28172,
+      0.03104,
+      0.31702
+     ],
+     "rotvec_deg": [
+      8.7675,
+      -0.75,
+      -6.1674
+     ]
+    }
+   }
+  },
+  {
+   "i": 35,
+   "kind": "variant",
+   "variant": "lr2_hl1_nf0",
+   "cell": null,
+   "aim_px": null,
+   "outcome": "reached",
+   "note": null,
+   "times": {
+    "start_s": 83.68,
+    "move_s": 2.321,
+    "still_s": 1.104,
+    "decide_s": 0.3,
+    "total_s": 3.875
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.87133,
+      -0.25811,
+      0.32918,
+      87.11085,
+      -4.80476,
+      107.94578
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30785,
+       -0.12387,
+       0.28054
+      ],
+      "rotvec_deg": [
+       -2.1734,
+       20.7459,
+       2.0772
+      ]
+     },
+     "joints_before_deg": [
+      199.31,
+      280.68,
+      336.73,
+      157.3,
+      314.37,
+      113.19
+     ],
+     "joints_deg": [
+      209.58,
+      257.4,
+      324.34,
+      105.91,
+      309.5,
+      148.59
+     ],
+     "joint_speed_dps": null,
+     "sent": true,
+     "measured_joint_dps": 22.14
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.87134,
+     -0.25811,
+     0.32894,
+     87.12308,
+     -4.81427,
+     107.94594
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.30786,
+      -0.12412,
+      0.28056
+     ],
+     "rotvec_deg": [
+      -2.1596,
+      20.746,
+      2.0844
+     ]
+    }
+   },
+   "camera": {
+    "frame": 693,
+    "corners": 88,
+    "centroid_px": [
+     796.98,
+     516.32
+    ],
+    "verdict": "redundant",
+    "reason": "redundant (no empty cell, bin near/-x-y filled)",
+    "bin": "near/-x-y",
+    "accepted": true
+   }
+  },
+  {
+   "i": 36,
+   "kind": "cell",
+   "variant": "lr2_hl1_nf0",
+   "cell": 3,
+   "aim_px": [
+    749.3,
+    329.8
+   ],
+   "outcome": "reached",
+   "note": "missed aim by 64 px; corrected; correction lost the board, back to the last good pose",
+   "times": {
+    "start_s": 87.585,
+    "ik_s": 0.503,
+    "move_s": 11.473,
+    "still_s": 1.707,
+    "decide_s": 0.3,
+    "total_s": 14.196
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      100.72044,
+      -6.70488,
+      102.71681
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       11.2292,
+       15.8516,
+       2.0184
+      ]
+     },
+     "joints_before_deg": [
+      209.58,
+      257.39,
+      324.34,
+      105.91,
+      309.5,
+      148.59
+     ],
+     "ik_deg": [
+      208.26,
+      -97.78,
+      -37.6,
+      127.6,
+      -57.48,
+      128.47
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      93.89429,
+      -5.91404,
+      105.39004
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       4.5431,
+       18.3214,
+       2.054
+      ]
+     },
+     "joints_before_deg": [
+      208.26,
+      262.21,
+      322.41,
+      127.61,
+      302.52,
+      128.47
+     ],
+     "ik_deg": [
+      209.04,
+      -100.75,
+      -37.96,
+      117.84,
+      -53.54,
+      137.05
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      98.23726,
+      -6.57641,
+      106.11769
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       9.0093,
+       19.1677,
+       1.956
+      ]
+     },
+     "joints_before_deg": [
+      209.04,
+      259.23,
+      322.04,
+      117.84,
+      306.46,
+      137.05
+     ],
+     "ik_deg": [
+      209.27,
+      -97.14,
+      -33.52,
+      120.37,
+      -56.98,
+      135.64
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      93.89429,
+      -5.91404,
+      105.39004
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       4.5431,
+       18.3214,
+       2.054
+      ]
+     },
+     "joints_before_deg": [
+      209.27,
+      262.85,
+      326.49,
+      120.37,
+      303.02,
+      135.64
+     ],
+     "ik_deg": [
+      209.04,
+      -100.75,
+      -37.96,
+      117.84,
+      -53.54,
+      137.05
+     ],
+     "sent": true
+    }
+   ],
+   "aim_error": [
+    {
+     "leg": "final",
+     "centroid_px": [
+      738.5,
+      392.4
+     ],
+     "error_px": [
+      -10.8,
+      62.6
+     ],
+     "miss_px": 63.5
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.87135,
+     -0.25813,
+     0.32867,
+     93.90852,
+     -5.92638,
+     105.38744
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.3079,
+      -0.12439,
+      0.28057
+     ],
+     "rotvec_deg": [
+      4.5589,
+      18.3195,
+      2.0641
+     ]
+    }
+   },
+   "camera": {
+    "frame": 800,
+    "corners": 88,
+    "centroid_px": [
+     738.39,
+     392.43
+    ],
+    "verdict": "redundant",
+    "reason": "redundant (no empty cell, bin near/+x-y filled)",
+    "bin": "near/+x-y",
+    "accepted": true
+   }
+  },
+  {
+   "i": 37,
+   "kind": "cell",
+   "variant": "lr2_hl1_nf0",
+   "cell": 2,
+   "aim_px": [
+    640.0,
+    322.0
+   ],
+   "outcome": "skipped: board left the view",
+   "note": "board left the view; halfway back",
+   "times": {
+    "start_s": 101.785,
+    "ik_s": 0.378,
+    "move_s": 8.047,
+    "still_s": 1.255,
+    "total_s": 9.847
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      99.71071,
+      -5.35639,
+      95.94725
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       9.5832,
+       8.9866,
+       1.446
+      ]
+     },
+     "joints_before_deg": [
+      209.04,
+      259.23,
+      322.04,
+      117.85,
+      306.46,
+      137.05
+     ],
+     "ik_deg": [
+      205.96,
+      -102.23,
+      -47.78,
+      138.37,
+      -54.68,
+      118.69
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      96.81476,
+      -5.75454,
+      100.66038
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       7.0712,
+       13.6583,
+       1.7509
+      ]
+     },
+     "joints_before_deg": [
+      205.96,
+      257.76,
+      312.22,
+      138.37,
+      305.32,
+      118.69
+     ],
+     "ik_deg": [
+      207.59,
+      -101.87,
+      -43.74,
+      128.33,
+      -53.66,
+      127.25
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      93.89429,
+      -5.91404,
+      105.39004
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       4.5431,
+       18.3214,
+       2.054
+      ]
+     },
+     "joints_before_deg": [
+      207.59,
+      258.12,
+      316.27,
+      128.33,
+      306.34,
+      127.25
+     ],
+     "ik_deg": [
+      209.04,
+      -100.75,
+      -37.96,
+      117.84,
+      -53.54,
+      137.05
+     ],
+     "sent": true
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.87135,
+     -0.25818,
+     0.32873,
+     93.90838,
+     -5.92627,
+     105.38486
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.30794,
+      -0.12432,
+      0.28058
+     ],
+     "rotvec_deg": [
+      4.5586,
+      18.3169,
+      2.0641
+     ]
+    }
+   },
+   "camera": {
+    "frame": 854,
+    "corners": 87,
+    "centroid_px": [
+     642.49,
+     335.32
+    ],
+    "verdict": "not_full",
+    "reason": "not_full 87 corners",
+    "bin": "none",
+    "accepted": null
+   }
+  },
+  {
+   "i": 38,
+   "kind": "cell",
+   "variant": "lr2_hl1_nf0",
+   "cell": 1,
+   "aim_px": [
+    530.7,
+    329.8
+   ],
+   "outcome": "skipped: board left the view",
+   "note": "board left the view; halfway back",
+   "times": {
+    "start_s": 111.635,
+    "ik_s": 0.378,
+    "move_s": 14.598,
+    "still_s": 1.305,
+    "total_s": 16.448
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      99.78234,
+      -3.94408,
+      85.83816
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       8.9439,
+       -1.1941,
+       0.9641
+      ]
+     },
+     "joints_before_deg": [
+      209.04,
+      259.24,
+      322.05,
+      117.84,
+      306.46,
+      137.05
+     ],
+     "ik_deg": [
+      201.92,
+      -105.37,
+      -56.06,
+      156.34,
+      -52.81,
+      104.79
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      96.92512,
+      -5.17989,
+      95.58123
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       6.7646,
+       8.5682,
+       1.5119
+      ]
+     },
+     "joints_before_deg": [
+      201.91,
+      254.62,
+      303.94,
+      156.34,
+      307.19,
+      104.79
+     ],
+     "ik_deg": [
+      205.82,
+      -104.23,
+      -49.81,
+      137.27,
+      -51.96,
+      119.43
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      93.89429,
+      -5.91404,
+      105.39004
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       4.5431,
+       18.3214,
+       2.054
+      ]
+     },
+     "joints_before_deg": [
+      205.82,
+      255.76,
+      310.19,
+      137.27,
+      308.04,
+      119.43
+     ],
+     "ik_deg": [
+      209.04,
+      -100.75,
+      -37.96,
+      117.84,
+      -53.54,
+      137.05
+     ],
+     "sent": true
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.87134,
+     -0.25816,
+     0.32878,
+     93.90495,
+     -5.92261,
+     105.38669
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.30792,
+      -0.12427,
+      0.28056
+     ],
+     "rotvec_deg": [
+      4.5547,
+      18.3185,
+      2.0609
+     ]
+    }
+   },
+   "camera": {
+    "frame": 964,
+    "corners": 87,
+    "centroid_px": [
+     546.17,
+     322.15
+    ],
+    "verdict": "not_full",
+    "reason": "not_full 87 corners",
+    "bin": "none",
+    "accepted": null
+   }
+  },
+  {
+   "i": 39,
+   "kind": "cell",
+   "variant": "lr2_hl1_nf0",
+   "cell": 4,
+   "aim_px": [
+    837.4,
+    347.5
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 100% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 128.087,
+    "ik_s": 0.19,
+    "total_s": 0.245
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      96.14976,
+      -7.16371,
+      114.05073
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       7.6977,
+       27.0423,
+       2.3715
+      ]
+     },
+     "joints_before_deg": [
+      209.04,
+      259.24,
+      322.04,
+      117.84,
+      306.46,
+      137.05
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.87135,
+     -0.25813,
+     0.32874,
+     93.90631,
+     -5.9239,
+     105.38812
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.30789,
+      -0.12432,
+      0.28057
+     ],
+     "rotvec_deg": [
+      4.5564,
+      18.32,
+      2.0619
+     ]
+    }
+   }
+  },
+  {
+   "i": 40,
+   "kind": "cell",
+   "variant": "lr2_hl1_nf0",
+   "cell": 0,
+   "aim_px": [
+    442.6,
+    347.5
+   ],
+   "outcome": "skipped: board left the view",
+   "note": "board left the view; halfway back",
+   "times": {
+    "start_s": 128.336,
+    "ik_s": 0.381,
+    "move_s": 19.87,
+    "still_s": 1.255,
+    "total_s": 21.623
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      98.80696,
+      -2.9535,
+      78.03065
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       7.5514,
+       -9.0602,
+       0.6167
+      ]
+     },
+     "joints_before_deg": [
+      209.04,
+      259.23,
+      322.04,
+      117.84,
+      306.46,
+      137.05
+     ],
+     "ik_deg": [
+      198.42,
+      -107.12,
+      -59.62,
+      170.59,
+      -51.03,
+      94.8
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      96.5313,
+      -4.72744,
+      91.66428
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       6.0787,
+       4.6337,
+       1.3408
+      ]
+     },
+     "joints_before_deg": [
+      198.42,
+      252.86,
+      300.39,
+      170.59,
+      308.97,
+      94.8
+     ],
+     "ik_deg": [
+      204.31,
+      -105.89,
+      -53.65,
+      144.14,
+      -50.45,
+      113.89
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      93.89429,
+      -5.91404,
+      105.39004
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       4.5431,
+       18.3214,
+       2.054
+      ]
+     },
+     "joints_before_deg": [
+      204.31,
+      254.1,
+      306.35,
+      144.14,
+      309.55,
+      113.89
+     ],
+     "ik_deg": [
+      209.04,
+      -100.75,
+      -37.96,
+      117.84,
+      -53.54,
+      137.05
+     ],
+     "sent": true
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.87134,
+     -0.25816,
+     0.32876,
+     93.90567,
+     -5.92344,
+     105.38657
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.30792,
+      -0.12429,
+      0.28056
+     ],
+     "rotvec_deg": [
+      4.5556,
+      18.3185,
+      2.0617
+     ]
+    }
+   },
+   "camera": {
+    "frame": 1118,
+    "corners": 87,
+    "centroid_px": [
+     470.78,
+     321.14
+    ],
+    "verdict": "not_full",
+    "reason": "not_full 87 corners",
+    "bin": "none",
+    "accepted": null
+   }
+  },
+  {
+   "i": 41,
+   "kind": "cell",
+   "variant": "lr2_hl1_nf0",
+   "cell": 29,
+   "aim_px": [
+    837.4,
+    676.5
+   ],
+   "outcome": "skipped: board left the view",
+   "note": "board left the view; halfway back",
+   "times": {
+    "start_s": 149.963,
+    "ik_s": 0.634,
+    "move_s": 16.542,
+    "still_s": 2.058,
+    "total_s": 19.498
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      81.54449,
+      -4.1901,
+      111.28234
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       -7.5429,
+       24.0072,
+       2.6972
+      ]
+     },
+     "joints_before_deg": [
+      209.04,
+      259.24,
+      322.04,
+      117.84,
+      306.46,
+      137.05
+     ],
+     "ik_deg": [
+      210.17,
+      -101.79,
+      -28.39,
+      92.36,
+      -50.92,
+      162.37
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      87.69296,
+      -5.21037,
+      108.38486
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       -1.4908,
+       21.1832,
+       2.3777
+      ]
+     },
+     "joints_before_deg": [
+      210.17,
+      258.2,
+      331.62,
+      92.36,
+      309.08,
+      162.37
+     ],
+     "ik_deg": [
+      209.72,
+      -101.97,
+      -34.7,
+      105.96,
+      -51.21,
+      148.38
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      76.04667,
+      -2.47685,
+      111.70053
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       -13.2915,
+       24.5176,
+       2.2218
+      ]
+     },
+     "joints_before_deg": [
+      209.72,
+      258.02,
+      325.31,
+      105.96,
+      308.79,
+      148.38
+     ],
+     "ik_deg": [
+      209.92,
+      -102.33,
+      -24.57,
+      81.77,
+      -50.52,
+      174.11
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      81.84527,
+      -3.92772,
+      110.11372
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       -7.3859,
+       22.8686,
+       2.3021
+      ]
+     },
+     "joints_before_deg": [
+      209.92,
+      257.66,
+      335.44,
+      81.77,
+      309.47,
+      174.11
+     ],
+     "ik_deg": [
+      209.91,
+      -102.86,
+      -31.16,
+      94.59,
+      -49.76,
+      160.1
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      87.69296,
+      -5.21037,
+      108.38486
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       -1.4908,
+       21.1832,
+       2.3777
+      ]
+     },
+     "joints_before_deg": [
+      209.9,
+      257.13,
+      328.84,
+      94.59,
+      310.23,
+      160.1
+     ],
+     "ik_deg": [
+      209.72,
+      -101.97,
+      -34.7,
+      105.96,
+      -51.21,
+      148.38
+     ],
+     "sent": true
+    }
+   ],
+   "aim_error": [
+    {
+     "leg": "first",
+     "centroid_px": [
+      803.2,
+      508.0
+     ],
+     "error_px": [
+      -34.2,
+      -168.5
+     ],
+     "miss_px": 171.9
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.87134,
+     -0.25814,
+     0.3288,
+     87.70127,
+     -5.21787,
+     108.38271
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.3079,
+      -0.12426,
+      0.28056
+     ],
+     "rotvec_deg": [
+      -1.4814,
+      21.181,
+      2.3836
+     ]
+    }
+   },
+   "camera": {
+    "frame": 1284,
+    "corners": 87,
+    "centroid_px": [
+     840.23,
+     626.35
+    ],
+    "verdict": "not_full",
+    "reason": "not_full 87 corners",
+    "bin": "none",
+    "accepted": null
+   }
+  },
+  {
+   "i": 42,
+   "kind": "cell",
+   "variant": "lr2_hl1_nf0",
+   "cell": 25,
+   "aim_px": [
+    442.6,
+    676.5
+   ],
+   "outcome": "reached",
+   "note": "missed aim by 75 px; corrected; correction lost the board, back to the last good pose",
+   "times": {
+    "start_s": 169.464,
+    "ik_s": 0.632,
+    "move_s": 18.119,
+    "still_s": 2.51,
+    "decide_s": 0.802,
+    "total_s": 22.323
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      81.14023,
+      -2.16326,
+      88.65945
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       -9.5476,
+       1.6048,
+       -0.8211
+      ]
+     },
+     "joints_before_deg": [
+      209.72,
+      258.02,
+      325.31,
+      105.96,
+      308.79,
+      148.38
+     ],
+     "ik_deg": [
+      202.68,
+      -114.29,
+      -57.54,
+      135.15,
+      -31.07,
+      125.49
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      70.84825,
+      -5.59344,
+      86.65727
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       -19.9427,
+       -0.8561,
+       2.4056
+      ]
+     },
+     "joints_before_deg": [
+      202.67,
+      245.7,
+      302.46,
+      135.15,
+      328.93,
+      125.49
+     ],
+     "ik_deg": [
+      200.83,
+      -117.58,
+      -54.86,
+      113.55,
+      -16.77,
+      145.03
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      75.98442,
+      -3.83347,
+      87.58212
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       -14.7465,
+       0.3771,
+       0.7897
+      ]
+     },
+     "joints_before_deg": [
+      200.83,
+      242.4,
+      305.14,
+      113.55,
+      343.23,
+      145.03
+     ],
+     "ik_deg": [
+      201.81,
+      -116.22,
+      -56.76,
+      127.98,
+      -23.75,
+      131.6
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      71.56267,
+      -5.21997,
+      85.16231
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       -19.3343,
+       -2.2636,
+       1.8089
+      ]
+     },
+     "joints_before_deg": [
+      201.81,
+      243.77,
+      303.25,
+      127.98,
+      336.25,
+      131.6
+     ],
+     "ik_deg": [
+      200.33,
+      -117.74,
+      -55.9,
+      121.52,
+      -16.14,
+      138.17
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.87134,
+      -0.25811,
+      0.32894,
+      75.98442,
+      -3.83347,
+      87.58212
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.30786,
+       -0.12412,
+       0.28056
+      ],
+      "rotvec_deg": [
+       -14.7465,
+       0.3771,
+       0.7897
+      ]
+     },
+     "joints_before_deg": [
+      200.33,
+      242.25,
+      304.1,
+      121.52,
+      343.86,
+      138.18
+     ],
+     "ik_deg": [
+      201.81,
+      -116.22,
+      -56.76,
+      127.98,
+      -23.75,
+      131.6
+     ],
+     "sent": true
+    }
+   ],
+   "aim_error": [
+    {
+     "leg": "first",
+     "centroid_px": [
+      471.4,
+      521.3
+     ],
+     "error_px": [
+      28.8,
+      -155.2
+     ],
+     "miss_px": 157.8
+    },
+    {
+     "leg": "final",
+     "centroid_px": [
+      473.5,
+      607.8
+     ],
+     "error_px": [
+      30.9,
+      -68.7
+     ],
+     "miss_px": 75.3
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.87137,
+     -0.25811,
+     0.32871,
+     76.0016,
+     -3.83798,
+     87.58222
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.30787,
+      -0.12435,
+      0.28059
+     ],
+     "rotvec_deg": [
+      -14.7293,
+      0.3768,
+      0.7941
+     ]
+    }
+   },
+   "camera": {
+    "frame": 1474,
+    "corners": 88,
+    "centroid_px": [
+     473.72,
+     607.94
+    ],
+    "verdict": "redundant",
+    "reason": "redundant (no empty cell, bin near/-x-y filled)",
+    "bin": "near/-x-y",
+    "accepted": false
+   }
+  },
+  {
+   "i": 43,
+   "kind": "variant",
+   "variant": "lr1_hl1_nf0",
+   "cell": null,
+   "aim_px": null,
+   "outcome": "reached",
+   "note": null,
+   "times": {
+    "start_s": 191.837,
+    "move_s": 1.925,
+    "still_s": 0.603,
+    "decide_s": 0.3,
+    "total_s": 2.975
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.88338,
+      0.01471,
+      0.32277,
+      89.26992,
+      -4.95337,
+      95.25792
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.03552,
+       -0.14504,
+       0.27913
+      ],
+      "rotvec_deg": [
+       -0.9155,
+       8.1219,
+       1.8536
+      ]
+     },
+     "joints_before_deg": [
+      201.81,
+      243.77,
+      303.25,
+      127.98,
+      336.25,
+      131.6
+     ],
+     "joints_deg": [
+      180.72,
+      243.95,
+      290.01,
+      170.57,
+      317.17,
+      92.68
+     ],
+     "joint_speed_dps": null,
+     "sent": true,
+     "measured_joint_dps": 22.12
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.88339,
+     0.01472,
+     0.32257,
+     89.28643,
+     -4.95764,
+     95.25746
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.03551,
+      -0.14524,
+      0.27915
+     ],
+     "rotvec_deg": [
+      -0.8987,
+      8.1217,
+      1.8567
+     ]
+    }
+   },
+   "camera": {
+    "frame": 1496,
+    "corners": 88,
+    "centroid_px": [
+     682.52,
+     359.53
+    ],
+    "verdict": "moving",
+    "reason": "moving median 0.62 >= 0.30 px",
+    "bin": "near/+x-y",
+    "accepted": true
+   }
+  },
+  {
+   "i": 44,
+   "kind": "cell",
+   "variant": "lr1_hl1_nf0",
+   "cell": 4,
+   "aim_px": [
+    830.6,
+    353.2
+   ],
+   "outcome": "skipped: board left the view",
+   "note": "board left the view; halfway back",
+   "times": {
+    "start_s": 194.838,
+    "ik_s": 0.378,
+    "move_s": 10.072,
+    "still_s": 1.405,
+    "total_s": 12.025
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.88339,
+      0.01473,
+      0.32258,
+      88.85646,
+      -4.3283,
+      108.74936
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.0355,
+       -0.14523,
+       0.27915
+      ],
+      "rotvec_deg": [
+       -0.4799,
+       21.5829,
+       1.2913
+      ]
+     },
+     "joints_before_deg": [
+      180.72,
+      243.94,
+      290.01,
+      170.57,
+      317.16,
+      92.68
+     ],
+     "ik_deg": [
+      186.82,
+      -114.09,
+      -64.39,
+      141.89,
+      -45.21,
+      114.71
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.88339,
+      0.01473,
+      0.32258,
+      89.0526,
+      -4.6556,
+      102.00595
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.0355,
+       -0.14523,
+       0.27915
+      ],
+      "rotvec_deg": [
+       -0.6908,
+       14.8528,
+       1.5765
+      ]
+     },
+     "joints_before_deg": [
+      186.82,
+      245.9,
+      295.61,
+      141.89,
+      314.79,
+      114.72
+     ],
+     "ik_deg": [
+      183.87,
+      -115.42,
+      -68.04,
+      155.97,
+      -43.52,
+      103.69
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.88339,
+      0.01473,
+      0.32258,
+      89.28605,
+      -4.95765,
+      95.25833
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.0355,
+       -0.14523,
+       0.27915
+      ],
+      "rotvec_deg": [
+       -0.8991,
+       8.1225,
+       1.8567
+      ]
+     },
+     "joints_before_deg": [
+      183.87,
+      244.56,
+      291.96,
+      155.98,
+      316.47,
+      103.69
+     ],
+     "ik_deg": [
+      180.71,
+      -116.06,
+      -69.99,
+      170.57,
+      -42.84,
+      92.68
+     ],
+     "sent": true
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.88342,
+     0.01476,
+     0.32236,
+     89.30389,
+     -4.96213,
+     95.25874
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.03548,
+      -0.14545,
+      0.27918
+     ],
+     "rotvec_deg": [
+      -0.8809,
+      8.1232,
+      1.8599
+     ]
+    }
+   },
+   "camera": {
+    "frame": 1562,
+    "corners": 87,
+    "centroid_px": [
+     818.68,
+     365.3
+    ],
+    "verdict": "not_full",
+    "reason": "not_full 87 corners",
+    "bin": "none",
+    "accepted": null
+   }
+  },
+  {
+   "i": 45,
+   "kind": "cell",
+   "variant": "lr1_hl1_nf0",
+   "cell": 0,
+   "aim_px": [
+    449.4,
+    353.2
+   ],
+   "outcome": "reached",
+   "note": "board left the view; halfway back",
+   "times": {
+    "start_s": 206.867,
+    "ik_s": 0.252,
+    "move_s": 11.703,
+    "still_s": 1.155,
+    "decide_s": 0.802,
+    "total_s": 14.026
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.88339,
+      0.01473,
+      0.32258,
+      91.32221,
+      -5.5651,
+      73.64924
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.0355,
+       -0.14523,
+       0.27915
+      ],
+      "rotvec_deg": [
+       -0.4567,
+       -13.3832,
+       2.7026
+      ]
+     },
+     "joints_before_deg": [
+      180.71,
+      243.93,
+      290.02,
+      170.57,
+      317.16,
+      92.68
+     ],
+     "ik_deg": [
+      170.69,
+      -113.16,
+      -64.95,
+      214.79,
+      -47.72,
+      59.95
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.88339,
+      0.01473,
+      0.32258,
+      90.27503,
+      -5.35725,
+      84.45917
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.0355,
+       -0.14523,
+       0.27915
+      ],
+      "rotvec_deg": [
+       -0.68,
+       -2.6301,
+       2.2861
+      ]
+     },
+     "joints_before_deg": [
+      170.68,
+      246.83,
+      295.05,
+      214.79,
+      312.28,
+      59.95
+     ],
+     "ik_deg": [
+      175.56,
+      -115.44,
+      -69.6,
+      193.59,
+      -44.34,
+      75.72
+     ],
+     "sent": true
+    }
+   ],
+   "aim_error": [
+    {
+     "leg": "final",
+     "centroid_px": [
+      464.3,
+      367.1
+     ],
+     "error_px": [
+      14.9,
+      13.9
+     ],
+     "miss_px": 20.4
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.88342,
+     0.01473,
+     0.32235,
+     90.29306,
+     -5.3533,
+     84.45741
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.03551,
+      -0.14546,
+      0.27918
+     ],
+     "rotvec_deg": [
+      -0.6621,
+      -2.6315,
+      2.2826
+     ]
+    }
+   },
+   "camera": {
+    "frame": 1692,
+    "corners": 88,
+    "centroid_px": [
+     464.31,
+     367.19
+    ],
+    "verdict": "redundant",
+    "reason": "redundant (no empty cell, bin near/flat filled)",
+    "bin": "near/flat",
+    "accepted": false
+   }
+  },
+  {
+   "i": 46,
+   "kind": "cell",
+   "variant": "lr1_hl1_nf0",
+   "cell": 25,
+   "aim_px": [
+    449.4,
+    670.8
+   ],
+   "outcome": "reached",
+   "note": null,
+   "times": {
+    "start_s": 220.897,
+    "ik_s": 0.252,
+    "move_s": 8.127,
+    "still_s": 1.155,
+    "decide_s": 0.3,
+    "total_s": 9.943
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.88339,
+      0.01473,
+      0.32258,
+      78.16016,
+      -9.48324,
+      83.6878
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.0355,
+       -0.14523,
+       0.27915
+      ],
+      "rotvec_deg": [
+       -12.9582,
+       -4.0194,
+       6.0405
+      ]
+     },
+     "joints_before_deg": [
+      175.56,
+      244.55,
+      290.4,
+      193.59,
+      315.65,
+      75.72
+     ],
+     "ik_deg": [
+      174.37,
+      -120.25,
+      -67.43,
+      209.27,
+      -27.24,
+      57.67
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.88339,
+      0.01473,
+      0.32258,
+      70.74613,
+      -12.29319,
+      89.75302
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.0355,
+       -0.14523,
+       0.27915
+      ],
+      "rotvec_deg": [
+       -19.6133,
+       1.1088,
+       9.5443
+      ]
+     },
+     "joints_before_deg": [
+      174.37,
+      239.73,
+      292.57,
+      209.27,
+      332.76,
+      57.67
+     ],
+     "ik_deg": [
+      176.21,
+      -122.47,
+      -65.02,
+      209.52,
+      -14.45,
+      51.83
+     ],
+     "sent": true
+    }
+   ],
+   "aim_error": [
+    {
+     "leg": "first",
+     "centroid_px": [
+      383.4,
+      570.0
+     ],
+     "error_px": [
+      -66.0,
+      -100.9
+     ],
+     "miss_px": 120.6
+    },
+    {
+     "leg": "final",
+     "centroid_px": [
+      446.7,
+      673.3
+     ],
+     "error_px": [
+      -2.7,
+      2.4
+     ],
+     "miss_px": 3.6
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.88343,
+     0.0147,
+     0.32235,
+     70.76423,
+     -12.29348,
+     89.74704
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.03554,
+      -0.14546,
+      0.27919
+     ],
+     "rotvec_deg": [
+      -19.596,
+      1.1043,
+      9.5434
+     ]
+    }
+   },
+   "camera": {
+    "frame": 1766,
+    "corners": 88,
+    "centroid_px": [
+     446.68,
+     673.45
+    ],
+    "verdict": "redundant",
+    "reason": "redundant (no empty cell, bin near/flat filled)",
+    "bin": "near/flat",
+    "accepted": true
+   }
+  },
+  {
+   "i": 47,
+   "kind": "cell",
+   "variant": "lr1_hl1_nf0",
+   "cell": 29,
+   "aim_px": [
+    830.6,
+    670.8
+   ],
+   "outcome": "skipped: board left the view",
+   "note": "board left the view; halfway back",
+   "times": {
+    "start_s": 230.844,
+    "ik_s": 0.378,
+    "move_s": 15.403,
+    "still_s": 1.506,
+    "total_s": 17.451
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.88339,
+      0.01473,
+      0.32258,
+      66.80935,
+      -12.32032,
+      111.37892
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.0355,
+       -0.14523,
+       0.27915
+      ],
+      "rotvec_deg": [
+       -20.2875,
+       21.9553,
+       13.666
+      ]
+     },
+     "joints_before_deg": [
+      176.22,
+      237.52,
+      294.98,
+      209.52,
+      345.55,
+      51.83
+     ],
+     "ik_deg": [
+      184.95,
+      -121.25,
+      -58.52,
+      96.76,
+      -20.17,
+      151.58
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.88339,
+      0.01473,
+      0.32258,
+      68.77911,
+      -12.48872,
+      100.56545
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.0355,
+       -0.14523,
+       0.27915
+      ],
+      "rotvec_deg": [
+       -20.0062,
+       11.5248,
+       11.6304
+      ]
+     },
+     "joints_before_deg": [
+      184.95,
+      238.74,
+      301.48,
+      96.76,
+      339.83,
+      151.58
+     ],
+     "ik_deg": [
+      180.74,
+      -122.77,
+      -63.82,
+      144.14,
+      -11.57,
+      110.36
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.88339,
+      0.01473,
+      0.32258,
+      70.74613,
+      -12.29319,
+      89.75302
+     ],
+     "rel_p0": {
+      "t_m": [
+       -0.0355,
+       -0.14523,
+       0.27915
+      ],
+      "rotvec_deg": [
+       -19.6133,
+       1.1088,
+       9.5443
+      ]
+     },
+     "joints_before_deg": [
+      180.74,
+      237.22,
+      296.18,
+      144.14,
+      348.43,
+      110.36
+     ],
+     "ik_deg": [
+      176.21,
+      -122.47,
+      -65.02,
+      209.52,
+      -14.45,
+      51.83
+     ],
+     "sent": true
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.88342,
+     0.01475,
+     0.32237,
+     70.76235,
+     -12.29385,
+     89.75008
+    ],
+    "rel_p0": {
+     "t_m": [
+      -0.03549,
+      -0.14544,
+      0.27918
+     ],
+     "rotvec_deg": [
+      -19.5975,
+      1.1071,
+      9.5443
+     ]
+    }
+   },
+   "camera": {
+    "frame": 1862,
+    "corners": 83,
+    "centroid_px": [
+     817.21,
+     629.23
+    ],
+    "verdict": "not_full",
+    "reason": "not_full 83 corners",
+    "bin": "none",
+    "accepted": null
+   }
+  },
+  {
+   "i": 48,
+   "kind": "variant",
+   "variant": "lr0_hl1_nf0",
+   "cell": null,
+   "aim_px": null,
+   "outcome": "reached",
+   "note": null,
+   "times": {
+    "start_s": 248.341,
+    "move_s": 1.797,
+    "still_s": 0.552,
+    "decide_s": 0.802,
+    "total_s": 3.3
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.89542,
+      0.28752,
+      0.31635,
+      91.45308,
+      -4.62532,
+      82.58014
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.23681,
+       -0.16621,
+       0.27773
+      ],
+      "rotvec_deg": [
+       0.3879,
+       -4.4962,
+       1.617
+      ]
+     },
+     "joints_before_deg": [
+      176.21,
+      237.52,
+      294.98,
+      209.52,
+      345.55,
+      51.83
+     ],
+     "joints_deg": [
+      151.49,
+      257.89,
+      323.59,
+      239.34,
+      318.28,
+      34.58
+     ],
+     "joint_speed_dps": null,
+     "sent": true,
+     "measured_joint_dps": 16.59
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.89543,
+     0.28754,
+     0.31614,
+     91.46648,
+     -4.61732,
+     82.57926
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.23682,
+      -0.16643,
+      0.27773
+     ],
+     "rotvec_deg": [
+      0.4016,
+      -4.497,
+      1.6096
+     ]
+    }
+   },
+   "camera": {
+    "frame": 1922,
+    "corners": 88,
+    "centroid_px": [
+     561.66,
+     427.98
+    ],
+    "verdict": "redundant",
+    "reason": "redundant (no empty cell, bin near/flat filled)",
+    "bin": "near/flat",
+    "accepted": false
+   }
+  },
+  {
+   "i": 49,
+   "kind": "cell",
+   "variant": "lr0_hl1_nf0",
+   "cell": 0,
+   "aim_px": [
+    439.4,
+    344.8
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 100% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 251.667,
+    "ik_s": 0.202,
+    "total_s": 0.255
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.89542,
+      0.28757,
+      0.31614,
+      97.62604,
+      -2.19519,
+      71.79717
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.23685,
+       -0.16643,
+       0.27772
+      ],
+      "rotvec_deg": [
+       6.1187,
+       -15.3352,
+       0.2273
+      ]
+     },
+     "joints_before_deg": [
+      151.49,
+      257.88,
+      323.59,
+      239.34,
+      318.27,
+      34.58
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.89543,
+     0.28754,
+     0.31614,
+     91.46646,
+     -4.61733,
+     82.57925
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.23682,
+      -0.16643,
+      0.27773
+     ],
+     "rotvec_deg": [
+      0.4015,
+      -4.497,
+      1.6096
+     ]
+    }
+   }
+  },
+  {
+   "i": 50,
+   "kind": "cell",
+   "variant": "lr0_hl1_nf0",
+   "cell": 25,
+   "aim_px": [
+    439.4,
+    679.2
+   ],
+   "outcome": "unreachable",
+   "note": "IK failed at 75% of the path (no IK solution (Server error name=ERROR_DEVICE, sub name=METHOD_FAILED => The first convergence of the IK has failed \n))",
+   "times": {
+    "start_s": 251.926,
+    "ik_s": 0.17,
+    "total_s": 0.218
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.89542,
+      0.28757,
+      0.31614,
+      74.88401,
+      -8.19494,
+      71.71846
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.23685,
+       -0.16643,
+       0.27772
+      ],
+      "rotvec_deg": [
+       -17.2849,
+       -15.9023,
+       3.1262
+      ]
+     },
+     "joints_before_deg": [
+      151.49,
+      257.88,
+      323.59,
+      239.34,
+      318.27,
+      34.58
+     ],
+     "ik_deg": null,
+     "sent": false
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.89543,
+     0.28754,
+     0.31614,
+     91.46647,
+     -4.61737,
+     82.57925
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.23682,
+      -0.16643,
+      0.27773
+     ],
+     "rotvec_deg": [
+      0.4015,
+      -4.497,
+      1.6096
+     ]
+    }
+   }
+  },
+  {
+   "i": 51,
+   "kind": "cell",
+   "variant": "lr0_hl1_nf0",
+   "cell": 4,
+   "aim_px": [
+    840.6,
+    344.8
+   ],
+   "outcome": "skipped: board left the view",
+   "note": "board left the view; halfway back",
+   "times": {
+    "start_s": 252.148,
+    "ik_s": 0.383,
+    "move_s": 19.17,
+    "still_s": 1.356
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.89542,
+      0.28757,
+      0.31614,
+      95.38225,
+      -6.65249,
+      108.34233
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.23685,
+       -0.16643,
+       0.27772
+      ],
+      "rotvec_deg": [
+       6.3723,
+       21.3204,
+       2.3801
+      ]
+     },
+     "joints_before_deg": [
+      151.49,
+      257.88,
+      323.59,
+      239.34,
+      318.27,
+      34.58
+     ],
+     "ik_deg": [
+      162.22,
+      -106.51,
+      -51.24,
+      177.25,
+      -39.27,
+      86.66
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.89542,
+      0.28757,
+      0.31614,
+      93.53813,
+      -5.41487,
+      95.46802
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.23685,
+       -0.16643,
+       0.27772
+      ],
+      "rotvec_deg": [
+       3.3931,
+       8.4109,
+       2.0025
+      ]
+     },
+     "joints_before_deg": [
+      162.23,
+      253.48,
+      308.77,
+      177.25,
+      320.73,
+      86.66
+     ],
+     "ik_deg": [
+      156.52,
+      -106.25,
+      -48.59,
+      208.12,
+      -38.34,
+      62.06
+     ],
+     "sent": true
+    },
+    {
+     "abs": [
+      0.89542,
+      0.28757,
+      0.31614,
+      91.46655,
+      -4.61723,
+      82.58099
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.23685,
+       -0.16643,
+       0.27772
+      ],
+      "rotvec_deg": [
+       0.4017,
+       -4.4953,
+       1.6094
+      ]
+     },
+     "joints_before_deg": [
+      156.52,
+      253.73,
+      311.41,
+      208.12,
+      321.66,
+      62.05
+     ],
+     "ik_deg": [
+      151.49,
+      -102.12,
+      -36.41,
+      239.34,
+      -41.73,
+      34.58
+     ],
+     "sent": true
+    }
+   ]
+  },
+  {
+   "i": 52,
+   "kind": "return",
+   "variant": "P0",
+   "cell": null,
+   "aim_px": null,
+   "outcome": "reached",
+   "note": null,
+   "times": {
+    "start_s": 273.217,
+    "move_s": 9.226,
+    "total_s": 9.351
+   },
+   "commanded": [
+    {
+     "abs": [
+      0.60792,
+      0.05605,
+      0.4732,
+      90.75936,
+      -3.09462,
+      87.11685
+     ],
+     "rel_p0": {
+      "t_m": [
+       0.0,
+       -0.0,
+       0.0
+      ],
+      "rotvec_deg": [
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "joints_before_deg": [
+      151.49,
+      257.87,
+      323.6,
+      239.34,
+      318.27,
+      34.58
+     ],
+     "joints_deg": [
+      -12.27,
+      105.47,
+      118.53,
+      376.07,
+      257.86,
+      90.5
+     ],
+     "joint_speed_dps": null,
+     "sent": true,
+     "measured_joint_dps": 17.75
+    }
+   ],
+   "measured": {
+    "abs": [
+     0.60777,
+     0.05624,
+     0.4724,
+     90.82188,
+     -3.07826,
+     87.08657
+    ],
+    "rel_p0": {
+     "t_m": [
+      0.00014,
+      -0.00081,
+      -0.00015
+     ],
+     "rotvec_deg": [
+      0.0609,
+      -0.0305,
+      -0.0159
+     ]
+    }
+   }
+  }
+ ],
+ "end": {
+  "end": "board not back in view after returning from a skipped target",
+  "returned_to_p0": true,
+  "moves_commanded": 57,
+  "targets": 52,
+  "accepted": 10,
+  "redundant": 4,
+  "skipped": 7,
+  "unreachable": 31,
+  "aborted": 0,
+  "total_s": 282.6,
+  "timing": {
+   "ik_s": 11.144,
+   "move_s": 232.735,
+   "still_s": 26.959,
+   "decide_s": 6.208,
+   "other_s": 5.527,
+   "fractions": {
+    "ik_s": 0.039,
+    "move_s": 0.824,
+    "still_s": 0.095,
+    "decide_s": 0.022,
+    "other_s": 0.02
+   },
+   "per_move_s": 4.957,
+   "motion_per_move_s": 4.083
+  },
+  "capture_accepted_total": 11,
+  "cells_remaining": [
+   0,
+   4,
+   29
+  ],
+  "bins_short": [
+   "near/+x+y",
+   "near/-x+y",
+   "mid/flat",
+   "mid/+x+y",
+   "mid/+x-y",
+   "mid/-x+y",
+   "mid/-x-y",
+   "far/flat",
+   "far/+x+y",
+   "far/+x-y",
+   "far/-x+y",
+   "far/-x-y"
+  ],
+  "complete": false
+ }
+}

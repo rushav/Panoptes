@@ -252,6 +252,8 @@ int Camera::maxExposure() const {
     return impl_->cam->MaximumExposureValue();
 }
 
+int Camera::minExposure() const { return impl_->cam->MinimumExposureValue(); }
+
 int Camera::minThreshold() const { return impl_->cam->MinimumThreshold(); }
 int Camera::maxThreshold() const { return impl_->cam->MaximumThreshold(); }
 

@@ -30,6 +30,7 @@ this repo.
 - **Corner jitter (static):** 0.0543 px radial median at gain 7, 0.0600 px at gain 0; 2026-10-27, camera 33664, `intrinsics_33664_20261027_151529` / `_152034`, `python/corner_jitter.py`. §6
 - **Gain:** free at the grayscale operating point (gain 7 better than gain 0 at median, p90 and max); same sessions. §6
 - **Intrinsics repeatability, 33661:** range fx 2.48, fy 1.05, cx 9.40, cy 4.26 px over 3 sessions; same-day pair fx 0.23, fy 0.63, cx 2.51, cy 1.51 px; 2026-09-24/25, `python/fit_intrinsics.py`. §16
+- **Arm-driven intrinsics, 33664 (validated):** 3 sessions, RMS 0.17–0.18 px; mean fx 771.83, fy 771.53, cx 629.49, cy 518.84 px; range fx 0.50, fy 0.39, cx 1.03, cy 0.47 px, against the hand-held 33661 same-day pair's fx 0.23, fy 0.63, cx 2.51, cy 1.51 px (cx spread 2.4× smaller, cy 3.2×); gain 0, intensity 15, exposure 8133 µs (gain 0 against IR ring glare at near poses); joint fit over all 80 views: fx 771.89, fy 771.59, cx 629.63, cy 518.82 px, RMS 0.172 px, in `config/intrinsics/33664.yaml`; 2026-11-02, `intrinsics_33664_20261102_150512` / `_184959` / `_190116`, `python/fit_intrinsics.py`. §16
 - **Distortion model:** Brown-Conrady (5); training RMS BC 0.3756 / rational 0.3746 / fisheye 181 px on `intrinsics_33661_20260924_155048`, `python/compare_models.py`; held-out numbers not recorded. §16
 - **Coverage beats RMS:** centre-clustered set (18/30 empty) RMS 0.262 px vs edge-covered 0.223 px, yet edge undistortion error 55.96 vs 26.82 px; synthetic, `solve_intrinsics.py` (removed), date not recorded. §7
 - **4.6 mislabelling:** old 9×6 board, 40/40 corners with homography residual 200–234 px; 2026-10-27, frames of `intrinsics_33661_20260925_103705`. §9
@@ -47,6 +48,10 @@ this repo.
 - **Arm session 2:** 15 accepted, 29/30 cells, 10 bins short, 389 s, stopped by Ctrl-C; cell 29 tried 7 times, never filled; 2026-10-28 19:10, camera 33664, `tests/fixtures/session_arm_33664_20261028_191025.json`. §20
 - **Camera on the arm:** optical axis 12.06° off tool z (rotations of 13 frames, PnP against the arm), 13.4° from the size gains; lens f 768 px against 653/752 px from the rotation gains; same session, 23 views, RMS 0.16 px. §20
 - **Kortex API on Python 3.12:** wheel 2.6.0.post3 imports with protobuf 3.20.3 (`--no-deps`), not with its pinned 3.5.1 or with 4.25.8; 2026-10-28, `.venv`. Never yet connected to the arm. §20
+- **Joint moves:** `reach_joint_angles` with `JOINT_CONSTRAINT_SPEED` 10 aborts `METHOD_FAILED` on short moves; `GetTrajectoryErrorReport`: `INVALID_JOINT_ACCELERATION`, actuator index 2, value 10, max 4.41. The same `goto-pose hub` with no constraint succeeded; a 5° joint-6 move succeeded with the constraint. 2026-11-02, serial WO520851-2. §20
+- **Arm joint limits:** from the Web App (Kortex 2.6 can't read them): actuator 2 [−129, +138], 3 [−148, +152], 5 [−120, +128], 1/4/6 continuous. At power-up the arm rests at actuator 2 −129.4°, 3 −160.2° (12.2° past its limit, no fault), 5 −120.0°; jog to mid-range before every session. 2026-11-02, serial WO520851-2. §20
+- **Taught viewpoints, planned on the arm:** joint-space blend impossible (taught poses span 248.7° on joint 2); pose-space plan: 16/27 viewpoints solved by the arm's IK; families on joints 2/3/5 only: 5 families, 4 hub moves starting at the hub (6 and 7 counting every joint and not starting at the hub); 4 outside the box, 6 without an IK solution, 1 near a limit. 2026-11-02, read-only IK, `tests/fixtures/arm_poses_20261102.yaml`. §20
+- **Taught sessions, 2026-11-02:** 15:05, 28 accepted, 30/30 cells, 4 bins short, 649 s, 55 of 100 targets IK-unreachable (23/23 pans at near corner `lr0_hl0_nf0`); 17:52, 10 accepted, ended on "board not back in view after returning from a skipped target", 31 unreachable (28 at the two near-high corners); 18:49 and 19:01, after the fixes: 23 and 25 accepted, 30/30 cells, 0 viewpoints abandoned, 3 at the reach edge each. Camera 33664, `tests/fixtures/session_arm_33664_20261102_150512.json` / `_175213.json`. §20
 - **IMU parameters:** not in this repo. No IMU document, config or measurement exists to link.
 
 ---
@@ -123,6 +128,11 @@ change both together.**
     Python 3.12.** Install `python/requirements-arm.txt` with `--no-deps`
     (protobuf 3.20.3). protobuf 4.x refuses the wheel's generated code.
     `pip check` reporting the pin mismatch is expected. (§20)
+21. **Joint moves carry no speed constraint by default.** With
+    `JOINT_CONSTRAINT_SPEED` the arm validates the implied acceleration and
+    aborts a short move `METHOD_FAILED` (`INVALID_JOINT_ACCELERATION`); with
+    no constraint it picks a profile itself. `--speed-constraint DEG_S` is
+    opt-in. (§20)
 
 ---
 
@@ -217,6 +227,8 @@ frames, by `python/corner_jitter.py` (RUNBOOK §7). Radial std is
   Both record commit `da80eec` with `git_dirty: true` (`corner_jitter.py` was
   not yet committed).
 - **Gain is free.** Gain 7 beats gain 0 at the median, p90 and worst corner.
+  For jitter only: arm-driven sessions needed gain 0 against IR ring glare
+  at near poses (§16).
   The worry that gain amplifies noise into corner uncertainty doesn't show up.
 
 **The original figure is reproduced, and was a radial median.** Original: two
@@ -472,7 +484,7 @@ cameras at the `mask.yaml` settings, §13):
   with 17%–100% of samples below 3. The logs don't say whether zero-observer
   samples are the marker outside the volume or a real gap.
 
-## 16. Intrinsics of camera 33661
+## 16. Intrinsics: 33661 hand-held, 33664 arm-driven
 
 **Verified** by `python/fit_intrinsics.py` (OpenCV 5.0.0, Brown-Conrady, all
 frames). Sessions are in `$HOME/panoptes-data/sessions`, outside the repo.
@@ -500,6 +512,48 @@ frames). Sessions are in `$HOME/panoptes-data/sessions`, outside the repo.
   only training RMS: on the 2026-09-24 session BC 0.3756 px, rational
   0.3746 px, fisheye 181 px (failed fit). **The held-out numbers behind the
   choice are not recorded**, so the reason is unverified from repo data.
+
+**Arm-driven intrinsics of 33664, validated 2026-11-02.** Camera on the
+Kinova arm, calib.io 12×9 board (§19) on the easel, taught session
+(`arm_capture.py session`, §20, RUNBOOK §13) into `04_capture --auto`.
+Settings read back from the camera in each `session.json`: gain 0,
+intensity 15, exposure 8133 µs, 30 Hz, IR filter in. Fit by
+`python/fit_intrinsics.py` (OpenCV 5.0.0, Brown-Conrady, all frames,
+1280 × 1024); every session ended with 0 of 30 coverage cells empty.
+
+| Session | Views | RMS (px) | fx | fy | cx | cy |
+|---|---:|---:|---:|---:|---:|---:|
+| `intrinsics_33664_20261102_150512` | 29 | 0.180 | 771.64 | 771.40 | 630.09 | 518.59 |
+| `intrinsics_33664_20261102_184959` | 25 | 0.168 | 772.14 | 771.79 | 629.06 | 518.85 |
+| `intrinsics_33664_20261102_190116` | 26 | 0.166 | 771.71 | 771.41 | 629.32 | 519.06 |
+| Mean | | | 771.83 | 771.53 | 629.49 | 518.84 |
+| Range | | | 0.50 | 0.39 | **1.03** | 0.47 |
+| **Joint fit, all frames** | 80 | 0.172 | 771.89 | 771.59 | 629.63 | 518.82 |
+
+The joint fit (`fit_intrinsics.py --write-camera`, run by Claude
+2026-11-03 03:31 UTC) is the camera's result, in
+`config/intrinsics/33664.yaml`, with the ranges above as `uncertainty_px`.
+Its dist is k1 −0.0939, k2 0.0877, p1 −0.0004, p2 −0.00004, k3 −0.0266.
+Each joint parameter lies inside the per-session range.
+
+- **Against hand-held repeatability** (33661 above, old 9×6 board): the
+  same-day hand-held pair spread fx 0.23, fy 0.63, cx 2.51, cy 1.51 px.
+  The arm's three sessions spread cx 1.03 and cy 0.47 px: **cx 2.4× and cy
+  3.2× tighter**, fy tighter too (0.39 against 0.63); fx is wider (0.50
+  against 0.23), still well inside the ~1 px agreement rule of RUNBOOK §9. Against all three hand-held sessions (cx 9.40) the cx gain is
+  9×. cx was the hand-held weak point (Open items #1). Not like for like:
+  another camera, another board, and three arm sessions against a pair.
+- **Gain 0, not the gain 7 of §6.** At the near poses the camera's own IR
+  ring glared off the board; gain 0 was needed against it (operator's
+  observation; not measured). §6's jitter result is unaffected, but gain is
+  not free at near poses with the ring at 15.
+- Distortion agrees across the three: k1 −0.093 to −0.095, k2 0.084 to
+  0.090, k3 −0.024 to −0.029.
+- The board's `square_mm.measured` is still the 60.0 placeholder
+  (`config/charuco_board.yaml`). K doesn't depend on the board's scale, so
+  these numbers stand; extrinsics would not.
+- This is repeatability of auto sessions. It is not the auto-against-manual
+  check of Open items #11.
 
 ## 17. Synthetic triangulation accuracy, nominal layout
 
@@ -587,6 +641,53 @@ Gen3 at 192.168.1.10, Kortex TCP port 10000, firmware 2.8.0-5, 6 DOF, no
 gripper, reached from `enp6s0` at 192.168.1.11/24 alongside the cameras'
 link-local address. `python/arm.py status` prints the arm's own values for
 each; until it has been run, none is verified (Open items).
+
+**`arm.py status` readback, 2026-11-02** (read-only, run by Claude):
+firmware bundle `2.8.0-r.8` (Armbase 2.8.0-r.5, actuators and interconnect
+2.7.0-r.1, vision 2.3.1-r.5), serial `WO520851-2`, 6 DOF, end effector
+`END_EFFECTOR_TYPE_ROBOTIQ_2F_85` (the operator's statement above says no
+gripper), devices BASE 0, BIG_ACTUATOR 1–3, SMALL_ACTUATOR 4–6,
+INTERCONNECT 7, VISION 8. Every read `status` makes answered on 2.8.0 with
+API 2.6. Pose x +0.4408 y +0.0544 z +0.2941 m, θ +89.875 / −4.474 / +95.128°;
+servoing `SINGLE_LEVEL_SERVOING`. Joints, deg, as reported:
+
+| Actuator | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| Reported (0–360) | 169.979 | 230.559 | 199.779 | 185.307 | 239.964 | 87.952 |
+| Wrapped to ±180 | +169.979 | −129.441 | −160.221 | −174.693 | −120.036 | +87.952 |
+| User guide limit (Table 45) | continuous | ±128.9 | ±147.8 | continuous | ±120.3 | continuous |
+| Web App limit [low, high] | continuous | [−129, +138] | [−148, +152] | continuous | [−120, +128] | continuous |
+| Margin to the Web App limit | — | −0.4 | **−12.2** | — | −0.0 | — |
+
+**Joint position limits: the Web App shows them; Kortex 2.6 can't read
+them.** The Web App's Safeties → Actuators page, "Joint Limit Low/High",
+read by the operator 2026-11-02 (serial WO520851-2, firmware 2.8.0):
+actuators 1, 4 and 6 at 0/0 (disabled, so continuous); actuator 2
+[−129, +138]; 3 [−148, +152]; 5 [−120, +128]. They are asymmetric and
+are not the user guide's ±128.9 / ±147.8 / ±120.3. `config/arm.yaml` holds
+them as `[low, high]` (ARCHITECTURE §9).
+
+The Kortex 2.6 API (wheel 2.6.0.post3; protobuf descriptors of every
+service listed 2026-11-02) has no position-limit read. Its limit reads are
+`Base.GetAllJoints{Speed,Torque}{Hard,Soft}Limitation` (`LimitationType`:
+force, acceleration, velocity, torque only),
+`Base.Get{Twist,Wrench}{Hard,Soft}Limitation` and
+`ControlConfig.GetKinematicHardLimits` / `GetKinematicSoftLimits` /
+`GetAllKinematicSoftLimits` (`KinematicLimits`: twist, joint speed, joint
+acceleration). ActuatorConfig has none. Kinova's `master` ControlConfig
+reference lists the same calls. So the values are copied by hand, and go
+stale if someone changes them in the Web App.
+
+**The arm powers up resting on its stops** (operator's account; it has no
+brakes). The pose in the table above is that resting pose: actuators 2 and 5
+sit at their low limits (−0.4° and −0.04° past), and actuator 3 at −160.2°,
+**12.2° past its −148 limit, without a fault**. Why actuator 3 rests that far
+outside its configured limit is not known. Every session must start by
+jogging the arm to mid-range: until then `arm.py` refuses a joint target out
+there and the session IK check refuses paths near it. After the operator
+jogged it, the same day, `status` read actuator 2 −89.2° (margin +39.8),
+3 −109.5° (+38.5), 5 −80.1° (+39.9), and a dry-run `joints` move back to the
+resting angles was refused on joints 2, 3 and 5.
 
 **Kortex API install, verified 2026-10-28** on this host, Python 3.12.3.
 
@@ -728,6 +829,28 @@ not reproduced from a record here.
 - **The 19:10 session's P0 was clear of the wrist singularity:** actuator 5 at
   −105.0° (read from the record).
 
+**`METHOD_FAILED` on `reach_joint_angles`, 2026-11-02 (resolved).** Every
+joint move tried had aborted `METHOD_FAILED`, e.g. `goto-pose hub` from a pose
+6° away, with the LED green, the Web App closed, every joint mid-range and
+`Base.Stop` sent first. With the abort report added to `arm.py` (ARCHITECTURE
+§9), the arm's `GetTrajectoryErrorReport` for that move read:
+
+- `TRAJECTORY_ERROR_TYPE_INVALID_JOINT_ACCELERATION`, index 2 (actuator 3,
+  `joint_identifier` counting from 0), value 10, max 4.41: "Desired speed for
+  actuator (2) results in invalid acceleration".
+
+So the cause is our `JOINT_CONSTRAINT_SPEED` 10 deg/s, not the angles or the
+identifiers: on a short move the arm can't reach that speed within its
+acceleration limit and rejects the trajectory. Kinova's joint examples send no
+constraint. Checks, run by Rushav on the arm, 2026-11-02: the same `goto-pose
+hub` with no constraint succeeded at a calm speed (duration not recorded); a
+5° joint-6 move succeeded with the constraint. Joint moves now carry no
+constraint unless `--speed-constraint DEG_S` (rule 21). The `goto-pose`
+failure of 2026-10-30 (Rushav's report; no output recorded) was likely the
+same: it sent the same constraint. Unmeasured: the arm's own joint speed and
+acceleration when unconstrained; the sessions' records now log each joint
+move's `measured_joint_dps`.
+
 **Where the 19:10 session's arm time went, read from its record 2026-10-30.**
 389 s total, 339 s moving (87%), 6.2 s moving per move. Cell pans took 297 s
 of that over 47 moves, viewpoint moves 34 s over 7, the return 8 s. So faster
@@ -821,6 +944,143 @@ flat; leaned 11°, 12 flat and 3 tilted past 20°; leaned 22°, 6 flat and 9
 tilted, all with the same sign of tilt about x. Lean adds tilted views on one
 side only; the opposite side still comes from pointing at frame corners.
 
+**Taught session: why the joint-space blend failed, 2026-11-02.** The eight
+poses taught that day (`config/arm_poses.yaml`, copied to
+`tests/fixtures/arm_poses_20261102.yaml`) span, after unwrapping to the
+first corner, 207.4 / **248.7** / 152.5 / 200.3 / 213.7 / 228.5° on joints
+1–6 (computed from the file). Blending joint vectors that far apart passes
+through arms nobody taught. The old 170° spread rule refused it.
+
+On joint 2, the near corners sit at −110 to −70° and the far-low corners at
++123°: two arm configurations (operator's reading). By the planner's family
+rule (more than 90° apart on any joint, continuous joints included) the
+eight form 7 groups; only near_left_high and near_left_low share one. Most
+of that comes from joints 1, 4 and 6. So the session now blends the taught
+Cartesian poses and lets the arm's IK pick the joints (ARCHITECTURE §9).
+
+**Pose-space plan on the arm, 2026-11-02** (read-only: `build_taught()` and
+`_plan_hubs()` called from a scratch script on those poses and the
+`hub` saved 21:51:41Z, with `ComputeInverseKinematics` only; run by Claude):
+
+| Result | Viewpoints |
+|---|---|
+| Outside the box (before IK) | 4 (`lr0_hl2_nf0`, `lr2_hl0_nf2`, `lr0_hl1_nf2`, `lr0_hl2_nf2`) |
+| No IK solution: "first/second convergence of the IK has failed" | 4 (`lr0_hl0_nf0`, `lr1_hl0_nf0`, `lr2_hl0_nf0`, `lr2_hl2_nf0`) |
+| No IK solution: "IK solution found but it is outside of joint position limits" | 2 (`lr1_hl2_nf0`, `lr1_hl2_nf2`) |
+| Solved within 10° of a limit (joint 3 +144.5°) | 1 (`lr1_hl1_nf2`) |
+| Solved and usable | **16**, in 6 families of 4, 4, 2, 4, 1, 1 |
+
+The `families` line planned 7 hub transitions: 5 between viewpoints, 1 from
+the start pose, 1 on the return. The hub passed its checks.
+
+**The arm's IK refuses poses it was taught at, 2026-11-02.** Of the four
+"convergence failed" viewpoints above, three are grid corners (`lr0_hl0_nf0`
+near_left_high, `lr2_hl0_nf0` near_right_high, `lr2_hl2_nf0`
+near_right_low). In a session dry run the same day (Rushav's report; output
+not recorded here) IK refused 5 corners with "first convergence of the IK has
+failed". At a corner the planner asked IK for the taught pose itself
+(`trilinear_pose()` reproduces the eight 2026-11-02 poses to 5.7e-14,
+`test_arm_capture.py`), seeded first with the joints of the nearest taught
+pose, which is that same corner, so the seed was the exact answer (inferred
+from the code; the seed wasn't logged). `ComputeInverseKinematics` is not
+reliable at these poses even from the solution. Grid corners now take their
+taught joints with no IK (ARCHITECTURE §9). How many non-corner viewpoints
+fail, and with which seed, is printed by the dry run's `ik` line; not yet
+run.
+
+- The arm's IK applies joint position limits of its own: it says so when it
+  refuses.
+- It returns continuous joints unwrapped: joint 6 came back at −444.386°.
+
+**Joint targets outside [0, 360) are accepted, 2026-11-02** (run by
+Rushav; closes the open item). `arm.py joints` with joint 1's target at 3°
+from a measured 347.7° sent joint 1 as 363° (the measured angle plus the
+wrapped +15.3°; continuous joints are sent the short way, ARCHITECTURE §9).
+`reach_joint_angles` accepted it and the base turned +15°, the short way,
+not −345°. So the arm takes angles above 360° on a continuous joint as
+given. Below 0° (e.g. −160°) was not tried.
+
+**Families on joints 2, 3 and 5 only, 2026-11-02** (the same read-only plan,
+rerun by Claude; arm at the hub, every joint within 0.002° of it). Joints 1,
+4 and 6 no longer split families, and a joint move now turns a continuous
+joint the short way from its measured angle (ARCHITECTURE §9). The arm
+starting at the hub now counts no start or return hub move.
+
+| | Families (viewpoints each) | Hub transitions | Usable viewpoints |
+|---|---|---|---|
+| Every joint counted (above) | 6 (4, 4, 2, 4, 1, 1) | 7 (5 between, 1 start, 1 return) | 16/27 |
+| Joints 2, 3, 5 only, starting at the hub | 5 (4, 4, 2, 5, 1) | 4 (4 between, 0, 0) | 16/27 |
+
+The IK solutions didn't change, only the grouping. The remaining families
+differ on the limited joints. Family 1 has joint 2 near −110° and joints
+3 and 5 negative; family 4 has joint 2 at +76 to +123°. That follows the
+taught corners, which form 4 groups on joints 2, 3, 5:
+(near_left_high, near_right_high, near_left_low), (near_right_low,
+far_left_high), (far_right_high), (far_left_low, far_right_low). Fewer hub
+moves needs corners taught in fewer configurations (Open items).
+
+**Taught sessions on the arm, 2026-11-02** (camera 33664; records copied to
+`tests/fixtures/session_arm_33664_20261102_150512.json` and `_175213.json`;
+numbers read from the records). Both used the same 19 usable viewpoints in
+6 families, visited family by family, so both began at the near corners.
+
+| | 15:05 | 17:52 |
+|---|---|---|
+| Ended | target list exhausted | "board not back in view after returning from a skipped target" |
+| Accepted | 28 | 10 |
+| Targets / moves sent | 100 / 123 | 52 / 57 |
+| IK-unreachable | 55 (23 `lr0_hl0_nf0`, 16 `lr2_hl0_nf0`, 8 `lr2_hl1_nf0`) | 31 (17 `lr0_hl0_nf0`, 11 `lr2_hl0_nf0`) |
+| Cells left / bins short | 0 / 4 (near and far `+x+y`, `-x+y`) | 3 / 12 (every mid and far bin) |
+| Total, moving | 649 s, 83% | 283 s, 82% |
+
+- **17:52's end.** Entry 51 (`lr0_hl1_nf0`, cell 4): the target, the
+  halfway step and the way back to the viewpoint were all sent and reached.
+  The board then didn't settle there (`settle()` gave lost or timeout; the
+  record doesn't say which), and the session ended
+  with 19 viewpoints planned and 5 visited. The entry was never finished:
+  no camera reading, no `total_s`.
+- **A failed way back, unnoticed.** Entries 3 and 4 of 17:52: the first leg
+  of a pan ran, the board left the view, and the way back failed the IK path
+  check. The entry then read `unreachable`, the arm stayed where the board
+  was cut off (68 and 48 corners), and the next pan started from there.
+- **Near corners are at the reach edge.** `lr0_hl0_nf0` reached no cell in
+  either session: 23 and 17 pans, every one IK-unreachable. At 15:05, 21 of
+  the 23 failed at the first IK sample (25% of the path); at 17:52 the
+  failures spread from 25% to 100%.
+
+Since then (ARCHITECTURE §9, replayed by `test_arm_capture.py` on these
+records, and run on the arm at 18:49 and 19:01, below):
+- A board out of view after a return, or a way back that fails its checks,
+  abandons the viewpoint instead of ending the session or panning on blind.
+- A viewpoint whose first two pans are IK-unreachable is left at the reach
+  edge. Replayed: 15:05 would skip 48 pans (21 at `lr0_hl0_nf0`, 17 at
+  `lr2_hl0_nf0`, 10 at `lr2_hl1_nf0`), but the last two viewpoints went on
+  to 3 accepts each after two failed pans, so 6 of its 28 accepts came from
+  pans the rule now skips. Whether mid viewpoints, now visited first, fill
+  those cells is untested. 17:52 would skip 16 pans, 0 accepted, including
+  cell 4 at `lr0_hl1_nf0`, the pan that ended it.
+- Visit order mid, near, far: 9 mid viewpoints first (from `lr0_hl1_nf1`),
+  then 6 near, then 4 far. Hub transitions between viewpoints go from 6 to 9
+  on this plan.
+
+**After the fixes, 2026-11-02 18:49 and 19:01** (records in
+`intrinsics_33664_20261102_184959` and `_190116`, schema 6; not copied
+into the repo):
+
+| | 18:49 | 19:01 |
+|---|---|---|
+| Ended | target list exhausted | target list exhausted |
+| Accepted / targets | 23 / 57 | 25 / 53 |
+| IK-unreachable | 15 | 15 |
+| Viewpoints visited / abandoned / at the reach edge | 14 / 0 / 3 | 13 / 0 / 3 |
+| Hub moves | 6 | 5 |
+| Cells left / bins short | 0 / 7 | 0 / 6 |
+| Total, moving | 568 s, 85% | 487 s, 85% |
+
+Both began at the mid viewpoints (`lr0_hl1_nf1` first). The reach edge was
+`lr0_hl0_nf0`, `lr2_hl0_nf0` and `lr2_hl2_nf0` both times. The resulting
+intrinsics are in §16.
+
 **Status file and session code, offline.** Run only offline:
 - the status writer, in `tests/test_autocapture`;
 - the reader, against `tests/fixtures/capture_status.json`;
@@ -911,10 +1171,10 @@ The single open-items list. CLAUDE.md and the other docs link here.
 16. **Whether 5×6 is the right coverage grid.** 30 cells against 88 corners
     per view (40 on the old board) means one capture can touch many cells. A
     finer grid would be stricter; the right granularity is not established.
-17. **Arm: outputs not recorded.** The probe has run on the arm (§20), but
-    no `arm.py status` output has been recorded. Record it here: firmware, serial, DOF and end
-    effector against the stated values, and whether each Kortex call
-    answers on firmware 2.8.0-5. Then the first motion,
+17. **Arm: outputs not recorded.** The probe has run on the arm (§20), and
+    `arm.py status` was recorded 2026-11-02 (§20): its reads answer on
+    2.8.0, and the end effector is a Robotiq 2F-85, not "no gripper". Still
+    unrecorded: whether the motion calls answer on 2.8.0. Then the first motion,
     `move --dz 0.02 --yes` (RUNBOOK §13): result, measured error, and
     whether the tool path looked straight. The probe's terminal output is
     unrecorded too. A first session has run and aborted (§20; item 19).
@@ -948,14 +1208,33 @@ The single open-items list. CLAUDE.md and the other docs link here.
     `aim_error` lines, and the bins. The box leaves 23/75 of the cap at best
     (§20), and IK can only remove more. Whether that fills the tilted bins, or
     the box or `orbit_angles_deg` has to change, is untested.
-22. **Joint moves, teach and taught sessions have not run on the arm.**
-    `joints`, `goto-pose`, `--from-pose`, `teach` and `session --poses` are
-    tested against stubs only. Also unknown: how the Web App shows up, since
+22. **Taught sessions have not run on the arm.** Teach has:
+    eight taught poses with `square_px` were saved 2026-11-02 (inferred from
+    `config/arm_poses.yaml`; its output wasn't recorded). `joints` and
+    `goto-pose` have run on the arm, 2026-11-02 (§20, `METHOD_FAILED`);
+    `--from-pose` and `session --poses` are tested against stubs
+    only; the session's IK plan has run on the arm, read-only (§20). Hub
+    moves have never run. Also unknown: how the Web App shows up, since
     "arm free" rests on `Base.Stop` failing while it holds the arm; whether
     the probe's px/deg stays good enough at far taught poses; and whether the
     fixed 35/40 px bands span a far/near ratio under 0.6 (the `WARNING` at
     the dry run). To check at first use: that
     `ComputeForwardKinematics` agrees with the measured pose (`target FK`
-    against a saved pose), that the arm honours `JOINT_CONSTRAINT_SPEED`, and
-    the time against `move_timeout_s` if joints also run below the commanded
-    rate.
+    against a saved pose); the arm's unconstrained joint speed (`arm.py`
+    prints each move's `duration`; sessions log `measured_joint_dps`); and
+    whether a long hub move fits `move_timeout_s` (30 s). The first joint
+    move of a session has no time estimate, as nothing is measured yet.
+23. **Actuator 3 rests 12.2° outside its limit.** At power-up it read
+    −160.2° against the Web App's low limit of −148, with no fault (§20);
+    actuators 2 and 5 rest within 0.4° of theirs. Unknown whether the
+    limit is enforced only while servoing, the stop sits past it, or the
+    Web App and Kortex use different joint zeros. Until it is known,
+    `config/arm.yaml` holds the Web App's values and sessions start after
+    jogging to mid-range.
+24. **Taught corners of 2026-11-02 span four arm configurations** on
+    joints 2, 3 and 5 (§20). A session from them plans 5 families and 4 hub
+    moves, and 11 of 27 viewpoints didn't solve (before corners took their
+    taught joints; the dry run's `ik` and `IK failed` lines now give the
+    non-corner count and seeds, not yet recorded). Teaching the corners again
+    in one configuration (same signs on joints 2, 3, 5) should cut both;
+    untried.

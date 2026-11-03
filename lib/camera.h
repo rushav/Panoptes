@@ -123,6 +123,7 @@ public:
     // Exposure ceiling is frame-period-derived: floor(1e6/fps) - 200.
     // Re-read after any frame rate change; a cached value is a lie.
     int maxExposure() const;
+    int minExposure() const;           // MinimumExposureValue(), camera's floor
 
     // The camera's own threshold limits. Ask before assuming 0-255:
     // feeding SetThreshold a value outside this range is silently

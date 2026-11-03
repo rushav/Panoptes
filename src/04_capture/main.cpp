@@ -8,6 +8,14 @@
 // loop and decisions, printed, with nothing written. --status-file PATH
 // (auto modes only) rewrites a JSON status after every frame, for another
 // process to read (lib/capture_status.h).
+//
+// --gain N (0-7), --intensity N (IR ring, 0-15), --exposure US: start-up
+// settings, sent with the rest in Camera::start() before the first frame.
+// Defaults are mocap::Settings (gain 7, intensity 15, exposure 8133). The
+// exposure is refused above floor(1e6/fps) - 200 before the camera starts,
+// and again against the camera's own MaximumExposureValue() after the frame
+// rate is set (CLAUDE.md rule 7). The requested and read-back values are
+// printed and written to session.json as "baseline_settings".
 
 #include "../../lib/camera.h"
 #include "../../lib/detect.h"
@@ -20,6 +28,9 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <cerrno>
+#include <cstdint>
+#include <cstdlib>
 #include <optional>
 #include <stdexcept>
 
@@ -28,14 +39,58 @@ static int runAuto(mocap::Camera& cam, mocap::Settings settings,
                    mocap::Session* session, const mocap::AutoConfig& cfg,
                    const std::string& statusPath, int serial);
 
+// Whole-string integer, or nullopt.
+static std::optional<int> parseInt(const char* s) {
+    char* end = nullptr;
+    errno = 0;
+    long v = strtol(s, &end, 10);
+    if (end == s || *end != '\0' || errno || v < INT32_MIN || v > INT32_MAX) return std::nullopt;
+    return int(v);
+}
+
+static std::string settingsJson(const mocap::Settings& s) {
+    return cv::format("{\"exposure\": %d, \"gain\": %d, \"intensity\": %d, "
+                      "\"frame_rate\": %d, \"ir_filter\": %s}",
+                      s.exposure, s.gain, s.intensity, s.frameRate,
+                      s.irFilter ? "true" : "false");
+}
+
 int main(int argc, char** argv) {
     int serial = 33661;
     std::string boardPath = mocap::kBoardConfig;
     std::string autoPath = mocap::kAutoConfig;
     std::string statusPath;
     bool autoMode = false, dryRun = false;
+    mocap::Settings settings;
+    bool fromFlags = false;
+    // --name N with lo <= N <= hi into *out; false (message printed) if not.
+    auto intFlag = [&](int& i, const char* name, int lo, int hi, int* out) {
+        if (i + 1 >= argc) { fprintf(stderr, "%s needs a value\n", name); return false; }
+        auto v = parseInt(argv[++i]);
+        if (!v || *v < lo || *v > hi) {
+            fprintf(stderr, "%s %s: need an integer %d..%d\n", name, argv[i], lo, hi);
+            return false;
+        }
+        *out = *v;
+        fromFlags = true;
+        return true;
+    };
     for (int i = 1; i < argc; ++i) {
-        if (!strcmp(argv[i], "--board") && i + 1 < argc) boardPath = argv[++i];
+        if (!strcmp(argv[i], "--gain")) {
+            if (!intFlag(i, "--gain", 0, 7, &settings.gain)) return 1;
+        } else if (!strcmp(argv[i], "--intensity")) {
+            if (!intFlag(i, "--intensity", 0, 15, &settings.intensity)) return 1;
+        } else if (!strcmp(argv[i], "--exposure")) {
+            // Ceiling at the start-up frame rate (rule 7); rechecked against
+            // the camera once it is streaming.
+            int ceiling = 1000000 / settings.frameRate - 200;
+            if (!intFlag(i, "--exposure", 1, ceiling, &settings.exposure)) {
+                fprintf(stderr, "  (ceiling at %d fps: floor(1e6/fps) - 200 = %d us)\n",
+                        settings.frameRate, ceiling);
+                return 1;
+            }
+        }
+        else if (!strcmp(argv[i], "--board") && i + 1 < argc) boardPath = argv[++i];
         else if (!strcmp(argv[i], "--auto-config") && i + 1 < argc) autoPath = argv[++i];
         else if (!strcmp(argv[i], "--auto")) autoMode = true;
         else if (!strcmp(argv[i], "--auto-dry")) autoMode = dryRun = true;
@@ -76,8 +131,39 @@ int main(int argc, char** argv) {
     }
 
     mocap::Camera cam(serial);
-    mocap::Settings settings;
     cam.start(settings);
+
+    // The camera's own limits once the frame rate is set, and what it
+    // reports back. An exposure outside the camera's range is refused; a
+    // readback that differs from the request is printed and recorded (the
+    // SDK may not report a new value at once), and autocapture's gate 4
+    // takes its reference from the first evaluated frame's readback.
+    const mocap::Settings readback = cam.actual();
+    const int minExp = cam.minExposure(), maxExp = cam.maxExposure();
+    printf("settings  exposure %d us (camera %d..%d)  gain %d  intensity %d  frame rate %d  "
+           "IR filter %s   [%s]\n",
+           readback.exposure, minExp, maxExp, readback.gain, readback.intensity,
+           readback.frameRate, readback.irFilter ? "in" : "out",
+           fromFlags ? "from flags; read back" : "defaults; read back");
+    if (settings.exposure < minExp || settings.exposure > maxExp) {
+        fprintf(stderr, "--exposure %d is outside the camera's %d..%d us; nothing captured\n",
+                settings.exposure, minExp, maxExp);
+        return 1;
+    }
+    std::string mismatch;
+    if (readback.exposure != settings.exposure)
+        mismatch += cv::format("  exposure: asked %d, camera reports %d\n",
+                               settings.exposure, readback.exposure);
+    if (readback.gain != settings.gain)
+        mismatch += cv::format("  gain: asked %d, camera reports %d\n", settings.gain, readback.gain);
+    if (readback.intensity != settings.intensity)
+        mismatch += cv::format("  intensity: asked %d, camera reports %d\n",
+                               settings.intensity, readback.intensity);
+    if (readback.frameRate != settings.frameRate)
+        mismatch += cv::format("  frame rate: asked %d, camera reports %d\n",
+                               settings.frameRate, readback.frameRate);
+    if (!mismatch.empty())
+        printf("WARNING   read back differs from the request:\n%s", mismatch.c_str());
 
     cv::Size imageSize(cam.width(), cam.height());
     mocap::Coverage coverage(imageSize);
@@ -86,7 +172,15 @@ int main(int argc, char** argv) {
     // the folder.
     std::string root = std::string(getenv("HOME")) + "/panoptes-data/sessions";
     std::optional<mocap::Session> session;
-    if (!dryRun) session.emplace(root, serial, board);
+    if (!dryRun) {
+        session.emplace(root, serial, board);
+        session->setExtra("baseline_settings", cv::format(
+            "{\"source\": \"%s\", \"requested\": %s, \"readback\": %s, "
+            "\"readback_matches\": %s, \"exposure_range\": [%d, %d]}",
+            fromFlags ? "flags" : "defaults", settingsJson(settings).c_str(),
+            settingsJson(readback).c_str(), mismatch.empty() ? "true" : "false",
+            minExp, maxExp));
+    }
 
     printf("%s  %dx%d\n", cam.name().c_str(), cam.width(), cam.height());
     if (session) printf("session: %s\n\n", session->path().c_str());

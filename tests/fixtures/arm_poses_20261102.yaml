@@ -1,0 +1,51 @@
+%YAML:1.0
+---
+# Saved arm poses, written by python/arm.py save-pose (RUNBOOK §13). joints_deg
+# is what goto-pose moves to; pose is the Cartesian pose measured with it
+# (x y z m, theta_x/y/z deg). square_px: the board's apparent square size,
+# from arm_capture.py teach. Valid for one camera setup.
+poses:
+   near_left_high:
+      joints_deg: [ 156.506, 290.082, 0.536, 233.618, 322.242, 38.001 ]
+      pose: [ 0.91585, 0.23194, 0.49690, 95.87336, -3.53883, 82.63503 ]
+      saved_utc: "2026-11-02T21:38:44Z"
+      square_px: 58.845
+   near_right_high:
+      joints_deg: [ 203.866, 282.119, 346.664, 127.356, 317.547, 130.633 ]
+      pose: [ 0.91061, -0.24228, 0.48530, 93.37433, -6.51587, 97.62337 ]
+      saved_utc: "2026-11-02T21:39:39Z"
+      square_px: 55.337
+   near_left_low:
+      joints_deg: [ 146.626, 250.691, 344.968, 281.618, 319.554, 343.443 ]
+      pose: [ 0.87500, 0.34310, 0.13581, 87.02600, -5.71310, 82.60931 ]
+      saved_utc: "2026-11-02T21:40:24Z"
+      square_px: 56.770
+   near_right_low:
+      joints_deg: [ 214.395, 258.539, 1.431, 254.437, 66.886, 17.299 ]
+      pose: [ 0.83204, -0.27394, 0.17307, 81.26845, -2.01732, 117.99780 ]
+      saved_utc: "2026-11-02T21:41:05Z"
+      square_px: 50.695
+   far_left_high:
+      joints_deg: [ 90.769, 331.267, 57.862, 81.305, 112.553, 183.527 ]
+      pose: [ 0.27536, 0.39952, 0.60599, 101.22942, 3.91915, 66.88238 ]
+      saved_utc: "2026-11-02T21:42:16Z"
+      square_px: 31.837
+   far_right_high:
+      joints_deg: [ 286.924, 11.425, 131.991, 103.919, 258.848, 211.962 ]
+      pose: [ 0.23295, -0.18309, 0.49928, 95.50022, -0.69019, 88.88892 ]
+      saved_utc: "2026-11-02T21:44:17Z"
+      square_px: 31.807
+   far_left_low:
+      joints_deg: [ 260.808, 122.716, 76.706, 110.377, 260.926, 46.114 ]
+      pose: [ 0.19044, 0.51065, 0.30929, 83.32842, -0.32144, 78.75835 ]
+      saved_utc: "2026-11-02T21:45:11Z"
+      square_px: 30.591
+   far_right_low:
+      joints_deg: [ 79.544, 123.039, 137.507, 268.056, 271.845, 72.856 ]
+      pose: [ 0.32804, -0.19364, 0.36590, 89.55296, -3.40371, 103.31012 ]
+      saved_utc: "2026-11-02T21:49:12Z"
+      square_px: 34.074
+   hub:
+      joints_deg: [ 347.732, 105.458, 118.525, 16.075, 257.866, 90.496 ]
+      pose: [ 0.60787, 0.05602, 0.47339, 90.74017, -3.10146, 87.11544 ]
+      saved_utc: "2026-11-02T21:51:41Z"
