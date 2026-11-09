@@ -78,7 +78,7 @@ around the board while capture accepts views and fills the coverage grid
 (room left, camera right, 4× speed; click for the full
 [2-minute video](media/arm_intrinsics_side_by_side.mp4)). Over three
 sessions the principal point cx repeated to 1.0 px; numbers in
-[FINDINGS §16](docs/FINDINGS.md#16-intrinsics-33661-hand-held-33664-arm-driven).
+[FINDINGS §16](docs/FINDINGS.md#16-intrinsics-33661-hand-held-per-camera-arm-driven).
 
 **Not built yet**
 

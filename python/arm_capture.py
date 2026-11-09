@@ -38,7 +38,17 @@ Their time estimate is the session's measured joint rate. Without --yes both com
 check their targets and print the plan. Neither moves to recover from an
 arm failure (abort, timeout): it stops and prints the arm.py goto command
 that returns to P0. The session does return to P0 itself on q, Ctrl-C, a
-dead capture or a normal end.
+dead capture or a normal end. A capture whose status file says "stalled" (no
+frames; 04_capture is restarting the camera) is not dead: the session holds
+the arm where it is and waits up to STALL_WAIT_S for frames, then goes on, or
+returns to P0 if they don't come. Each stall is in the record's
+"capture_stalls".
+
+Cable winding: the session counts each continuous joint's turns from the
+saved hub pose's angle (arm.CableTracker), picks the turn of every joint
+target that stays within config/arm.yaml's cable_window_deg (the long way
+round if need be), unwinds before a Cartesian move when one is outside the
+window, and returns to P0 with net zero turns. In the record's "cable".
 
 Tool-frame moves need the Kortex Euler convention: x-y-z extrinsic (Gen3
 user guide, "Cartesian reference frames"), so R = Rz(theta_z) Ry(theta_y)
@@ -64,6 +74,8 @@ STEP_M = 0.03             # translation probe
 RETURN_TOL_PX = 3.0       # centroid must come back within this
 EDGE_MARGIN_PX = 40.0     # board bbox at least this far inside the image to start
 STALE_S = 2.0             # status older than this: the capture isn't running
+STALL_WAIT_S = 30.0       # a capture reporting a stall gets this long to recover before
+                          # the session returns to P0
 SETTLE_FRAMES = 3         # new frames to skip after a move before reading
 READ_FRAMES = 3           # still frames averaged per reading
 STILL_TIMEOUT_S = 15.0    # wait this long for a settled reading
@@ -1280,6 +1292,10 @@ class _Session:
         self.record = None
         self.left = ""            # live "targets left" text for the log line
         self.hub, self.family = None, None   # taught: the hub pose; family of the last viewpoint
+        self.stalls = []          # capture stalls ridden out (or not), for the record
+        self.paused_s = 0.0       # total time held waiting for a stalled capture
+        self.cable = None         # arm.CableTracker: continuous joints' turns
+        self.unwinds = 0          # unwinding moves inserted before a Cartesian move
 
     def _time(self, e, key, since):
         e["times"][key] = round(e["times"].get(key, 0.0) + time.monotonic() - since, 3)
@@ -1288,12 +1304,15 @@ class _Session:
 
     def live(self):
         """Fresh status. A stale file means capture died, unless its last word
-        was that the session is complete (capture exits on completion)."""
+        was that the session is complete (capture exits on completion). A
+        stalled capture is waited for (ride_out_stall)."""
         try:
             s = read_status(self.path)
         except StatusError as e:
             raise SessionStop(f"capture died: {e}")
-        if age_s(s) > STALE_S:
+        if s["stalled"] is not None:
+            s = self.ride_out_stall(s)
+        elif age_s(s) > STALE_S:
             if s["complete"]:
                 raise SessionStop("complete (capture ended)")
             raise SessionStop(f"capture died: status file {age_s(s):.1f} s old")
@@ -1302,14 +1321,54 @@ class _Session:
             raise SessionStop("operator pressed q")
         return s
 
+    def ride_out_stall(self, s):
+        """The capture says it has no frames. Hold (the arm isn't moving:
+        live() is only called between moves) until a fresh, unstalled status,
+        up to STALL_WAIT_S on this clock; then SessionStop, which returns to
+        P0. A stale or unreadable file during the wait counts as still
+        stalled: capture may be inside a camera restart."""
+        t = time.monotonic()
+        st = s["stalled"]
+        self.log(f"  capture stalled: no frames from {s['camera_serial']} for {st['seconds']:.0f} s "
+                 f"({st['camera_state']}); arm held, waiting up to {STALL_WAIT_S:.0f} s")
+        rec = {"start_s": round(t - self.t0, 3), "utc": s["timestamp_utc"], "frame": s["frame"],
+               "accepted": s["accepted"], "first_report": st}
+        self.stalls.append(rec)
+        last = st
+        try:
+            while time.monotonic() - t < STALL_WAIT_S:
+                if self.keys and self.keys.quit_requested():
+                    rec["recovered"] = False
+                    raise SessionStop("operator pressed q (capture stalled)")
+                time.sleep(POLL_S)
+                try:
+                    s = read_status(self.path)
+                except StatusError:
+                    continue
+                if s["stalled"] is not None:
+                    last = s["stalled"]
+                elif age_s(s) <= STALE_S:
+                    rec.update(recovered=True, waited_s=round(time.monotonic() - t, 3),
+                               last_report=last, frame_after=s["frame"])
+                    self.log(f"  capture recovered after {time.monotonic() - t:.1f} s "
+                             f"({last['restarts']} restart attempts); resuming at frame {s['frame']}")
+                    return s
+            rec.update(recovered=False, waited_s=round(time.monotonic() - t, 3), last_report=last)
+            raise SessionStop(f"capture stalled and did not recover within {STALL_WAIT_S:.0f} s "
+                              f"({last['restarts']} restart attempts; {last['camera_state']})")
+        finally:
+            self.paused_s += time.monotonic() - t
+            self.write()
+
     def settle(self, after_frame, e):
         """('ok' | 'lost' | 'timeout', status) for frames SETTLE_FRAMES past after_frame."""
         t = time.monotonic()
         deadline = t + self.scfg["still_timeout_s"]
+        paused0 = self.paused_s   # time held for a stalled capture doesn't count
         lost = 0
         s = self.live()
         try:
-            while time.monotonic() < deadline:
+            while time.monotonic() < deadline + (self.paused_s - paused0):
                 s = self.live()
                 if s["frame"] >= after_frame + SETTLE_FRAMES:
                     if full_and_still(s):
@@ -1342,7 +1401,10 @@ class _Session:
         (entry marked refused / unreachable) if either check fails. Raises
         TargetAborted on ACTION_ABORT or a refused ExecuteAction; any other
         arm failure is fatal (ArmError). A reached target (is_target) resets
-        the consecutive-abort count; a return move doesn't."""
+        the consecutive-abort count; a return move doesn't. A continuous
+        joint outside the cable window is unwound first (unwind())."""
+        if self.cable is not None and self.cable.outside():
+            self.unwind()
         current = self.arm.measured_pose()
         try:
             target = armlib.check_move(self.arm, self.lim, current, target, show=False)
@@ -1372,6 +1434,10 @@ class _Session:
             result, reason = "abort", f"ExecuteAction refused: {ex}"
         finally:
             self._time(e, "move_s", t)
+        if self.cable is not None:
+            # A Cartesian move: the arm picks the joints; a pan turns each
+            # under 180 deg, so the wrapped change is the change.
+            self.cable.observe([v for _, v in self.arm.measured_joints()])
         if result == "abort":
             raise TargetAborted(reason or "no reason given")
         if result != "end":
@@ -1391,6 +1457,8 @@ class _Session:
 
     def finish(self, e, s, accepted=None):
         e["measured"] = {"abs": [round(v, 5) for v in self.arm.measured_pose()]}
+        if self.cable is not None:
+            e["cable_turns"] = {str(a): round(t, 3) for a, t in self.cable.turns().items()}
         e["measured"]["rel_p0"] = relative(self.p0, e["measured"]["abs"])
         if s is not None:
             b = s["board"]
@@ -1408,12 +1476,17 @@ class _Session:
             cam = f"  {s['decision']['verdict']}: {s['decision']['reason']}"
         self.log(f"  [{e['i']:3d}] {e['kind']:<8} {e['variant']:<26} "
                  f"{'' if e['cell'] is None else 'cell %-3d' % e['cell']} {e['outcome']}{cam}"
-                 + (f"  ({e['note']})" if e["note"] else "") + self.left)
+                 + (f"  ({e['note']})" if e["note"] else "") + self.left
+                 + ("" if self.cable is None else f"  {self.cable.fmt_turns()}"))
 
     def write(self):
         if self.record is None:
             return
         self.record["poses"] = self.entries
+        self.record["capture_stalls"] = self.stalls
+        if self.cable is not None:
+            self.record["cable"] = dict(self.record.get("cable") or {}, **self.cable.state(),
+                                        unwinds=self.unwinds)
         tmp = self.record_path + ".tmp"
         with open(tmp, "w") as f:
             json.dump(self.record, f, indent=1)
@@ -1464,39 +1537,56 @@ class _Session:
         so this tends to overestimate a long move's time."""
         return float(np.median(self.joint_rates)) if self.joint_rates else None
 
-    def move_joints(self, joints, e, is_target=True):
+    def move_joints(self, joints, e, is_target=True, goal=None):
         """A joint move: check_joint_move(), then send, with self.dps as the
         speed constraint (None: none). The timeout check uses the measured
-        rate of earlier joint moves. False (entry marked refused) if it
-        fails; otherwise as move()."""
+        rate of earlier joint moves. Continuous joints take the turn
+        self.cable picks (goal: {actuator: cumulative deg} to land on, for
+        the return); a turn over 180 deg goes as waypoints
+        (armlib.run_joint_move). False (entry marked refused) if it fails;
+        otherwise as move()."""
         current = self.arm.measured_pose()
         now = [v for _, v in self.arm.measured_joints()]
         try:
             q, target, dps = armlib.check_joint_move(
                 self.arm, self.lim, current, now, joints, show=False, dps=self.dps,
                 rate_dps=self.joint_rate_dps(),
-                warn=lambda w: e.setdefault("warnings", []).append(w.removeprefix("WARNING    ")))
+                warn=lambda w: e.setdefault("warnings", []).append(w.removeprefix("WARNING    ")),
+                cable=self.cable, goal=goal)
         except armlib.ArmError as ex:
             e["outcome"] = "refused"
             e["note"] = str(ex).replace("REFUSED, nothing sent:\n  ", "")
             return False
-        e.setdefault("commanded", []).append(
-            {"abs": [round(v, 5) for v in target], "rel_p0": relative(self.p0, target),
-             "joints_before_deg": [round(v, 2) for v in now],
-             "joints_deg": [round(v, 2) for v in q], "joint_speed_dps": dps, "sent": True})
-        self.moves += 1
+        cmd = {"abs": [round(v, 5) for v in target], "rel_p0": relative(self.p0, target),
+               "joints_before_deg": [round(v, 2) for v in now],
+               "joints_deg": [round(v, 2) for v in q], "joint_speed_dps": dps, "sent": True}
+        if self.cable is not None:
+            cmd["cable"] = self.cable.last_plan
+            self.log(f"        cable {self.cable.fmt_plan()}")
+        e.setdefault("commanded", []).append(cmd)
+        steps = []
+
+        def each(k, n, before, sent, result, reason, took):
+            self.moves += 1
+            rot = max(abs(v) for v in armlib.joint_changes(self.lim, before, sent))
+            step = {"joints_deg": [round(v, 2) for v in sent], "result": result}
+            if result == "end" and took > 0 and rot >= JOINT_RATE_MIN_DEG:
+                self.joint_rates.append(rot / took)
+                step["measured_joint_dps"] = round(rot / took, 2)
+            steps.append(step)
+
         t = time.monotonic()
         try:
-            result, reason = self.arm.reach_joints(q, self.lim, dps)
+            result, reason = armlib.run_joint_move(self.arm, self.lim, now, q, dps,
+                                                   self.cable, each)
         except armlib.ActionRefused as ex:
             result, reason = "abort", f"ExecuteAction refused: {ex}"
         finally:
             self._time(e, "move_s", t)
-        took = time.monotonic() - t
-        rot = max(abs(v) for v in armlib.joint_error(now, q))
-        if result == "end" and took > 0 and rot >= JOINT_RATE_MIN_DEG:
-            self.joint_rates.append(rot / took)
-            e["commanded"][-1]["measured_joint_dps"] = round(rot / took, 2)
+        if len(steps) == 1 and "measured_joint_dps" in steps[0]:
+            cmd["measured_joint_dps"] = steps[0]["measured_joint_dps"]
+        elif len(steps) > 1:
+            cmd["waypoints"] = steps
         if result == "abort":
             raise TargetAborted(reason or "no reason given")
         if result != "end":
@@ -1505,6 +1595,27 @@ class _Session:
         if is_target:
             self.aborts = 0
         return True
+
+    def unwind(self, goal=None, what="cable"):
+        """A joint move to the measured joints, each continuous joint on the
+        turn inside the cable window (goal: on these cumulative angles): the
+        same pose, the cable unwound. SessionStop if it is refused or
+        aborts, as the next move would only wind it further."""
+        before = self.cable.fmt_turns()
+        e = self.new_entry("unwind", what)
+        e["note"] = f"from {before}"
+        now = [v for _, v in self.arm.measured_joints()]
+        try:
+            ok = self.move_joints(now, e, is_target=False, goal=goal)
+        except TargetAborted as ex:
+            e["outcome"] = f"aborted: {ex.reason}"
+            self.finish(e, None)
+            raise SessionStop(f"cable unwinding aborted: {ex.reason}")
+        e["outcome"] = "reached" if ok else e["outcome"]
+        self.finish(e, None)
+        if not ok:
+            raise SessionStop(f"cable unwinding refused: {e['note']}")
+        self.unwinds += 1
 
     def visit(self, kind, variant, target, here, cell=None, aim=None, base=None, joints=None):
         """Move to target, or for a cell to aim from base (pose, centroid) on,
@@ -1746,16 +1857,19 @@ def go_to_saved_pose(arm, lim, status_path, name, g, scfg, yes, log, poses_path=
     if max(abs(v) for v in armlib.joint_error(saved["joints_deg"], now)) <= POSE_REACHED_DEG:
         log(f"from pose  already at {name}")
         return True
+    ref, _ = armlib.cable_reference(now, poses_path)
+    cable = armlib.CableTracker(lim, ref, now)
     joints, target, _ = armlib.check_joint_move(arm, lim, arm.measured_pose(), now,
                                                 saved["joints_deg"], show=False, dps=dps,
-                                                warn=log)
+                                                warn=log, cable=cable)
     log(f"from pose  {name}: joint-space move to {armlib.fmt_pose(target)}")
+    log(f"           cable {cable.fmt_plan()}")
     if not yes:
         log("\ndry run: nothing sent, nothing written. The session plan needs the arm there: "
             f"run arm.py goto-pose {name} --yes, then this dry run again.")
         return False
     frame = read_status(status_path)["frame"]
-    result, reason = arm.reach_joints(joints, lim, dps)
+    result, reason = armlib.run_joint_move(arm, lim, now, joints, dps, cable)
     if result != "end":
         raise armlib.ArmError(f"move to saved pose {name}: {result.upper()}" +
                               (f" ({reason})" if reason else "") +
@@ -2034,15 +2148,20 @@ def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None
     else:
         log(f"checks     {n_ok}/{len(variants)} poses in the box and IK-reachable from P0; "
             "every target is checked again (box, IK along the path) before it is sent")
+    cable_ref, cable_src = armlib.cable_reference(joints0, poses_path)
+    cable = armlib.CableTracker(lim, cable_ref, joints0)
+    log(f"cable      continuous joints {', '.join(map(str, cable.cont))}: turns counted from "
+        f"{cable_src}, window +-{cable.window:g} deg (config/arm.yaml); assumed unwound at "
+        f"the start: {cable.fmt_turns()}")
     if not yes:
         log("\ndry run: nothing sent, nothing written. Add --yes to run the session.")
         return None
 
     ses = _Session(arm, lim, status_path, g, scfg, acfg, keys, log, speed_constraint)
-    ses.p0, ses.hub = p0, hub
+    ses.p0, ses.hub, ses.cable = p0, hub, cable
     ses.record_path = os.path.join(s0["session_path"], SESSION_RECORD)
     ses.record = {
-        "schema": "panoptes.session_arm/6",
+        "schema": "panoptes.session_arm/8",
         "mode": "taught" if taught else "orbit" if orbit else "lateral",
         "taught_poses": poses, "families": fam if taught else None, "hub": hub,
         "created_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -2068,7 +2187,10 @@ def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None
                                            "ik_failed")}
                         if taught else {})
                      for v in variants],
-        "poses": [], "end": None}
+        "poses": [], "end": None,
+        "cable": {"reference_source": cable_src,
+                  "note": "continuous joints' cumulative angles, counted in software; turns "
+                          "from the reference; each pose's cable_turns is after it"}}
     ses.write()
     log(f"\nrecording to {ses.record_path}\n")
 
@@ -2146,11 +2268,17 @@ def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None
             if taught and not ses.hub_if_needed(joints0, ses.family, "P0"):
                 raise armlib.ArmError("the hub move before the return failed")
             e = ses.new_entry("return", "P0")
-            if ses.move_joints(joints0, e, False) if taught else ses.move(p0, e, is_target=False):
+            if (ses.move_joints(joints0, e, False, goal=ses.cable.start) if taught
+                    else ses.move(p0, e, is_target=False)):
                 e["outcome"] = "reached"
                 returned = True
             ses.finish(e, None)
-        except (armlib.ArmError, TargetAborted, KeyboardInterrupt) as ex:
+            # Net zero turns: a Cartesian return (or one the arm turned the
+            # other way) can end a whole turn off the start.
+            if returned and any(abs(ses.cable.cumulative[a] - ses.cable.start[a]) > 180.0
+                                for a in ses.cable.cont):
+                ses.unwind(goal=ses.cable.start, what="P0, net zero turns")
+        except (armlib.ArmError, TargetAborted, KeyboardInterrupt, SessionStop) as ex:
             log(f"return to P0 failed ({ex}); arm left where it stopped. To return "
                 f"(dry run first, without --yes):\n  {goto_p0}")
     else:
@@ -2178,7 +2306,13 @@ def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None
         "capture_accepted_total": last["accepted"],
         "cells_remaining": last["coverage"]["empty_cells"],
         "bins_short": _short_bins(last),
-        "complete": last["complete"]}
+        "complete": last["complete"],
+        "capture_stalls": len(ses.stalls),
+        "capture_stall_wait_s": round(ses.paused_s, 1),
+        "cable_turns_end": {str(a): round(t, 3) for a, t in ses.cable.turns().items()},
+        "cable_net_turns": {str(a): round((ses.cable.cumulative[a] - ses.cable.start[a]) / 360.0, 3)
+                            for a in ses.cable.cont},
+        "cable_unwinds": ses.unwinds}
     ses.record["end"] = summary
     ses.write()
     f = timing["fractions"]
@@ -2192,6 +2326,11 @@ def run_session(arm, lim, status_path, yes, gains_path=OUT, scfg=None, acfg=None
     log(f"  viewpoints left  {summary['abandoned']} abandoned (board not in view)   "
         f"{summary['reach_edge']} at the reach edge")
     log(f"  total time       {summary['total_s']:.0f} s")
+    log(f"  cable            {ses.cable.fmt_turns()} at the end; net "
+        + " ".join(f"J{a} {t:+.2f}" for a, t in summary["cable_net_turns"].items())
+        + f" turns over the session; {ses.unwinds} unwinding moves")
+    if ses.stalls:
+        log(f"  capture stalls   {len(ses.stalls)}  (held {ses.paused_s:.0f} s; record \"capture_stalls\")")
     if timing["per_move_s"] is not None:
         log(f"  per move         {timing['per_move_s']:.1f} s  (arm moving {timing['motion_per_move_s']:.1f} s)")
     log(f"  time spent       moving {f['move_s']:.0%}   waiting for still {f['still_s']:.0%}   "

@@ -1,11 +1,12 @@
 {
-  "schema": "panoptes.capture_status/1",
+  "schema": "panoptes.capture_status/2",
   "timestamp_utc": "2026-10-28T18:00:00.000Z",
   "t_ms": 140.0,
   "frame": 2,
   "camera_serial": 33664,
   "dry_run": true,
   "session_path": null,
+  "stalled": null,
   "settings": {"exposure": 8133, "gain": 7, "intensity": 15, "frame_rate": 30, "ir_filter": true},
   "image": {"width": 1280, "height": 1024},
   "markers": {"found": 54, "total": 54},

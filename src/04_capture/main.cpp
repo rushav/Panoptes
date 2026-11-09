@@ -16,6 +16,16 @@
 // and again against the camera's own MaximumExposureValue() after the frame
 // rate is set (CLAUDE.md rule 7). The requested and read-back values are
 // printed and written to session.json as "baseline_settings".
+//
+// Stalls (auto modes). No frame for 1 s prints "no frames from SERIAL for N
+// s" with Camera::stateLine(), again every 5 s. From 5 s, and every 5 s
+// until frames return, the camera is stopped and restarted with the
+// baseline settings (Camera::restart); the readback of the first frames
+// after it is checked against them. The session carries on in the same
+// folder; each stall is recorded in session.json "stalls". The status file
+// keeps being rewritten during a stall, with "stalled" set. A watchdog
+// thread prints if the main loop itself stops turning for 5 s (a call that
+// blocks), naming the step it is in.
 
 #include "../../lib/camera.h"
 #include "../../lib/detect.h"
@@ -31,10 +41,12 @@
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
+#include <atomic>
 #include <optional>
+#include <thread>
 #include <stdexcept>
 
-static int runAuto(mocap::Camera& cam, mocap::Settings settings,
+static int runAuto(mocap::Camera& cam, const mocap::Settings baseline,
                    const mocap::Detector& detector, mocap::Coverage& coverage,
                    mocap::Session* session, const mocap::AutoConfig& cfg,
                    const std::string& statusPath, int serial);
@@ -53,6 +65,30 @@ static std::string settingsJson(const mocap::Settings& s) {
                       "\"frame_rate\": %d, \"ir_filter\": %s}",
                       s.exposure, s.gain, s.intensity, s.frameRate,
                       s.irFilter ? "true" : "false");
+}
+
+// "  exposure: asked 8133, camera reports 7133\n" per differing setting;
+// empty if the readback matches the request.
+static std::string settingsMismatch(const mocap::Settings& asked, const mocap::Settings& got) {
+    std::string m;
+    if (got.exposure != asked.exposure)
+        m += cv::format("  exposure: asked %d, camera reports %d\n", asked.exposure, got.exposure);
+    if (got.gain != asked.gain)
+        m += cv::format("  gain: asked %d, camera reports %d\n", asked.gain, got.gain);
+    if (got.intensity != asked.intensity)
+        m += cv::format("  intensity: asked %d, camera reports %d\n", asked.intensity, got.intensity);
+    if (got.frameRate != asked.frameRate)
+        m += cv::format("  frame rate: asked %d, camera reports %d\n", asked.frameRate, got.frameRate);
+    return m;
+}
+
+static std::string jsonString(const std::string& v) {
+    std::string out = "\"";
+    for (char c : v) {
+        if (c == '"' || c == '\\') out += '\\';
+        out += c == '\n' ? ' ' : c;
+    }
+    return out + "\"";
 }
 
 int main(int argc, char** argv) {
@@ -150,18 +186,7 @@ int main(int argc, char** argv) {
                 settings.exposure, minExp, maxExp);
         return 1;
     }
-    std::string mismatch;
-    if (readback.exposure != settings.exposure)
-        mismatch += cv::format("  exposure: asked %d, camera reports %d\n",
-                               settings.exposure, readback.exposure);
-    if (readback.gain != settings.gain)
-        mismatch += cv::format("  gain: asked %d, camera reports %d\n", settings.gain, readback.gain);
-    if (readback.intensity != settings.intensity)
-        mismatch += cv::format("  intensity: asked %d, camera reports %d\n",
-                               settings.intensity, readback.intensity);
-    if (readback.frameRate != settings.frameRate)
-        mismatch += cv::format("  frame rate: asked %d, camera reports %d\n",
-                               settings.frameRate, readback.frameRate);
+    const std::string mismatch = settingsMismatch(settings, readback);
     if (!mismatch.empty())
         printf("WARNING   read back differs from the request:\n%s", mismatch.c_str());
 
@@ -318,10 +343,59 @@ static void bigText(cv::Mat& display, const std::string& text, int y, cv::Scalar
                 cv::FONT_HERSHEY_DUPLEX, 3.0, colour, 6);
 }
 
-static int runAuto(mocap::Camera& cam, mocap::Settings settings,
+// Prints to stderr if the main loop stops turning: a stall where grab()
+// keeps returning nothing is handled in the loop, but a call that never
+// returns (SDK, imwrite, imshow) would otherwise be silent.
+class LoopWatchdog {
+public:
+    explicit LoopWatchdog(double afterS) : afterMs_((long long)(afterS * 1000)) {
+        beat("start");
+        thread_ = std::thread([this] { run(); });
+    }
+    ~LoopWatchdog() { stop_ = true; thread_.join(); }
+    void beat(const char* phase) { phase_ = phase; beatMs_ = nowMs(); }
+    void phase(const char* p) { phase_ = p; }
+private:
+    static long long nowMs() {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+    void run() {
+        long long warnedAt = 0;
+        while (!stop_) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            long long since = nowMs() - beatMs_;
+            if (since >= afterMs_ && nowMs() - warnedAt >= afterMs_) {
+                fprintf(stderr, "main loop blocked for %.0f s in %s (%s)\n", since / 1000.0,
+                        phase_.load(), mocap::utcNowIso().c_str());
+                warnedAt = nowMs();
+            } else if (since < afterMs_) {
+                warnedAt = 0;
+            }
+        }
+    }
+    long long afterMs_;
+    std::atomic<long long> beatMs_{0};
+    std::atomic<const char*> phase_{"start"};
+    std::atomic<bool> stop_{false};
+    std::thread thread_;
+};
+
+static constexpr double kStallReportS  = 1.0;   // first "no frames" line
+static constexpr double kStallRepeatS  = 5.0;   // then every this often
+static constexpr double kRestartAfterS = 5.0;   // first restart, then every kRestartAfterS
+static constexpr int    kVerifyFrames  = 10;    // frames to wait for a matching readback
+static constexpr double kStallStatusS  = 0.25;  // status file rewrite interval in a stall
+
+static int runAuto(mocap::Camera& cam, const mocap::Settings baseline,
                    const mocap::Detector& detector, mocap::Coverage& coverage,
                    mocap::Session* session, const mocap::AutoConfig& cfg,
                    const std::string& statusPath, int serial) {
+    using Clock = std::chrono::steady_clock;
+    auto secondsSince = [](Clock::time_point t) {
+        return std::chrono::duration<double>(Clock::now() - t).count();
+    };
+    mocap::Settings settings = baseline;   // what the keys change
     const mocap::BoardSpec& board = detector.spec();
     const bool dry = session == nullptr;
     mocap::AutoCapture ac(cfg, detector, cv::Size(cam.width(), cam.height()));
@@ -339,24 +413,209 @@ static int runAuto(mocap::Camera& cam, mocap::Settings settings,
     };
     writeSummary("");
 
-    const auto t0 = std::chrono::steady_clock::now();
+    const auto t0 = Clock::now();
     std::string ended = "operator quit (q)";
     bool settingsOff = false;
     std::string lastAccept;
     double lastAcceptMs = -1e9;
 
+    // The last frame's results: written again, marked stale, during a stall.
+    mocap::Detection d;
+    mocap::Decision dec;
+    mocap::Settings actual = cam.actual();
+    cv::Mat lastSmall;
+
+    auto writeStatus = [&](const mocap::StatusMeta& extra) {
+        if (statusPath.empty()) return;
+        mocap::StatusMeta meta = extra;
+        meta.frame = ac.evaluated();
+        meta.tMs = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+        meta.utc = mocap::utcNowIso();
+        meta.serial = serial;
+        meta.dryRun = dry;
+        if (session) meta.sessionPath = session->path();
+        try {
+            mocap::writeFileAtomic(statusPath, mocap::captureStatusJson(
+                meta, actual, d, board, dec, ac, coverage));
+            if (statusFailed) printf("status file: writing again\n");
+            statusFailed = false;
+        } catch (const std::exception& e) {
+            // Once per failure run, not every frame. A reader sees the
+            // file go stale and must stop trusting it.
+            if (!statusFailed) fprintf(stderr, "%s\n", e.what());
+            statusFailed = true;
+        }
+    };
+
+    // ---- stall state. A stall is >= kStallReportS with no frame.
+    auto lastFrameAt = Clock::now();
+    std::string lastFrameUtc = mocap::utcNowIso();
+    bool stalled = false;
+    double nextReportS = kStallReportS;
+    int restarts = 0;
+    Clock::time_point lastRestartAt;
+    Clock::time_point lastStallStatusAt;
+    std::string stallState;          // stateLine() at the last check
+    std::string stallFirstState;     // stateLine() when the stall was first reported
+    std::string attemptsJson;        // this stall's restart attempts
+    std::string stallsJson;          // finished stall records, for session.json
+    std::string pendingStall;        // recovered after a restart, readback not yet verified
+    int verifyLeft = 0, verifyUsed = 0;
+    int stallCount = 0;
+
+    auto saveStalls = [&] {
+        if (session) session->setExtra("stalls", "[" + stallsJson + "\n  ]");
+    };
+    auto addStall = [&](const std::string& record) {
+        stallsJson += (stallsJson.empty() ? "\n    " : ",\n    ") + record;
+        saveStalls();
+    };
+    // The stall's record up to its end, without the closing brace.
+    auto stallRecord = [&](double gapS, bool recovered) {
+        return cv::format(
+            "{\"last_frame_utc\": \"%s\", \"end_utc\": \"%s\", \"gap_s\": %.2f, "
+            "\"recovered\": %s, \"frames_before\": %d, \"accepted_before\": %d, "
+            "\"camera_state\": %s, \"restart_attempts\": [%s]",
+            lastFrameUtc.c_str(), mocap::utcNowIso().c_str(), gapS,
+            recovered ? "true" : "false", ac.evaluated(), coverage.captureCount(),
+            jsonString(stallFirstState).c_str(), attemptsJson.c_str());
+    };
+    auto finishVerify = [&](bool matches, const std::string& note) {
+        addStall(pendingStall + cv::format(
+            ", \"verify\": {\"asked\": %s, \"readback\": %s, \"readback_matches\": %s, "
+            "\"frames\": %d, \"note\": %s}}",
+            settingsJson(baseline).c_str(), settingsJson(actual).c_str(),
+            matches ? "true" : "false", verifyUsed, jsonString(note).c_str()));
+        pendingStall.clear();
+        verifyLeft = 0;
+    };
+
+    LoopWatchdog watchdog(5.0);
+
     while (true) {
+        watchdog.beat("grab");
         cv::Mat gray = cam.grab();
         if (gray.empty()) {
-            if (cv::waitKey(5) == 'q') break;
+            const double gapS = secondsSince(lastFrameAt);
+            if (gapS >= kStallReportS) {
+                if (!stalled) {
+                    stalled = true;
+                    nextReportS = kStallReportS;
+                    restarts = 0;
+                    attemptsJson.clear();
+                    stallFirstState.clear();
+                    ++stallCount;
+                    // A restart that never produced its verifying frames
+                    // ends in this new stall.
+                    if (!pendingStall.empty())
+                        finishVerify(false, "stalled again before the readback was verified");
+                }
+                if (gapS >= nextReportS) {
+                    watchdog.phase("stateLine");
+                    stallState = cam.stateLine();
+                    if (stallFirstState.empty()) stallFirstState = stallState;
+                    printf("no frames from %d for %.0f s  (%s)  [%s]\n", serial, gapS,
+                           stallState.c_str(), mocap::utcNowIso().c_str());
+                    fflush(stdout);
+                    nextReportS += kStallRepeatS;
+                }
+                if (gapS >= kRestartAfterS &&
+                    (restarts == 0 || secondsSince(lastRestartAt) >= kRestartAfterS)) {
+                    ++restarts;
+                    lastRestartAt = Clock::now();
+                    const std::string before = cam.stateLine();
+                    printf("restarting camera %d (attempt %d, %.0f s without frames)\n",
+                           serial, restarts, gapS);
+                    fflush(stdout);
+                    watchdog.phase("Camera::restart");
+                    std::string why;
+                    const bool sent = cam.restart(baseline, &why);
+                    stallState = cam.stateLine();
+                    printf("  %s  (%s)\n",
+                           sent ? "stopped, started, every baseline setting sent; waiting for frames"
+                                : ("not restarted: " + why).c_str(),
+                           stallState.c_str());
+                    fflush(stdout);
+                    settings = baseline;
+                    attemptsJson += cv::format(
+                        "%s{\"utc\": \"%s\", \"after_s\": %.1f, \"sent\": %s, \"why\": %s, "
+                        "\"state_before\": %s, \"state_after\": %s}",
+                        attemptsJson.empty() ? "" : ", ", mocap::utcNowIso().c_str(), gapS,
+                        sent ? "true" : "false", jsonString(why).c_str(),
+                        jsonString(before).c_str(), jsonString(stallState).c_str());
+                }
+                if (!statusPath.empty() && secondsSince(lastStallStatusAt) >= kStallStatusS) {
+                    watchdog.phase("stateLine");
+                    stallState = cam.stateLine();
+                    mocap::StatusMeta m;
+                    m.stalled = true;
+                    m.stalledS = secondsSince(lastFrameAt);
+                    m.restarts = restarts;
+                    m.cameraState = stallState;
+                    watchdog.phase("status (stalled)");
+                    writeStatus(m);
+                    lastStallStatusAt = Clock::now();
+                }
+                if (!lastSmall.empty()) {
+                    cv::Mat shown = lastSmall.clone();
+                    bigText(shown, cv::format("NO FRAMES %.0f s", gapS), shown.rows / 2,
+                            cv::Scalar(0, 0, 255));
+                    watchdog.phase("display (stalled)");
+                    cv::imshow("intrinsics capture", shown);
+                }
+            }
+            watchdog.phase("waitKey");
+            if (cv::waitKey(5) == 'q') {
+                if (stalled) ended = "operator quit (q) during a stall";
+                break;
+            }
             continue;
         }
-        double tMs = std::chrono::duration<double, std::milli>(
-                         std::chrono::steady_clock::now() - t0).count();
+        if (stalled) {
+            const double gapS = secondsSince(lastFrameAt);
+            printf("frames from %d again after %.1f s (%d restart attempt%s)  [%s]\n", serial, gapS,
+                   restarts, restarts == 1 ? "" : "s", mocap::utcNowIso().c_str());
+            fflush(stdout);
+            // The previous frame is from before the gap; it cannot vouch
+            // for this one being still.
+            ac.forgetPrevious();
+            if (restarts > 0) {
+                pendingStall = stallRecord(gapS, true);
+                verifyLeft = kVerifyFrames;
+                verifyUsed = 0;
+            } else {
+                addStall(stallRecord(gapS, true) + ", \"verify\": null}");
+            }
+            stalled = false;
+        }
+        lastFrameAt = Clock::now();
+        lastFrameUtc = mocap::utcNowIso();
+        double tMs = std::chrono::duration<double, std::milli>(lastFrameAt - t0).count();
 
-        mocap::Detection d = detector.detect(gray);
-        mocap::Settings actual = cam.actual();
-        mocap::Decision dec = ac.evaluate(d, actual, tMs, coverage);
+        watchdog.phase("detect");
+        d = detector.detect(gray);
+        actual = cam.actual();
+
+        // After a restart: the readback must come back to the baseline. The
+        // SDK may not report a new value at once, so allow a few frames.
+        if (verifyLeft > 0) {
+            ++verifyUsed;
+            const std::string mm = settingsMismatch(baseline, actual);
+            if (mm.empty()) {
+                printf("restart verified: readback matches the baseline settings (frame %d after)\n",
+                       verifyUsed);
+                finishVerify(true, "");
+            } else if (--verifyLeft == 0) {
+                printf("WARNING   after the restart the readback differs from the baseline "
+                       "(%d frames); gate 4 refuses every frame until it matches:\n%s",
+                       verifyUsed, mm.c_str());
+                finishVerify(false, mm);
+            }
+            fflush(stdout);
+        }
+
+        watchdog.phase("evaluate");
+        dec = ac.evaluate(d, actual, tMs, coverage);
 
         // Say so once on the way out of the reference settings and once on
         // the way back, not every frame.
@@ -371,6 +630,7 @@ static int runAuto(mocap::Camera& cam, mocap::Settings settings,
         if (dec.accepted()) {
             ac.commit(dec, d, coverage);
             if (session) {
+                watchdog.phase("record");
                 session->record(gray, d, actual, dec.jsonFields());
                 writeSummary("");
             }
@@ -393,28 +653,11 @@ static int runAuto(mocap::Camera& cam, mocap::Settings settings,
                    dec.bin.name().c_str());
         }
 
-        if (!statusPath.empty()) {
-            mocap::StatusMeta meta;
-            meta.frame = ac.evaluated();
-            meta.tMs = tMs;
-            meta.utc = mocap::utcNowIso();
-            meta.serial = serial;
-            meta.dryRun = dry;
-            if (session) meta.sessionPath = session->path();
-            try {
-                mocap::writeFileAtomic(statusPath, mocap::captureStatusJson(
-                    meta, actual, d, board, dec, ac, coverage));
-                if (statusFailed) printf("status file: writing again\n");
-                statusFailed = false;
-            } catch (const std::exception& e) {
-                // Once per failure run, not every frame. A reader sees the
-                // file go stale and must stop trusting it.
-                if (!statusFailed) fprintf(stderr, "%s\n", e.what());
-                statusFailed = true;
-            }
-        }
+        watchdog.phase("status");
+        writeStatus(mocap::StatusMeta{});
 
         // ---- display: manual mode's overlay, plus the auto status
+        watchdog.phase("display");
         cv::Mat display = detector.annotate(gray, d);
         coverage.draw(display);
 
@@ -461,9 +704,8 @@ static int runAuto(mocap::Camera& cam, mocap::Settings settings,
 
         drawBins(display, ac, dec.bin);
 
-        cv::Mat small;
-        cv::resize(display, small, cv::Size(), 0.7, 0.7);
-        cv::imshow("intrinsics capture", small);
+        cv::resize(display, lastSmall, cv::Size(), 0.7, 0.7);
+        cv::imshow("intrinsics capture", lastSmall);
 
         if (ac.complete(coverage)) {
             ended = "complete: 0 empty cells and every pose bin has >= " +
@@ -472,6 +714,7 @@ static int runAuto(mocap::Camera& cam, mocap::Settings settings,
             break;
         }
 
+        watchdog.phase("waitKey");
         int key = cv::waitKey(1);
         if (key == 'q') break;
         if (key == ' ' || key == 'u')
@@ -490,6 +733,9 @@ static int runAuto(mocap::Camera& cam, mocap::Settings settings,
         if (key == '[') { settings.gain = std::max(settings.gain - 1, 0); cam.apply(settings); }
     }
 
+    // A stall or a verification still open at the end is recorded as it stands.
+    if (!pendingStall.empty()) finishVerify(false, "capture ended before the readback was verified");
+    if (stalled) addStall(stallRecord(secondsSince(lastFrameAt), false) + ", \"verify\": null}");
     writeSummary(ended);
 
     printf("\nended: %s\n", ended.c_str());
@@ -506,6 +752,7 @@ static int runAuto(mocap::Camera& cam, mocap::Settings settings,
             printf("  %s %d", mocap::tiltBinName(t), ac.binCount(t, b));
         printf("\n");
     }
+    if (stallCount) printf("stalls: %d (each in session.json \"stalls\")\n", stallCount);
     printf("%d frames evaluated:", ac.evaluated());
     for (int v = 0; v < mocap::kVerdictCount; ++v)
         printf("  %s %d", mocap::verdictName((mocap::Verdict)v), ac.tally((mocap::Verdict)v));

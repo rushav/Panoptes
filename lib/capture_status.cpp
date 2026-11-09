@@ -58,6 +58,12 @@ std::string captureStatusJson(const StatusMeta& meta, const Settings& actual,
        << "  \"dry_run\": " << (meta.dryRun ? "true" : "false") << ",\n"
        << "  \"session_path\": "
        << (meta.sessionPath.empty() ? std::string("null") : quoted(meta.sessionPath)) << ",\n";
+    if (meta.stalled)
+        os << "  \"stalled\": {\"seconds\": " << num(meta.stalledS, 1)
+           << ", \"restarts\": " << meta.restarts
+           << ", \"camera_state\": " << quoted(meta.cameraState) << "},\n";
+    else
+        os << "  \"stalled\": null,\n";
 
     os << "  \"settings\": {\"exposure\": " << actual.exposure
        << ", \"gain\": " << actual.gain

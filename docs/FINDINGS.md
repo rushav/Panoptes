@@ -29,8 +29,13 @@ this repo.
 
 - **Corner jitter (static):** 0.0543 px radial median at gain 7, 0.0600 px at gain 0; 2026-10-27, camera 33664, `intrinsics_33664_20261027_151529` / `_152034`, `python/corner_jitter.py`. §6
 - **Gain:** free at the grayscale operating point (gain 7 better than gain 0 at median, p90 and max); same sessions. §6
-- **Intrinsics repeatability, 33661:** range fx 2.48, fy 1.05, cx 9.40, cy 4.26 px over 3 sessions; same-day pair fx 0.23, fy 0.63, cx 2.51, cy 1.51 px; 2026-09-24/25, `python/fit_intrinsics.py`. §16
+- **Intrinsics repeatability, 33661 hand-held (superseded):** range fx 2.48, fy 1.05, cx 9.40, cy 4.26 px over 3 sessions; same-day pair fx 0.23, fy 0.63, cx 2.51, cy 1.51 px; 2026-09-24/25, `python/fit_intrinsics.py`. The arm sessions of 2026-11-07 (below) agree to cx 0.60 px: the spread was the hand-held method, not the camera. §16
 - **Arm-driven intrinsics, 33664 (validated):** 3 sessions, RMS 0.17–0.18 px; mean fx 771.83, fy 771.53, cx 629.49, cy 518.84 px; range fx 0.50, fy 0.39, cx 1.03, cy 0.47 px, against the hand-held 33661 same-day pair's fx 0.23, fy 0.63, cx 2.51, cy 1.51 px (cx spread 2.4× smaller, cy 3.2×); gain 0, intensity 15, exposure 8133 µs (gain 0 against IR ring glare at near poses); joint fit over all 80 views: fx 771.89, fy 771.59, cx 629.63, cy 518.82 px, RMS 0.172 px, in `config/intrinsics/33664.yaml`; 2026-11-02, `intrinsics_33664_20261102_150512` / `_184959` / `_190116`, `python/fit_intrinsics.py`. §16
+- **Arm-driven intrinsics, 33276:** 3 sessions (26, 27, 17 views), RMS 0.13–0.15 px; mean fx 768.27, fy 767.92, cx 634.26, cy 514.62 px; range fx 0.50, fy 0.42, cx 0.60, cy 0.99 px; gain 0, intensity 15, exposure 8133 µs; joint fit over all 70 views: fx 768.25, fy 767.93, cx 634.37, cy 514.78 px, RMS 0.143 px, in `config/intrinsics/33276.yaml`; 2026-11-07, `intrinsics_33276_20261107_154811` / `_160123` / `_153730`, `python/fit_intrinsics.py`. §16
+- **Arm-driven intrinsics, 33661:** 2 sessions (27, 23 views), RMS 0.16–0.18 px; mean fx 768.66, fy 768.51, cx 641.43, cy 523.61 px; range fx 0.61, fy 0.70, cx 0.60, cy 0.31 px; gain 0, intensity 15, exposure 8133 µs; joint fit over all 50 views: fx 768.66, fy 768.49, cx 641.50, cy 523.70 px, RMS 0.173 px, in `config/intrinsics/33661.yaml`; 2026-11-07, `intrinsics_33661_20261107_170017` / `_171252`, `python/fit_intrinsics.py`. §16
+- **Arm-driven intrinsics, 33665:** 2 sessions (25, 15 views), RMS 0.14–0.16 px; mean fx 766.97, fy 766.69, cx 622.27, cy 517.68 px; range fx 0.57, fy 0.56, cx 1.54, cy 1.12 px; gain 0, intensity 15, exposure 8133 µs; joint fit over all 40 views: fx 766.94, fy 766.67, cx 622.47, cy 517.60 px, RMS 0.153 px, in `config/intrinsics/33665.yaml`. The earlier `_20261107_175417` (25 views, fx 767.52, fy 767.32) was left out: its fy is 0.63 px from the pair's mean, outside the pair's 0.56 px range. 2026-11-09, `intrinsics_33665_20261109_143810` / `_144726`, `python/fit_intrinsics.py`. §16
+- **Arm-driven intrinsics, 33275 (marginal):** 2 sessions (26, 26 views), RMS 0.16–0.18 px; mean fx 765.62, fy 765.44, cx 630.99, cy 521.38 px; range fx 1.40, fy 1.43, cx 0.33, cy 0.22 px. fx/fy miss the ~1 px target that the other cameras met; a third session is recommended. Gain 0, intensity 15, exposure 8133 µs; joint fit over all 52 views: fx 765.66, fy 765.47, cx 630.97, cy 521.39 px, RMS 0.170 px, in `config/intrinsics/33275.yaml` (`status` marginal); 2026-11-09, `intrinsics_33275_20261109_150317` / `_151252`, `python/fit_intrinsics.py`. §16
+- **Unit-to-unit intrinsics:** 33664 against 33276, mean fx 771.83 against 768.27 px (3.56 px), cx 629.49 against 634.26 px (4.77 px), about 7× the within-camera fx range (~0.5 px) and 5–8× the cx ranges (0.60–1.03 px): per-camera intrinsics are required. With 33661 (fx 768.66, cx 641.43 px) the three units span fx 3.56, cx 11.94, cy 9.00 px. With 33665 and 33275, five units (of 10) span fx 765.6–771.8 px (6.21), cx 622.3–641.4 px (19.16), cy 514.6–523.6 px (8.99), means of the per-session fits. §16
 - **Distortion model:** Brown-Conrady (5); training RMS BC 0.3756 / rational 0.3746 / fisheye 181 px on `intrinsics_33661_20260924_155048`, `python/compare_models.py`; held-out numbers not recorded. §16
 - **Coverage beats RMS:** centre-clustered set (18/30 empty) RMS 0.262 px vs edge-covered 0.223 px, yet edge undistortion error 55.96 vs 26.82 px; synthetic, `solve_intrinsics.py` (removed), date not recorded. §7
 - **4.6 mislabelling:** old 9×6 board, 40/40 corners with homography residual 200–234 px; 2026-10-27, frames of `intrinsics_33661_20260925_103705`. §9
@@ -52,6 +57,8 @@ this repo.
 - **Arm joint limits:** from the Web App (Kortex 2.6 can't read them): actuator 2 [−129, +138], 3 [−148, +152], 5 [−120, +128], 1/4/6 continuous. At power-up the arm rests at actuator 2 −129.4°, 3 −160.2° (12.2° past its limit, no fault), 5 −120.0°; jog to mid-range before every session. 2026-11-02, serial WO520851-2. §20
 - **Taught viewpoints, planned on the arm:** joint-space blend impossible (taught poses span 248.7° on joint 2); pose-space plan: 16/27 viewpoints solved by the arm's IK; families on joints 2/3/5 only: 5 families, 4 hub moves starting at the hub (6 and 7 counting every joint and not starting at the hub); 4 outside the box, 6 without an IK solution, 1 near a limit. 2026-11-02, read-only IK, `tests/fixtures/arm_poses_20261102.yaml`. §20
 - **Taught sessions, 2026-11-02:** 15:05, 28 accepted, 30/30 cells, 4 bins short, 649 s, 55 of 100 targets IK-unreachable (23/23 pans at near corner `lr0_hl0_nf0`); 17:52, 10 accepted, ended on "board not back in view after returning from a skipped target", 31 unreachable (28 at the two near-high corners); 18:49 and 19:01, after the fixes: 23 and 25 accepted, 30/30 cells, 0 viewpoints abandoned, 3 at the reach edge each. Camera 33664, `tests/fixtures/session_arm_33664_20261102_150512.json` / `_175213.json`. §20
+- **Camera drops on the arm:** 33276 left the network 4 times in 4 arm sessions, each right after an extreme wrist pose (operator's observation); the two with the stall handling recorded `Disconnected` and `serial not in CameraList`; it recovered once (35.2 s gap, frames back on the 7th restart attempt, readback matched; the arm waited 29.3 s); suspected cause the camera cable pulled at the wrist; 2026-11-07, `intrinsics_33276_20261107_150649` / `_151803` / `_153730` / `_154811`. §11
+- **Cable winding, first use on the arm:** 5 sessions (3 on 33665, 2 on 33275), every one ending at net zero turns on joints 1, 4 and 6 with 0 unwinding moves, 0 capture stalls and no camera drop; peak |turns| 0.469 (J1, 169°) inside the 170° window; 2026-11-07/09, `intrinsics_33665_20261107_175417` / `_20261109_143810` / `_144726`, `intrinsics_33275_20261109_150317` / `_151252`, `session_arm.json` `cable`. §20
 - **IMU parameters:** not in this repo. No IMU document, config or measurement exists to link.
 
 ---
@@ -386,6 +393,51 @@ uses the legacy layout.
   `CameraLibraryStartup()` while the old sockets are bound. A couple of
   seconds between runs avoids it.
 
+**Camera drops on the arm, 2026-11-07, camera 33276.** The camera left the
+network mid-session four times, each right after an extreme wrist pose
+(operator's observation). From each session's `session.json` `stalls` and
+`session_arm.json`:
+
+| Session | Accepted before | What was recorded | Ended |
+|---|---:|---|---|
+| `intrinsics_33276_20261107_150649` | 13 | old build: no stall handling, status file stopped | arm: `capture died: status file 7.1 s old` |
+| `intrinsics_33276_20261107_151803` | 11 | old build, as above | arm: `capture died: status file 2.0 s old` |
+| `intrinsics_33276_20261107_153730` | 17 | stall handling: 7 restart attempts, state `Disconnected`, data rate 0.0 | arm: `capture stalled and did not recover within 30 s`; capture's `stalls` not written (it was not quit with `q`) |
+| `intrinsics_33276_20261107_154811` | 16 | at 1 s `Initialized`, data rate 0.0; attempt 1 sent, attempts 2–6 `serial not in CameraList`, attempt 7 sent | **recovered**: 35.2 s gap, readback matched the baseline; the arm waited 29.3 s and finished (`target list exhausted`), 26 views |
+
+- **Disconnected, not a stream stall.** Where the state was recorded, the
+  camera went `Disconnected` and then dropped out of `CameraList`
+  altogether; a stop/start alone can't fix that, and re-acquiring it by
+  serial once it was listed again did (ARCHITECTURE §5, stalls).
+- **Recovered once within the arm's 30 s** (29.3 s, by 0.7 s). In that one
+  recovery, frames returned 35.2 s after the last one, so the 30 s wait is
+  marginal for a drop like this.
+- **Suspected cause: the cable is pulled at the wrist.** Not tested
+  directly. Fix: tie the cable down at the camera bracket and leave slack
+  through the wrist (RUNBOOK §13, per-camera procedure step 2). If drops
+  continue with the cable tied, the next suspect is the PoE port or cable
+  itself.
+- The two morning freezes are the first two rows; the stall handling
+  (ARCHITECTURE §5) was written after them.
+
+**Camera 33661, same day.** `intrinsics_33661_20261107_170017` (session
+started 01:00:26 UTC) dropped once, **after** the arm session ended:
+
+| Session | Accepted before | What was recorded | Ended |
+|---|---:|---|---|
+| `intrinsics_33661_20261107_170017` | 27 | at 1 s `Initialized`, data rate 0.0; attempt 1 sent, attempts 2–5 `serial not in CameraList`, attempt 6 `listed but Initializing FPGA`, attempt 7 sent | **recovered**: 35.16 s gap, readback matched; the arm had already returned to P0 (`target list exhausted`, `capture_stalls` 0), capture quit with `q` afterwards |
+
+- The last frame came at 01:11:16.4 UTC, about 10 s after the arm's return
+  to P0 ended (session start + 640.3 s). That return turned joint 1 by
+  −91.8° and joint 4 by +108.0°. The record's joint values are wrapped
+  ([0, 360) measured, sent as measured + change), so the cable's net turns
+  over the session can't be read from it; schema 8 records them (ARCHITECTURE
+  §9, cable winding). Whether the cable was tied down for this session is
+  not recorded.
+- The same 35 s to reappear as 33276's recovery, the same sequence (gone
+  from `CameraList`, then FPGA initialising, then back).
+- `_171252` recorded no stall.
+
 ## 12. Working distance for intrinsics is 1–1.5 m
 
 **Verified by observation**, not a systematic sweep, on the old 9×6 board
@@ -484,7 +536,24 @@ cameras at the `mask.yaml` settings, §13):
   with 17%–100% of samples below 3. The logs don't say whether zero-observer
   samples are the marker outside the volume or a real gap.
 
-## 16. Intrinsics: 33661 hand-held, 33664 arm-driven
+## 16. Intrinsics: 33661 hand-held; per-camera arm-driven
+
+**Per-camera progress: 5 of 10.** Arm-driven intrinsics, one joint fit per
+camera in `config/intrinsics/<serial>.yaml` (RUNBOOK §13, per-camera
+procedure). Target: fx/fy ranges within ~1 px.
+
+| Serial | Intrinsics | Date | Sessions | fx range (px) | cx range (px) |
+|---|---|---|---:|---:|---:|
+| 33664 | yes | 2026-11-02 | 3 | 0.50 | 1.03 |
+| 33276 | yes | 2026-11-07 | 3 | 0.50 | 0.60 |
+| 33661 | yes | 2026-11-07 | 2 | 0.61 | 0.60 |
+| 33665 | yes | 2026-11-09 | 2 | 0.57 | 1.54 |
+| 33275 | yes, **marginal** (fx/fy 1.4 px; third session recommended) | 2026-11-09 | 2 | **1.40** | 0.33 |
+| 33277 | no | | | | |
+| 33659 | no | | | | |
+| 33660 | no | | | | |
+| 33662 | no | | | | |
+| 33663 | no | | | | |
 
 **Verified** by `python/fit_intrinsics.py` (OpenCV 5.0.0, Brown-Conrady, all
 frames). Sessions are in `$HOME/panoptes-data/sessions`, outside the repo.
@@ -501,7 +570,12 @@ frames). Sessions are in `$HOME/panoptes-data/sessions`, outside the repo.
   (RUNBOOK §9).
 - **cx is the outlier**: 9.4 px across all three, against 2.5 px for fx. Why
   cx/cy are weakest-determined: [ARCHITECTURE §6](ARCHITECTURE.md#6-solve-and-the-distortion-model).
-  Whether resampling one session reproduces the spread is not recorded.
+  **Resolved 2026-11-07:** two arm-driven sessions of the same camera agree
+  to cx 0.60 px (below), so the hand-held spread came from the method, not
+  the camera. `bootstrap_intrinsics.py` was never run on these sessions.
+  Not like for like: the hand-held sessions used the old 9×6 board, and
+  their fx (~782) differs from the arm's 768.66 by ~13 px, which the board
+  change may explain (not checked).
 - `config/layout.yaml` uses fx 782.0, fy 781.6, cx 644.6, cy 511.1, within
   0.1 px of the mean of the two 2026-09-25 sessions (*inferred* derivation;
   the file says only "measured on 33661"). Its distortion is an **assumed
@@ -554,6 +628,129 @@ Each joint parameter lies inside the per-session range.
   these numbers stand; extrinsics would not.
 - This is repeatability of auto sessions. It is not the auto-against-manual
   check of Open items #11.
+
+**Arm-driven intrinsics of 33276, 2026-11-07.** Same rig, board, easel and
+procedure as 33664. Settings read back in each `session.json`: gain 0,
+intensity 15, exposure 8133 µs, 30 Hz, IR filter in. `_153730` ended early
+when the camera dropped off the network (§11); its 17 views are kept.
+
+| Session | Views | RMS (px) | fx | fy | cx | cy |
+|---|---:|---:|---:|---:|---:|---:|
+| `intrinsics_33276_20261107_154811` | 26 | 0.146 | 767.94 | 767.68 | 634.49 | 515.10 |
+| `intrinsics_33276_20261107_160123` | 27 | 0.145 | 768.44 | 768.10 | 634.38 | 514.65 |
+| `intrinsics_33276_20261107_153730` | 17 | 0.133 | 768.43 | 767.98 | 633.90 | 514.11 |
+| Mean | | | 768.27 | 767.92 | 634.26 | 514.62 |
+| Range | | | 0.50 | 0.42 | 0.60 | **0.99** |
+| **Joint fit, all frames** | 70 | 0.143 | 768.25 | 767.93 | 634.37 | 514.78 |
+
+The joint fit (`fit_intrinsics.py --write-camera`, run by Claude
+2026-11-08 00:15 UTC) is in `config/intrinsics/33276.yaml`, with the ranges
+above as `uncertainty_px`. Its dist is k1 −0.0946, k2 0.0876, p1 −0.0007,
+p2 −0.0008, k3 −0.0264. Each joint parameter lies inside the per-session
+range.
+
+- **Repeatability matches 33664's:** fx 0.50 against 0.50, fy 0.42 against
+  0.39, cx 0.60 against 1.03, cy 0.99 against 0.47 px.
+- **Unit-to-unit difference is ~7× the repeatability.** Mean fx 768.27
+  against 33664's 771.83 px (3.56 px); cx 634.26 against 629.49 px
+  (4.77 px); cy 514.62 against 518.84 px (4.22 px). The within-camera fx
+  range is ~0.5 px on both, so the fx difference is about 7× it, and the cx
+  difference 5–8× the two cx ranges. **Per-camera intrinsics are required;**
+  one camera's K can't stand in for another's. (`config/layout.yaml`'s
+  shared 33661 numbers are one camera's, Open items #13.)
+- Distortion is close between the two units: k1 −0.0946 against −0.0939,
+  k2 0.0876 against 0.0877, k3 −0.0264 against −0.0266 (joint fits).
+
+**Arm-driven intrinsics of 33661, 2026-11-07.** Same rig, board, easel and
+procedure as 33664 and 33276. Settings read back in each `session.json`:
+gain 0, intensity 15, exposure 8133 µs, 30 Hz, IR filter in.
+
+| Session | Views | RMS (px) | fx | fy | cx | cy |
+|---|---:|---:|---:|---:|---:|---:|
+| `intrinsics_33661_20261107_170017` | 27 | 0.181 | 768.36 | 768.16 | 641.73 | 523.76 |
+| `intrinsics_33661_20261107_171252` | 23 | 0.163 | 768.97 | 768.86 | 641.13 | 523.45 |
+| Mean | | | 768.66 | 768.51 | 641.43 | 523.61 |
+| Range | | | 0.61 | **0.70** | 0.60 | 0.31 |
+| **Joint fit, all frames** | 50 | 0.173 | 768.66 | 768.49 | 641.50 | 523.70 |
+
+The joint fit (`fit_intrinsics.py --write-camera`, run by Claude
+2026-11-08 01:25 UTC) is in `config/intrinsics/33661.yaml`, with the ranges
+above as `uncertainty_px` (a range of two, not three). Its dist is
+k1 −0.0962, k2 0.0901, p1 −0.0001, p2 0.0006, k3 −0.0270. Each joint
+parameter lies inside the per-session range.
+
+- **This settles the old 33661 cx question** (above). Hand-held, the
+  same-day pair disagreed in cx by 2.51 px and the third session by up to
+  9.40 px; on the arm, two sessions agree to 0.60 px. The spread was the
+  hand-held method, not the camera.
+- Repeatability is in line with the other two units: fx 0.61, fy 0.70,
+  cx 0.60, cy 0.31 px, against ~0.4–0.5 px for fx and fy on 33664 and 33276.
+- **Unit to unit:** cx 641.43 against 634.26 (33276) and 629.49 (33664);
+  across the three units cx spans 11.94 px, ~20× the within-camera cx range.
+  fx 768.66 is 0.39 px from 33276's and 3.17 px from 33664's.
+
+**Arm-driven intrinsics of 33665, 2026-11-09.** Same rig, board, easel and
+procedure. Settings read back in each `session.json`: gain 0, intensity 15,
+exposure 8133 µs, 30 Hz, IR filter in. Every session's arm record ends
+with 0 cells remaining and `capture_stalls` 0. `_144726` stopped after 14
+arm-accepted views: capture was quit with `q` (`autocapture_end`), and the
+arm read the stale status file as `capture died: status file 2.0 s old`;
+its 15 views are kept.
+
+| Session | Views | RMS (px) | fx | fy | cx | cy |
+|---|---:|---:|---:|---:|---:|---:|
+| `intrinsics_33665_20261109_143810` | 25 | 0.157 | 767.26 | 766.97 | 623.04 | 517.12 |
+| `intrinsics_33665_20261109_144726` | 15 | 0.145 | 766.68 | 766.41 | 621.50 | 518.24 |
+| Mean | | | 766.97 | 766.69 | 622.27 | 517.68 |
+| Range | | | 0.57 | 0.56 | **1.54** | 1.12 |
+| **Joint fit, all frames** | 40 | 0.153 | 766.94 | 766.67 | 622.47 | 517.60 |
+| `intrinsics_33665_20261107_175417` (not in the joint fit) | 25 | 0.150 | 767.52 | 767.32 | 622.60 | 517.00 |
+
+The joint fit (`fit_intrinsics.py --write-camera --status done`, run by
+Claude 2026-11-09 23:32 UTC) is in `config/intrinsics/33665.yaml`, with the
+ranges above as `uncertainty_px` (a range of two). Its dist is k1 −0.0960,
+k2 0.0904, p1 −0.0005, p2 0.0005, k3 −0.0287. Each joint parameter lies
+inside the per-session range.
+
+- **The 2026-11-07 session was tested and left out.** It was fitted with the
+  pair (same settings, read back) and taken only if it agreed within the
+  pair's ranges. Against the pair's mean it is off by fx +0.55, **fy
+  +0.63**, cx +0.33, cy −0.68 px. fy exceeds the pair's 0.56 px range, and
+  fx falls outside the pair's span. With it, the three-session ranges grow
+  to fx 0.84, fy 0.91, cx 1.54, cy 1.24 px, still inside ~1 px for fx/fy.
+  Whether the camera was remounted between the two days is not recorded,
+  so the cause of the shift is not known.
+- Repeatability: fx/fy 0.57/0.56 px, in line with 33664, 33276 and 33661;
+  cx 1.54 px is the widest cx of the five units yet (33664 1.03).
+
+**Arm-driven intrinsics of 33275, 2026-11-09: marginal.** Same rig, board,
+easel and procedure. Settings read back in each `session.json`: gain 0,
+intensity 15, exposure 8133 µs, 30 Hz, IR filter in. Both sessions ended
+`target list exhausted` with 0 cells remaining and `capture_stalls` 0.
+
+| Session | Views | RMS (px) | fx | fy | cx | cy |
+|---|---:|---:|---:|---:|---:|---:|
+| `intrinsics_33275_20261109_150317` | 26 | 0.175 | 764.92 | 764.72 | 631.15 | 521.49 |
+| `intrinsics_33275_20261109_151252` | 26 | 0.165 | 766.32 | 766.15 | 630.82 | 521.27 |
+| Mean | | | 765.62 | 765.44 | 630.99 | 521.38 |
+| Range | | | **1.40** | **1.43** | 0.33 | 0.22 |
+| **Joint fit, all frames** | 52 | 0.170 | 765.66 | 765.47 | 630.97 | 521.39 |
+
+The joint fit (`fit_intrinsics.py --write-camera --status "done, marginal
+(fx/fy 1.4 px); third session recommended"`, run by Claude 2026-11-09
+23:32 UTC) is in `config/intrinsics/33275.yaml`, with the ranges above as
+`uncertainty_px` and that `status`. Its dist is k1 −0.0949, k2 0.0833,
+p1 −0.00004, p2 0.0006, k3 −0.0214. Each joint parameter lies inside the
+per-session range.
+
+- **fx/fy ranges of 1.40/1.43 px exceed the ~1 px target** the other four
+  units met (0.50–0.61 px). cx/cy are the tightest yet (0.33/0.22 px).
+  With two sessions there is no telling which is off. A third session is
+  recommended (Open items #27).
+- **Unit to unit, five cameras:** mean fx spans 765.62 (33275) to 771.83
+  (33664), 6.21 px; cx 622.27 (33665) to 641.43 (33661), 19.16 px; cy
+  514.62 (33276) to 523.61 (33661), 8.99 px. Even 33275's marginal 1.4 px
+  fx range is under a quarter of the fx span.
 
 ## 17. Synthetic triangulation accuracy, nominal layout
 
@@ -1107,13 +1304,37 @@ intrinsics are in §16.
     P0), and an `ACTION_ABORT` (no further move).
   - Every commanded pose was asserted inside the box.
 
+**Cable winding, first use on the arm, 2026-11-07 and 2026-11-09.** The
+first schema-8 sessions (ARCHITECTURE §9, cable winding), read from each
+`session_arm.json` `cable` and `end`. Window 170°, reference the saved
+`hub` pose.
+
+| Session | Net turns at end (J1, J4, J6) | Unwind moves | Peak \|turns\| J1 / J4 / J6 | Capture stalls |
+|---|---|---:|---|---:|
+| `intrinsics_33665_20261107_175417` | 0, 0, 0 | 0 | 0.469 / 0.406 / 0.388 | 0 |
+| `intrinsics_33665_20261109_143810` | 0, 0, 0 | 0 | 0.469 / 0.443 / 0.386 | 0 |
+| `intrinsics_33665_20261109_144726` | 0, 0, 0 | 0 | 0.437 / 0.429 / 0.370 | 0 |
+| `intrinsics_33275_20261109_150317` | 0, 0, 0 | 0 | 0.469 / 0.433 / 0.392 | 0 |
+| `intrinsics_33275_20261109_151252` | 0, 0, 0 | 0 | 0.469 / 0.443 / 0.400 | 0 |
+
+- **No camera dropped** in any of the five: no `capture_stalls` in the arm
+  records and no `stalls` in the capture's `session.json` (written only
+  when a stall happens). Against 33276's four drops and 33661's one on
+  2026-11-07 (§11). Whether the cable was tied down (RUNBOOK §13 step 2) is
+  not recorded, so the cable fix and the tracking can't be told apart.
+- **Net zero, without unwinding.** Every move's turn landed inside the
+  window, so no `unwind` entry was ever inserted and the unwind path
+  (long-way waypoints, the box check on them) is still unexercised.
+- The peak 0.469 turns (168.8°) on joint 1 is the window's edge (170° =
+  0.472 turns): the taught viewpoints already reach it, e.g. variant
+  `lr2_hl1_nf2`, sent J1 to 451.56° the short way (turns −0.20 → +0.29).
+
 ## Open items
 
 The single open-items list. CLAUDE.md and the other docs link here.
+An item's number stays when another closes. Closed: #1, the 33661 cx
+discrepancy, 2026-11-07 (§16).
 
-1. **cx cross-session discrepancy.** 9.4 px across three sessions of 33661
-   (§16). Run `bootstrap_intrinsics.py` on one session to see whether pose
-   sampling explains it; not yet recorded.
 2. **WRONG MODE false alarm.** `05_identify` and `07_mask` print it when
    `modeIsObject()` is false. That flag describes the last *fetch*, which
    resets it when no frame was waiting, so a healthy camera with nothing
@@ -1238,3 +1459,30 @@ The single open-items list. CLAUDE.md and the other docs link here.
     non-corner count and seeds, not yet recorded). Teaching the corners again
     in one configuration (same signs on joints 2, 3, 5) should cut both;
     untried.
+25. **Camera drops on the arm** (§11). 33276 went `Disconnected` four
+    times on 2026-11-07; the stall handling recovered it once, in 29.3 s of
+    the arm's 30 s wait. 33661 dropped once the same day, after its session
+    ended, and recovered in 35.16 s. The cable fix (tie down at the bracket,
+    slack at the wrist) and the cable unwinding (ARCHITECTURE §9) are
+    untested on the arm: record whether the next camera's sessions drop. If
+    they still do, consider a longer `STALL_WAIT_S` in `arm_capture.py`.
+    **2026-11-07/09:** five sessions on 33665 and 33275 with cable tracking,
+    no drop (§20, cable winding). Whether the cable was tied down was not
+    recorded; keep recording drops for the remaining five cameras.
+26. **Cable unwinding has not run on the arm** (ARCHITECTURE §9, cable
+    winding). Tested only against a stand-in arm. Unknown: whether a
+    session's `unwind` moves pass the box (a joint 4 unwind swings the
+    wrist; joint 1's sweeps the arm round the base and will mostly be
+    refused), how many a session needs at `cable_window_deg` 170, and
+    whether the arm takes a continuous-joint target more than 180° away
+    the long way (the waypoints avoid relying on it; §20 saw only
+    +15°). First run: read the dry run's `cable` line, the `unwind`
+    entries and the summary's net turns. **Partly answered 2026-11-07/09**
+    (§20, cable winding): tracking ran in five sessions, each ending at net
+    zero turns with 0 unwind moves, peak 0.469 turns against the 0.472
+    window. A session needs none at 170°, so the unwind moves themselves
+    (box check, long-way waypoints) have still never run on the arm.
+27. **33275 intrinsics are marginal** (§16): fx/fy ranges 1.40/1.43 px over
+    two sessions, against ~1 px. Run a third session and refit all three
+    with `--write-camera --force`; drop `--status` marginal if the ranges
+    come in.

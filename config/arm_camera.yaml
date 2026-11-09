@@ -9,31 +9,31 @@
 # x-y-z extrinsic: R = Rz(theta_z) Ry(theta_y) Rx(theta_x) (Gen3 user guide).
 # Image: x right, y down, px; roll positive = clockwise on screen; square_px
 # = apparent size of one board square, larger = closer.
-created_utc: "2026-10-30T21:34:42Z"
-camera_serial: 33664
-start_pose: [ 0.54440, 0.03477, 0.47396, 81.02814, -2.32617, 93.35377 ]   # x y z m, theta_x/y/z deg
+created_utc: "2026-11-09T23:03:05Z"
+camera_serial: 33275
+start_pose: [ 0.60791, 0.05604, 0.47326, 90.75426, -3.09902, 87.11667 ]   # x y z m, theta_x/y/z deg
 probe_angle_deg: 2.0
 probe_step_m: 0.03
-start_board: { centroid_px: [ 628.75, 540.79 ], square_px: 36.068, roll_deg: -86.890 }
+start_board: { centroid_px: [ 555.02, 450.26 ], square_px: 43.691, roll_deg: -0.248 }
 
 # Image change per unit tool motion: rotation rows per deg, translation rows per m.
 sensitivity:
-  theta_x: { dx_px: 0.0950, dy_px: -13.3383, droll_deg: -0.0178, dsquare_px: -0.0330 }
-  theta_y: { dx_px: 10.3283, dy_px: 0.2467, droll_deg: 0.1492, dsquare_px: 0.0345 }
-  theta_z: { dx_px: 0.6250, dy_px: 0.3900, droll_deg: -1.0312, dsquare_px: -0.0147 }
-  x: { dx_px: 867.0000, dy_px: -1.2222, droll_deg: -2.5222, dsquare_px: 0.9111 }
-  y: { dx_px: -8.6667, dy_px: 576.0000, droll_deg: 0.5444, dsquare_px: -4.9778 }
-  z: { dx_px: -17.5556, dy_px: 141.4444, droll_deg: 0.4333, dsquare_px: 29.7111 }
+  theta_x: { dx_px: 0.1767, dy_px: -13.0150, droll_deg: -0.0242, dsquare_px: -0.0075 }
+  theta_y: { dx_px: 11.1633, dy_px: -0.0250, droll_deg: 0.1633, dsquare_px: -0.0783 }
+  theta_z: { dx_px: -1.1517, dy_px: 1.3283, droll_deg: -1.0505, dsquare_px: -0.0005 }
+  x: { dx_px: 798.6667, dy_px: 7.2222, droll_deg: 3.0111, dsquare_px: 0.1333 }
+  y: { dx_px: 58.8889, dy_px: 703.2222, droll_deg: 7.9778, dsquare_px: -15.5333 }
+  z: { dx_px: -281.5556, dy_px: 125.0000, droll_deg: 1.8444, dsquare_px: 41.3333 }
 # Measured change for the actual probe size.
 raw_effects:
-  theta_x: { dx_px: 0.1900, dy_px: -26.6767, droll_deg: -0.0357, dsquare_px: -0.0660 }
-  theta_y: { dx_px: 20.6567, dy_px: 0.4933, droll_deg: 0.2983, dsquare_px: 0.0690 }
-  theta_z: { dx_px: 1.2500, dy_px: 0.7800, droll_deg: -2.0623, dsquare_px: -0.0293 }
-  x: { dx_px: 26.0100, dy_px: -0.0367, droll_deg: -0.0757, dsquare_px: 0.0273 }
-  y: { dx_px: -0.2600, dy_px: 17.2800, droll_deg: 0.0163, dsquare_px: -0.1493 }
-  z: { dx_px: -0.5267, dy_px: 4.2433, droll_deg: 0.0130, dsquare_px: 0.8913 }
+  theta_x: { dx_px: 0.3533, dy_px: -26.0300, droll_deg: -0.0483, dsquare_px: -0.0150 }
+  theta_y: { dx_px: 22.3267, dy_px: -0.0500, droll_deg: 0.3267, dsquare_px: -0.1567 }
+  theta_z: { dx_px: -2.3033, dy_px: 2.6567, droll_deg: -2.1010, dsquare_px: -0.0010 }
+  x: { dx_px: 23.9600, dy_px: 0.2167, droll_deg: 0.0903, dsquare_px: 0.0040 }
+  y: { dx_px: 1.7667, dy_px: 21.0967, droll_deg: 0.2393, dsquare_px: -0.4660 }
+  z: { dx_px: -8.4467, dy_px: 3.7500, droll_deg: 0.0553, dsquare_px: 1.2400 }
 # Centroid distance between before and after each return to the start, px.
-return_error_px: { theta_x: 0.246, theta_y: 0.050, theta_z: 0.057, x: 0.083, y: 0.126, z: 0.059 }
+return_error_px: { theta_x: 0.182, theta_y: 0.027, theta_z: 0.113, x: 0.069, y: 0.027, z: 0.166 }
 
 # Which tool axis to use for each image direction. sign: the tool motion's
 # sign that moves the board right / down / clockwise / closer; the opposite
@@ -41,12 +41,12 @@ return_error_px: { theta_x: 0.246, theta_y: 0.050, theta_z: 0.057, x: 0.083, y: 
 # as a fraction of this one (over 0.5: the axes are coupled).
 mapping:
   right:
-    rotation: { axis: "theta_y", sign: 1, px_per_deg: 10.3283, second_best_ratio: 0.061 }
-    translation: { axis: "x", sign: 1, px_per_m: 867.0000, second_best_ratio: 0.020 }
+    rotation: { axis: "theta_y", sign: 1, px_per_deg: 11.1633, second_best_ratio: 0.103 }
+    translation: { axis: "x", sign: 1, px_per_m: 798.6667, second_best_ratio: 0.353 }
   down:
-    rotation: { axis: "theta_x", sign: -1, px_per_deg: 13.3383, second_best_ratio: 0.029 }
-    translation: { axis: "y", sign: 1, px_per_m: 576.0000, second_best_ratio: 0.246 }
+    rotation: { axis: "theta_x", sign: -1, px_per_deg: 13.0150, second_best_ratio: 0.102 }
+    translation: { axis: "y", sign: 1, px_per_m: 703.2222, second_best_ratio: 0.178 }
   clockwise:
-    rotation: { axis: "theta_z", sign: -1, deg_per_deg: 1.0312, second_best_ratio: 0.145 }
+    rotation: { axis: "theta_z", sign: -1, deg_per_deg: 1.0505, second_best_ratio: 0.155 }
   closer:
-    translation: { axis: "z", sign: 1, square_px_per_m: 29.7111, second_best_ratio: 0.168 }
+    translation: { axis: "z", sign: 1, square_px_per_m: 41.3333, second_best_ratio: 0.376 }

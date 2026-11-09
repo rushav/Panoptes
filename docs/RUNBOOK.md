@@ -33,7 +33,7 @@ for b in src/01_discover/build/discover src/02_stream/build/stream src/03_detect
 getcap src/*/build/*
 cmake -S tests -B tests/build -DCMAKE_BUILD_TYPE=Release && cmake --build tests/build -j"$(nproc)" && tests/build/test_autocapture
 ```
-expect: `[100%] Built target` for all 8 tools; `getcap` lists all 8 with `cap_net_admin,cap_net_raw=eip`; `test_autocapture: 61/61 passed`.
+expect: `[100%] Built target` for all 8 tools; `getcap` lists all 8 with `cap_net_admin,cap_net_raw=eip`; `test_autocapture: 63/63 passed`.
 
 ### 1.3 Network, discover, identify
 Start of every session. Details: §4.
@@ -97,13 +97,13 @@ src/04_capture/build/capture [serial] [--gain N] [--intensity N] [--exposure US]
 .venv/bin/python python/capture_status.py PATH
 .venv/bin/python python/capture_status.py --self-test
 ```
-expect: `ended: complete: 0 empty cells and every pose bin has >= 2 frames`; validation passes at fx/fy within ~1 px, cx/cy within ~3 px; `capture_status.py PATH` prints the latest frame's line; self-test `11/11 passed`.
+expect: `ended: complete: 0 empty cells and every pose bin has >= 2 frames`; validation passes at fx/fy within ~1 px, cx/cy within ~3 px; `capture_status.py PATH` prints the latest frame's line (`STALLED ...` during a stall); self-test `13/13 passed`. A stall prints `no frames from SERIAL for N s (state ...)`, then `restarting camera SERIAL` from 5 s; the session carries on in the same folder (§9).
 
 ### 1.9 Python fits and studies
 venv interpreter only. Details: §10.
 ```sh
 .venv/bin/python python/fit_intrinsics.py <session> [<session> ...]
-.venv/bin/python python/fit_intrinsics.py --write-camera [--force] <session> [<session> ...]
+.venv/bin/python python/fit_intrinsics.py --write-camera [--force] [--status TEXT] <session> [<session> ...]
 .venv/bin/python python/compare_models.py <session>
 .venv/bin/python python/bootstrap_intrinsics.py <session> [n_subsets] [subset_size]
 .venv/bin/python python/board.py [board.yaml]
@@ -111,7 +111,7 @@ venv interpreter only. Details: §10.
 .venv/bin/python python/accuracy_study.py [layout.yaml] [study.yaml]
 .venv/bin/python python/test_arm_capture.py
 ```
-expect: `triangulate.py` prints `self-test: 12/12 passed`; `test_arm_capture.py` prints `115/115 passed`; the study prints `Wrote .../accuracy_study.json`.
+expect: `triangulate.py` prints `self-test: 12/12 passed`; `test_arm_capture.py` prints `186/186 passed`; the study prints `Wrote .../accuracy_study.json`.
 
 ### 1.10 Git
 Changes are left uncommitted for review. Details: §11.
@@ -126,7 +126,7 @@ git log --oneline -10
 expect: `git status` clean after the commit; no `build/`, `.venv/` or `analysis/*.png` staged.
 
 ### 1.11 Arm (Kinova Gen3)
-E-stop pendant in reach, nothing inside the box. After power-up the arm rests on its joint stops: run `status`, and if a `limits` margin is negative, jog that joint to mid-range with the Web App before anything else. Motion only with `--yes`; first move is `move --dz 0.02 --yes`. Teach the eight viewpoints once per easel position, not per camera; again if the easel or arm base moves. Per camera: unmount it from the rig, mount it on the arm, unfold the arm, teach (once per easel position), probe, session twice, fit, remount, re-learn masks; capture at `--gain 0 --intensity 15 --exposure 8133` (procedure in §13). Save a `hub` pose (board-centred, every joint mid-range) with `save-pose hub`: a session whose viewpoints span several arm configurations goes through it, and refuses to start without it. Never start an `--orbit` session from Home: `save-pose` a board-centred pose and start from it. Camera on the arm, board on an easel ~1.0 m from the camera, leaned back 10–12°, P0 near x 0.43 m. The probe needs `capture --auto-dry --status-file`, the session `capture --auto --status-file`; board centred and fully visible for both. Details: §13.
+E-stop pendant in reach, nothing inside the box. After power-up the arm rests on its joint stops: run `status`, and if a `limits` margin is negative, jog that joint to mid-range with the Web App before anything else. Motion only with `--yes`; first move is `move --dz 0.02 --yes`. Teach the eight viewpoints once per easel position, not per camera; again if the easel or arm base moves. Per camera: unmount it from the rig, mount it on the arm and tie its cable down at the bracket with slack through the wrist, unfold the arm, teach (once per easel position), probe, session twice, fit, remount, re-learn masks; capture at `--gain 0 --intensity 15 --exposure 8133` (procedure in §13). Save a `hub` pose (board-centred, every joint mid-range) with `save-pose hub`: a session whose viewpoints span several arm configurations goes through it, and refuses to start without it. The continuous joints' cable turns are counted from the hub's angles and kept within ±`cable_window_deg` (`config/arm.yaml`); start with the cable unwrapped at the hub. Never start an `--orbit` session from Home: `save-pose` a board-centred pose and start from it. Camera on the arm, board on an easel ~1.0 m from the camera, leaned back 10–12°, P0 near x 0.43 m. The probe needs `capture --auto-dry --status-file`, the session `capture --auto --status-file`; board centred and fully visible for both. Details: §13.
 ```sh
 .venv/bin/pip install --no-deps -r python/requirements-arm.txt
 ip -brief addr show enp6s0
@@ -142,7 +142,7 @@ ip -brief addr show enp6s0
 .venv/bin/python python/arm_capture.py teach --status-file PATH [--force] [--ip IP] [--port PORT] [--username U] [--password P]
 .venv/bin/python python/arm_capture.py session --status-file PATH [--yes] [--poses | --orbit] [--from-pose NAME] [--speed-constraint DEG_S] [--ip IP] [--port PORT] [--username U] [--password P]
 ```
-expect: `enp6s0` lists `192.168.1.11/24` and a `169.254.x.x` address; `status` prints a `limits` line per actuator (`limit [low, high], margin M deg` or `continuous`) and ends `session closed`; `move`/`goto`/`joints`/`goto-pose` without `--yes` end `dry run: nothing sent`; with `--yes`, `result     END` and an `error` line; `save-pose` ends `saved      NAME in config/arm_poses.yaml`; `probe --yes` prints six probe lines, the mapping, and `wrote config/arm_camera.yaml`; `teach` ends with `far/near` and `families` lines; `session` prints the `taught` line, all 27 viewpoints, `checks` and `families` (and `hub` if one is needed) before anything moves (`--orbit`: `board` and `cap`); `session --yes` prints `NAME: viewpoint abandoned (...)` or `NAME: viewpoint at reach edge (...)` when it gives up a viewpoint and moves on, and ends with a `summary` block and writes `session_arm.json` into the capture's session folder.
+expect: `enp6s0` lists `192.168.1.11/24` and a `169.254.x.x` address; `status` prints a `limits` line per actuator (`limit [low, high], margin M deg` or `continuous`) and ends `session closed`; `move`/`goto`/`joints`/`goto-pose` without `--yes` end `dry run: nothing sent`; `joints`/`goto-pose` print a `cable` line (each continuous joint's value to send, `short way` or `long way round: unwinding`, and its turns before and after) and, past 180° on one, a `waypoints` line; with `--yes`, `result     END` and an `error` line; `save-pose` ends `saved      NAME in config/arm_poses.yaml`; `probe --yes` prints six probe lines, the mapping, and `wrote config/arm_camera.yaml`; `teach` ends with `far/near` and `families` lines; `session` prints the `taught` line, all 27 viewpoints, `checks` and `families` (and `hub` if one is needed) and a `cable` line before anything moves (`--orbit`: `board` and `cap`); `session --yes` prints `NAME: viewpoint abandoned (...)` or `NAME: viewpoint at reach edge (...)` when it gives up a viewpoint and moves on, ends every pose line with `turns J1 … J4 … J6 …`, and ends with a `summary` block (its `cable` line gives the net turns, 0 for each joint after a return to P0) and writes `session_arm.json` into the capture's session folder.
 
 ---
 
@@ -654,7 +654,21 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
    reader against `tests/fixtures/capture_status.json`. Without `--auto` or
    `--auto-dry` the flag is refused (`--status-file needs --auto or
    --auto-dry`). If a write fails, the error prints once and the file goes
-   stale; readers treat a file older than 2 s as dead.
+   stale; readers treat a file older than 2 s as dead. During a stall the
+   file keeps being rewritten with `stalled` set (below).
+   **Stalls** (auto modes): no frame for 1 s prints
+   `no frames from SERIAL for N s  (state ...  running ...  data rate ...)`,
+   again every 5 s. From 5 s, and every 5 s until frames return, it prints
+   `restarting camera SERIAL (attempt N, ...)`, stops and restarts the
+   camera with the start-up settings (any `+ - [ ]` change is dropped), and
+   on the first frames back checks the readback: `restart verified:
+   readback matches the baseline settings`, or a `WARNING` with the
+   differences (gate 4 then refuses every frame). `frames from SERIAL again
+   after N s` marks the end. The session carries on in the same folder;
+   each stall is in `session.json` `stalls`. `q` still quits during a
+   stall. `main loop blocked for N s in STEP` (stderr) is different: a call
+   that hasn't returned, which the restart can't fix. Quit, wait a couple of
+   seconds, restart capture. Copy any of these lines into FINDINGS.
 6. **Validation rule: do this before trusting auto mode.**
    1. On one camera, the same day, lens untouched: one `--auto` session and
       one manual session.
@@ -662,9 +676,10 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
    3. **Pass** if **fx and fy agree within ~1 px and cx and cy within
       ~3 px**. Source: the same-day 2026-09-25 manual pair in FINDINGS §16
       (fx 0.23, fy 0.63, cx 2.51, cy 1.51 px). The three-session range there
-      is wider (fx 2.48, cx 9.40 px; Open items #1), so a cx/cy failure
-      alone may not be auto mode's fault: record a second manual session the
-      same day and check the two manual ones agree first.
+      is wider (fx 2.48, cx 9.40 px), and FINDINGS §16 puts that down to the
+      hand-held method, so a cx/cy failure alone may not be auto mode's
+      fault: record a second manual session the same day and check the two
+      manual ones agree first.
    4. Record the result, pass or fail, in FINDINGS with both session names.
       Only on a pass, remove the UNVALIDATED notes here and in §1.8, and
       close Open items #11.
@@ -685,6 +700,13 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
 - **A bin never fills.** Some poses may be unreachable (e.g. far and steeply
   tilted). End with `q`; the printout gives every bin's count and how many
   are short.
+- **`no frames from SERIAL` keeps repeating, restarts don't help**
+  (`not restarted: serial not in CameraList`, or `state Disconnected`).
+  A dropped camera can take ~35 s to reappear (FINDINGS §11); if it hasn't
+  after a minute, check the camera's cable and PoE port (on the arm, the
+  cable at the wrist, §13 per-camera step 2), then `q` and start capture
+  again. The frames already
+  accepted stay in the session folder.
 
 ---
 
@@ -692,7 +714,7 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
 
 ```sh
 .venv/bin/python python/fit_intrinsics.py <session> [<session> ...]
-.venv/bin/python python/fit_intrinsics.py --write-camera [--force] <session> [<session> ...]
+.venv/bin/python python/fit_intrinsics.py --write-camera [--force] [--status TEXT] <session> [<session> ...]
 .venv/bin/python python/compare_models.py <session>
 .venv/bin/python python/bootstrap_intrinsics.py <session> [n_subsets] [subset_size]
 .venv/bin/python python/board.py [board.yaml]
@@ -703,13 +725,13 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
 
 | Command | Does |
 |---|---|
-| `fit_intrinsics.py` | Brown-Conrady on all frames; writes `<session>/intrinsics.json`, prints a table, and with several sessions the spread across them. `--write-camera`: also one joint fit over all the sessions' frames, written to `config/intrinsics/<serial>.yaml` with provenance and the cross-session range as `uncertainty_px`; refused if the sessions differ in camera, image size, board or settings, or if the file exists (`--force` replaces it). Prints `joint fit, all sessions: …` and `wrote config/intrinsics/<serial>.yaml` |
+| `fit_intrinsics.py` | Brown-Conrady on all frames; writes `<session>/intrinsics.json`, prints a table, and with several sessions the spread across them. `--write-camera`: also one joint fit over all the sessions' frames, written to `config/intrinsics/<serial>.yaml` with provenance and the cross-session range as `uncertainty_px`; refused if the sessions differ in camera, image size, board or settings, or if the file exists (`--force` replaces it). `--status TEXT` (only with `--write-camera`) is written verbatim as the file's `status`, e.g. `done` or `done, marginal (fx/fy 1.4 px); third session recommended`; omitted, no status line. Prints `joint fit, all sessions: …` and `wrote config/intrinsics/<serial>.yaml` |
 | `compare_models.py` | Brown-Conrady vs rational vs fisheye: held-out error and edge straightness printed; writes `<session>/model_comparison.json` (training RMS only) |
 | `bootstrap_intrinsics.py` | Refits random subsets (defaults 20 subsets of 50) to see whether pose sampling explains a cross-session difference |
 | `board.py` | Prints the board a yaml describes (default `config/charuco_board.yaml`), or the error |
 | `triangulate.py` | Triangulation self-test, 12 checks; exit 0 only if all pass |
 | `accuracy_study.py` | Synthetic study (defaults `config/layout.yaml`, `config/study.yaml`); writes `analysis/` PNGs, `accuracy_study.json` and `.npz`; refuses to run if the self-test fails |
-| `test_arm_capture.py` | Arm session tests, no arm or camera: a simulated camera on the arm and a stand-in capture; replays the 2026-10-28 abort from `tests/fixtures/session_arm_33664_20261028_185017.json` and reads the corner run in `..._191025.json`; aiming and orbit on a second, rig-like geometry; joint moves, saved poses, the wrist check; teach and taught sessions (pose-space grid, IK, families and the hub); joint limits from `config/arm.yaml`, asymmetric and null; continuous joints the short way; the abort report; joint moves with and without `--speed-constraint`, and the measured joint rate; grid corners from taught joints and the IK summary; replays the 2026-11-02 taught sessions `..._20261102_150512.json` and `..._175213.json` through the mid-near-far visit order and the reach-edge rule; abandoning a viewpoint when the board isn't back (17:52's ending, simulated) and at the reach edge; 165 checks, exit 0 only if all pass |
+| `test_arm_capture.py` | Arm session tests, no arm or camera: a simulated camera on the arm and a stand-in capture; replays the 2026-10-28 abort from `tests/fixtures/session_arm_33664_20261028_185017.json` and reads the corner run in `..._191025.json`; aiming and orbit on a second, rig-like geometry; joint moves, saved poses, the wrist check; teach and taught sessions (pose-space grid, IK, families and the hub); joint limits from `config/arm.yaml`, asymmetric and null; continuous joints the short way; the abort report; joint moves with and without `--speed-constraint`, and the measured joint rate; grid corners from taught joints and the IK summary; replays the 2026-11-02 taught sessions `..._20261102_150512.json` and `..._175213.json` through the mid-near-far visit order and the reach-edge rule; abandoning a viewpoint when the board isn't back (17:52's ending, simulated) and at the reach edge; a capture stall that recovers and one that doesn't; cable winding (`cable_window_deg`, the long way round, long moves as waypoints, unwinding before a pan, net zero turns at the end, against a stand-in arm that always turns the short way); 186 checks, exit 0 only if all pass |
 
 1. Run from the repo root with `.venv/bin/python` only. Each script prints the
    board it resolved: from the session's `session.json`, or
@@ -718,7 +740,7 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
 2. After changing anything in `python/` or `config/layout.yaml`, run
    `triangulate.py`; all 12 checks must pass. After changing `arm.py`,
    `arm_capture.py`, `capture_status.py` or the `config/arm*.yaml` files,
-   run `test_arm_capture.py`; all 115 must pass.
+   run `test_arm_capture.py`; all 186 must pass.
 3. `analysis/*.png` and `.npz` are regenerated and gitignored;
    `analysis/accuracy_study.json` is tracked. Record new numbers in FINDINGS.
 
@@ -834,6 +856,7 @@ ip -brief addr show enp6s0
 | `max_translation_mps` | 0.05 | speed constraint sent with every Cartesian move; `arm.py` refuses above 0.20 |
 | `max_rotation_dps` | 10.0 | refused above 30. Not used by joint moves |
 | `move_timeout_s` | 30.0 | wait for the end of a move; refused above 300 |
+| `cable_window_deg` | 170.0 | each continuous joint stays within its hub angle ± this, counted in turns; a joint move goes the long way round rather than leave it. Required, (0, 360] |
 | `joint_1_limit_deg` … `joint_6_limit_deg` | 1, 4, 6 `"continuous"`; 2 `[-129, 138]`; 3 `[-148, 152]`; 5 `[-120, 128]` | position limit of each actuator, deg, on the angle wrapped to ±180: `[low, high]` with −180 ≤ low < high ≤ 180, `"continuous"`, or null (unconfirmed). All six are required |
 
 **Joint limits** are copied from the Web App: Safeties → Actuators, "Joint
@@ -941,9 +964,15 @@ Cartesian planner, which refuses a path from or across a singularity
 (`ACTION_ABORT INVALID_PARAM`). A joint move doesn't.
 
 - `arm.py joints J1 J2 J3 J4 J5 J6`: deg, actuator order, 0–360 or ±180.
-  A continuous joint (`config/arm.yaml`) is sent the short way from its
-  measured angle, so the plan's `target` can show it outside 0–360 (e.g.
-  `370` for 10 from 350); the others are sent in 0–360. Same `--yes` rule, servoing check, wait and timeout as `goto`. The box
+  A continuous joint (`config/arm.yaml`) is sent as its measured angle plus
+  the change the cable window allows, so the plan's `target` can show it
+  outside 0–360 (e.g. `370` for 10 from 350); the others are sent in 0–360.
+  The `cable` line gives each continuous joint's value, `short way` or
+  `long way round: unwinding`, and its turns from the saved `hub` pose's
+  angle before and after. `arm.py` assumes the cable is unwound when it
+  starts (each joint within half a turn of the hub). A move that turns a
+  continuous joint over 180° is sent as waypoints (`waypoints  N moves`),
+  each checked against the box. Same `--yes` rule, servoing check, wait and timeout as `goto`. The box
   applies to the arm's forward kinematics of the angles. The plan prints
   that pose as `target FK`; `dry run` sends nothing. No speed constraint
   is sent: the arm picks the speed, the `change` line says `no speed
@@ -1247,18 +1276,36 @@ apply to both modes:
   target resets the count) ends the session without moving again.
 - **Ends** at capture's end condition, when nothing is left to visit, on
   `q`, on Ctrl-C, or when the status file is over 2 s old (capture died).
+  A capture reporting a stall is not dead: the session logs `capture
+  stalled: no frames from SERIAL ...; arm held, waiting up to 30 s`, holds
+  the arm still, and resumes on `capture recovered after N s`; if frames
+  don't come back within 30 s it ends with `capture stalled and did not
+  recover within 30 s`.
   A board out of view does not end it (above).
   Each of these returns to P0. After three aborts in a row, or a move
   timeout, it does **not** move again and prints the `arm.py goto` command
   back to P0.
+- **Cable winding.** The dry run's `cable` line names the reference (the
+  saved `hub` pose) and the window. Start with the cable hanging
+  unwrapped: the count assumes each continuous joint is within half a
+  turn of the hub at the start. Every joint move turns a continuous joint
+  the way that keeps it within ± `cable_window_deg` of the hub, printing
+  `cable J1 … (short way | long way round: unwinding, turns A -> B)`.
+  After a Cartesian pan has taken one outside, an `unwind` line comes
+  before the next pan: same pose, the joint turned back. If an unwind is
+  refused (the box) or aborts, the session ends `cable unwinding refused`
+  or `cable unwinding aborted` and returns to P0. The return to P0 ends
+  with net zero turns; the summary's `cable` line shows them.
 - **Records** `session_arm.json` in the capture's session folder, rewritten
   after every target: P0, every commanded pose (absolute and relative to P0
   in P0's tool frame), the joints before it and the IK solution it was
   validated with, the measured pose, the cell or variant it was for,
   capture's decision, timings (`ik_s`, `move_s`, `still_s`, `decide_s`),
   the aim error of each move, the board estimate, the cap, the mode, the
-  taught poses used, every `abandon` entry, and the summary. Schema
-  `panoptes.session_arm/6`.
+  taught poses used, every `abandon` entry, every capture stall
+  (`capture_stalls`), the cable state (`cable`, each pose's `cable_turns`,
+  every `unwind` entry), and the summary. Schema
+  `panoptes.session_arm/8`.
 
 **Limit: capture's bins are fixed, the planner's names are relative.**
 Capture bins distance by apparent square size against
@@ -1274,12 +1321,19 @@ band.
 
 **Procedure, one camera's intrinsics on the arm**
 
-Per camera, in this order. Validated on 33664, 2026-11-02 (FINDINGS §16).
+Per camera, in this order. Validated on 33664 (2026-11-02), 33276 and
+33661 (2026-11-07); progress per camera is in FINDINGS §16.
 `PATH` is `"$HOME"/panoptes-data/capture_status.json`.
 
 1. **Unmount** the camera from its rig position. Its mask (and any
    extrinsics) is invalid from here on.
-2. **Mount** it on the arm's camera bracket and connect it.
+2. **Mount** it on the arm's camera bracket and connect it. **Tie the cable
+   down at the bracket and leave slack through the wrist** before any
+   session: jog the wrist (joints 5 and 6) through its full range in the
+   Web App and check the cable never pulls tight. A pulled cable drops the
+   camera off the network mid-session (`no frames from SERIAL`, `state
+   Disconnected`, FINDINGS §11). With the arm at the `hub`, the cable must
+   hang without a wrap round the wrist: sessions count turns from there.
 3. **Unfold the arm.** `arm.py status`; jog every joint with a negative or
    small `limits` margin to mid-range with the Web App (steps 3–4 of
    **Procedure** above). Close the Web App.
@@ -1300,8 +1354,13 @@ Per camera, in this order. Validated on 33664, 2026-11-02 (FINDINGS §16).
    (FINDINGS §16). Quit capture with `q` when the session ends.
 7. **Fit:** `.venv/bin/python python/fit_intrinsics.py --write-camera <session_1> <session_2>`.
    Expect RMS under ~0.2 px and the two within fx/fy ~1 px, cx/cy ~3 px
-   (on 33664: ranges 0.5 / 0.4 / 1.0 / 0.5 px), then `wrote
-   config/intrinsics/<serial>.yaml`. Record the fit in FINDINGS §16.
+   (on 33664: ranges 0.5 / 0.4 / 1.0 / 0.5 px; on 33276: 0.5 / 0.4 / 0.6 /
+   1.0 px; on 33661: 0.6 / 0.7 / 0.6 / 0.3 px; on 33665: 0.6 / 0.6 / 1.5 /
+   1.1 px), then `wrote config/intrinsics/<serial>.yaml`. Add
+   `--status done`, or, if fx/fy spread more than ~1 px,
+   `--status "done, marginal (fx/fy N px); third session recommended"` and
+   run a third session. Record the fit in FINDINGS §16 and update its
+   per-camera progress table.
 8. **Remount** the camera at its rig position, filter in, ring at 15.
 9. **Re-learn masks** (§6): `src/07_mask/build/mask` with the volume empty;
    it learns, applies, verifies and saves. Check the verify table reads
@@ -1419,7 +1478,12 @@ Per camera, in this order. Validated on 33664, 2026-11-02 (FINDINGS §16).
   fault in the Kinova Web App. Clear it, return to P0 with the printed
   `arm.py goto` (dry run first), then restart.
 - **`capture died`.** The status file went stale; the session returned to
-  P0. Check capture's terminal.
+  P0. Check capture's terminal; `main loop blocked ... in STEP` there means
+  capture hung in a call.
+- **`capture stalled and did not recover within 30 s`.** Capture's camera
+  sent no frames and its restarts didn't bring them back; the session
+  returned to P0. Read capture's `no frames` / `restarting` lines, then see
+  §9 troubleshooting.
 - **`arm: cannot reach 192.168.1.10:10000 (timed out)`.** `192.168.1.11/24`
   is missing from `enp6s0`, or the arm is off or still booting. Check
   `ip -brief addr show enp6s0`, then `ping -c 3 192.168.1.10`.

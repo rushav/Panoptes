@@ -565,13 +565,26 @@ int main(int argc, char** argv) {
             while ((pos = j.find(k, pos)) != std::string::npos) { ++n; pos += k.size(); }
             return n;
         };
-        check(has("\"schema\": \"panoptes.capture_status/1\"") && has("\"frame\": 2,") &&
+        check(has("\"schema\": \"panoptes.capture_status/2\"") && has("\"frame\": 2,") &&
               has("\"corners\": {\"found\": 88, \"total\": 88, \"complete\": true}") &&
               has("\"markers\": {\"found\": 54, \"total\": 54}") &&
               has("\"verdict\": \"accept\"") && has("\"still\": true") &&
               has("\"accepted\": 1,") && has("\"complete\": false") &&
-              has("\"session_path\": null,"),
-              "fields: schema, frame, 88/88, 54/54, accept, still, accepted 1, session_path null");
+              has("\"session_path\": null,") && has("\"stalled\": null,"),
+              "fields: schema, frame, 88/88, 54/54, accept, still, accepted 1, session_path null, "
+              "stalled null");
+        {
+            StatusMeta sm = meta;
+            sm.stalled = true;
+            sm.stalledS = 6.04;
+            sm.restarts = 1;
+            sm.cameraState = "state Initialized  running \"yes\"";
+            std::string js = captureStatusJson(sm, S, a2, board, dec, ac, cov);
+            check(js.find("\"stalled\": {\"seconds\": 6.0, \"restarts\": 1, "
+                          "\"camera_state\": \"state Initialized  running \\\"yes\\\"\"},")
+                      != std::string::npos && js.find("\"frame\": 2,") != std::string::npos,
+                  "stalled: seconds, restarts, camera_state quoted; frame stays the last one");
+        }
         meta.sessionPath = "/data/s \"1\"";
         check(captureStatusJson(meta, S, a2, board, dec, ac, cov)
                   .find("\"session_path\": \"/data/s \\\"1\\\"\",") != std::string::npos,

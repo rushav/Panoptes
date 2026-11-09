@@ -14,13 +14,13 @@ Usage:
 
 import datetime, json, os, sys, tempfile, threading, time
 
-SCHEMA = "panoptes.capture_status/1"
+SCHEMA = "panoptes.capture_status/2"
 FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
                        "tests", "fixtures", "capture_status.json")
 RETRY_DELAY_S = 0.05
 
 REQUIRED = ("schema", "timestamp_utc", "t_ms", "frame", "camera_serial", "dry_run", "session_path",
-            "settings", "image", "markers", "corners", "fit_px", "board", "motion",
+            "stalled", "settings", "image", "markers", "corners", "fit_px", "board", "motion",
             "decision", "coverage", "pose_bins", "accepted", "complete")
 
 
@@ -65,10 +65,19 @@ def age_s(status, now=None):
     return (now - t).total_seconds()
 
 
+def stalled(status):
+    """The capture has had no frame for >= 1 s: {"seconds", "restarts",
+    "camera_state"}, else None. While stalled, the per-frame fields are the
+    last frame's and stale."""
+    return status["stalled"]
+
+
 def full_and_still(status):
-    """Every corner found and the still gate passed on this frame."""
+    """Every corner found and the still gate passed on this frame, and the
+    frame is current (not a stalled capture repeating its last one)."""
     c = status["corners"]
-    return bool(c["complete"] and c["found"] == c["total"] and status["motion"]["still"])
+    return bool(status["stalled"] is None and c["complete"] and c["found"] == c["total"]
+                and status["motion"]["still"])
 
 
 def describe(status):
@@ -79,6 +88,10 @@ def describe(status):
              f"square {b['square_px'] if b['square_px'] is None else round(b['square_px'], 2)} px  "
              f"roll {b['roll_deg'] if b['roll_deg'] is None else round(b['roll_deg'], 2)} deg")
     med = "-" if m["median_px"] is None else f"{m['median_px']:.3f}"
+    st = status["stalled"]
+    if st is not None:
+        return (f"STALLED {st['seconds']:.1f} s, {st['restarts']} restart attempts "
+                f"({st['camera_state']}); last frame {status['frame']}")
     return (f"frame {status['frame']}  corners {c['found']}/{c['total']}  {board}  "
             f"motion median {med} px  {'still' if m['still'] else 'NOT still'}  "
             f"{status['decision']['verdict']}")
@@ -149,6 +162,22 @@ def _self_test():
         with open(path, "w") as f:
             json.dump(not_still, f)
         check(not full_and_still(read_status(path)), "still false -> not full_and_still")
+
+        st = json.loads(whole)
+        st["stalled"] = {"seconds": 6.0, "restarts": 1, "camera_state": "state Initialized"}
+        with open(path, "w") as f:
+            json.dump(st, f)
+        r = read_status(path)
+        check(stalled(r)["restarts"] == 1 and not full_and_still(r) and "STALLED" in describe(r),
+              "stalled -> not full_and_still, described as STALLED")
+        del st["stalled"]
+        with open(path, "w") as f:
+            json.dump(st, f)
+        try:
+            read_status(path)
+            check(False, "no stalled field -> StatusError")
+        except StatusError as e:
+            check("stalled" in str(e), "no stalled field -> StatusError")
 
         try:
             read_status(os.path.join(d, "absent.json"))

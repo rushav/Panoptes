@@ -10,13 +10,16 @@ reprojection error says how well the model fits its own data; it says
 nothing about whether a fresh capture would land on the same numbers.
 
 Usage: python fit_intrinsics.py <session_dir> [<session_dir> ...]
-       python fit_intrinsics.py --write-camera [--force] <session_dir> [...]
+       python fit_intrinsics.py --write-camera [--force] [--status TEXT] <session_dir> [...]
 
 --write-camera: after the per-session fits, one joint Brown-Conrady fit over
 every frame of all the sessions, written to config/intrinsics/<serial>.yaml
 with its provenance. The sessions must share camera, image size, board and
 camera settings (read back). The cross-session range of the per-session
 fits is stored as the uncertainty; with one session there is none.
+--status TEXT is written verbatim as the file's `status` (e.g. "done", or
+"done, marginal (...)" when a range misses the ~1 px target); omitted, the
+file has no status line.
 """
 
 import argparse, datetime, sys, os, json
@@ -85,7 +88,7 @@ def _q(v):
     return json.dumps(str(v))
 
 
-def write_camera(sessions, results, kept, force=False, out_dir=CAMERA_DIR):
+def write_camera(sessions, results, kept, force=False, out_dir=CAMERA_DIR, status=None):
     """The joint fit over every frame of all sessions, written to
     out_dir/<serial>.yaml (cv2.FileStorage-readable). Returns (path, dict)."""
     why = []
@@ -134,6 +137,7 @@ def write_camera(sessions, results, kept, force=False, out_dir=CAMERA_DIR):
          f"views: {len(img)}",
          "uncertainty_px: { " + ", ".join(f"{p}: {rng[p]:.4f}" for p in PARAMS) + " }",
          f"uncertainty_kind: {_q(f'range of {len(results)} per-session fits' if len(results) > 1 else 'none: one session')}",
+         *([f"status: {_q(status)}"] if status else []),
          "sessions:"]
     for r in results:
         L.append(f"  - {{ name: {_q(r['session'])}, views: {r['views']}, rms_px: {r['rms']:.4f}, "
@@ -163,8 +167,13 @@ def main(argv):
     ap.add_argument("--write-camera", action="store_true",
                     help="also fit all sessions' frames jointly and write config/intrinsics/<serial>.yaml")
     ap.add_argument("--force", action="store_true", help="with --write-camera: replace an existing file")
+    ap.add_argument("--status", metavar="TEXT",
+                    help="with --write-camera: written verbatim as the file's status, "
+                         "e.g. 'done, marginal (fx/fy 1.4 px)'")
     args = ap.parse_args(argv)
     sessions = args.sessions
+    if args.status and not args.write_camera:
+        ap.error("--status needs --write-camera")
     if args.write_camera and not args.force:      # refuse before the slow fits
         serial = json.load(open(os.path.join(sessions[0], "session.json"))).get("camera_serial")
         if serial is not None and os.path.exists(os.path.join(CAMERA_DIR, f"{serial}.yaml")):
@@ -192,7 +201,7 @@ def main(argv):
         print("and it bounds how accurate the ground truth can be.")
 
     if args.write_camera:
-        path, j = write_camera(sessions, results, kept, args.force)
+        path, j = write_camera(sessions, results, kept, args.force, status=args.status)
         K = j["K"]
         print(f"\njoint fit, all sessions: {j['views']} views, RMS {j['rms']:.4f} px, "
               f"fx {K[0, 0]:.2f} fy {K[1, 1]:.2f} cx {K[0, 2]:.2f} cy {K[1, 2]:.2f}")

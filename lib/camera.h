@@ -137,6 +137,23 @@ public:
     // the blocking mask. For diagnostics; do not parse it.
     std::string diagnostics() const;
 
+    // ---- Stall diagnosis and recovery -----------------------------------
+    // One line of what the SDK says about this camera right now, for a
+    // stalled stream: State() (CameraStateText), IsCameraRunning(),
+    // IsDisconnected(), DataRate(), HasAvailableFrames(),
+    // AllocatedFrameCount(), and the last FrameID this process received.
+    // Every value is the SDK's belief, not a camera readback.
+    std::string stateLine() const;
+
+    // Stop and restart the stream, then send every setting in `s` as
+    // start() does. If the SDK no longer reports this camera Initialized
+    // (e.g. Disconnected), the handle is first re-acquired from CameraList
+    // by serial; if that serial is absent or not yet Initialized, nothing
+    // is sent and false is returned with the reason in *why. Does not
+    // wait for a frame or verify the settings: the caller does both,
+    // against frames that arrive afterwards. Unvalidated on a real stall.
+    bool restart(const Settings& s, std::string* why);
+
     // ---- Blocking mask -------------------------------------------------
     // Masked regions are dropped ON THE CAMERA, before blob detection: a
     // marker behind a mask does not exist as far as this camera is

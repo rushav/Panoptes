@@ -49,3 +49,12 @@ joint_3_limit_deg: [ -148.0, 152.0 ]
 joint_4_limit_deg: "continuous"
 joint_5_limit_deg: [ -120.0, 128.0 ]
 joint_6_limit_deg: "continuous"
+
+# Cable window, deg. The camera cable runs through the wrist, and the
+# continuous joints (above) wind it. Each continuous joint's cumulative angle
+# is counted in software from the saved hub pose's angle (the arm reports
+# angles in [0, 360) only), and every joint move turns it the way that keeps
+# it within reference +- cable_window_deg, the long way round if the short
+# way would leave. A session ends with net zero turns. Over 180 a target can
+# have two turns inside the window; under 180 some angles have none.
+cable_window_deg: 170.0

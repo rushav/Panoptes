@@ -121,7 +121,8 @@ with the frame. It refuses any size other than 1280×1024 rather than build a
 skewed image.
 
 All tools are single-threaded polling loops, and none registers SDK
-callbacks. `07_objdiag` sleeps 1 ms between empty polls, because a tight
+callbacks. (`04_capture` adds one thread that only watches the loop and
+prints if it stops turning; §5, stalls.) `07_objdiag` sleeps 1 ms between empty polls, because a tight
 `NextFrame()` loop can starve the SDK's receive thread (FINDINGS §14).
 
 ---
@@ -496,8 +497,55 @@ before, apart from `created`):
   reference settings
 - `autocapture_end`: why the session ended
 
+- `stalls`: one object per stall (below), if any
+
 Rejected frames are never written. `--auto-dry` runs the same loop with no
 `Session` at all, because the `Session` constructor creates the folder.
+
+**Stalls** (auto modes; `runAuto()` in `src/04_capture/main.cpp`,
+`Camera::stateLine()` and `Camera::restart()` in `lib/camera.cpp`). A
+grayscale stream can stop mid-session with no error (FINDINGS §11).
+`grab()` then returns nothing, and a loop that only waits writes no status
+and prints nothing, which looks like a hang. So the gap since the last frame
+is timed:
+
+- **1 s:** print `no frames from SERIAL for N s` with `stateLine()`
+  (`State()` via `CameraStateText`, `IsCameraRunning()`, `IsDisconnected()`,
+  `DataRate()`, `HasAvailableFrames()`, `AllocatedFrameCount()`, the last
+  `FrameID` received; all SDK beliefs, not camera readbacks). Again every
+  5 s.
+- **5 s, then every 5 s until frames return:** `restart()` with the
+  session's baseline settings (the start-up `Settings`, which `+ - [ ]`
+  changes are discarded for). If the SDK still reports the camera
+  `Initialized`: `Stop()`, 200 ms, drain the queue, then `start()` with
+  `applied` cleared, so every setting is sent in rule order (rate before
+  exposure). Otherwise the handle is re-acquired from `CameraList` by serial
+  first; a serial that is absent or not `Initialized` is a failed attempt,
+  retried in 5 s.
+- **First frame back:** `AutoCapture::forgetPrevious()`, so it cannot pass
+  the still gate against a frame from before the gap. After a restart the
+  readback is compared with the baseline on up to 10 frames (the SDK may
+  report a new value late); a mismatch prints a warning, and gate 4 already
+  refuses every frame until the readback matches the reference.
+- **Status file** during the stall: rewritten every 250 ms with `stalled`
+  set and the last frame's fields.
+- **`session.json` `stalls`**, one entry per stall: `last_frame_utc`,
+  `end_utc`, `gap_s`, `recovered`, `frames_before`, `accepted_before`,
+  `camera_state` (at 1 s), `restart_attempts` (each: `utc`, `after_s`,
+  `sent`, `why`, `state_before`, `state_after`), and `verify` (`asked`,
+  `readback`, `readback_matches`, `frames`, `note`; null without a restart).
+  A stall still open at the end is written with `recovered: false`.
+
+The session folder and every count carry on; nothing is renumbered.
+`LoopWatchdog` is the other half: a thread that prints `main loop blocked
+for N s in STEP` to stderr if the loop stops turning for 5 s, naming the
+step (`grab`, `detect`, `record`, `Camera::restart`, `waitKey`, ...). A stall
+inside an SDK call that never returns is not recoverable from the loop, but
+it is no longer silent. On hardware (FINDINGS §11) the stalls seen so far
+were the camera leaving the network (`Disconnected`, then absent from
+`CameraList`); re-acquiring it by serial brought it back once. Whether
+`Stop()`/`Start()` alone fixes a stall where the camera stays listed is
+**unvalidated**.
 
 **Live status file.** With `--status-file PATH`, `04_capture` rewrites one
 JSON file after every evaluated frame, so another process can follow the
@@ -511,17 +559,20 @@ failed write prints once and the capture carries on; the file goes stale,
 and readers treat a file older than 2 s as dead. The `schema` string is the
 version: change it whenever a field changes meaning or is removed.
 
-`panoptes.capture_status/1`. `null` means not measured on this frame.
+`panoptes.capture_status/2`. `null` means not measured on this frame. Schema
+1 (before 2026-11-07) has no `stalled`, and its file stops changing during
+a stall.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `schema` | string | `"panoptes.capture_status/1"` |
+| `schema` | string | `"panoptes.capture_status/2"` |
 | `timestamp_utc` | string | wall clock at write, `YYYY-MM-DDTHH:MM:SS.mmmZ` |
 | `t_ms` | number | monotonic ms since the capture started |
 | `frame` | int | frames evaluated so far, 1-based; strictly increasing |
 | `camera_serial` | int | |
 | `dry_run` | bool | `--auto-dry` (nothing is being written) |
 | `session_path` | string/null | capture's session folder; null in `--auto-dry` |
+| `stalled` | object/null | null while frames arrive. After 1 s without one: `seconds` since the last frame, `restarts` (attempts in this stall), `camera_state` (`Camera::stateLine()`). While set, `frame` and every per-frame field below are the last frame's, stale |
 | `settings` | object | `exposure`, `gain`, `intensity`, `frame_rate`, `ir_filter`: `Camera::actual()` |
 | `image` | object | `width`, `height`, px |
 | `markers` | object | `found`, `total` (54) |
@@ -541,7 +592,8 @@ version: change it whenever a field changes meaning or is removed.
 
 `still` is true only for verdicts past gate 2 (`redundant`, `too_soon`,
 `same_pose`, `settings_changed`, `accept`), never for `not_full`, `bad_fit`,
-`no_reference` or `moving`. The fixture `tests/fixtures/capture_status.json`
+`no_reference` or `moving`. `full_and_still()` in the reader is false while
+`stalled` is set. The fixture `tests/fixtures/capture_status.json`
 is written by the C++ test (`PANOPTES_STATUS_FIXTURE=PATH
 tests/build/test_autocapture`), so the Python reader is tested against the
 writer's actual output.
@@ -604,7 +656,9 @@ board spec and read-back camera settings, or nothing is written. The file
 holds K and dist, the joint RMS and view count, `uncertainty_px` (the range
 of the per-session fits, as the spread is the accuracy figure), each
 session's own fit, the board, the settings, the capture dates, the fit time
-and the OpenCV version. It is plain `%YAML:1.0` that `cv2.FileStorage`
+and the OpenCV version, plus `status` when `--status TEXT` is given (a
+verdict such as "done, marginal (...)", kept in the generated file so the
+file is refitted, never hand-edited). It is plain `%YAML:1.0` that `cv2.FileStorage`
 reads, written atomically. An existing file is refused before any fitting
 unless `--force`. Nothing reads it yet: the synthetic studies still take
 `camera_model` from `config/layout.yaml`.
@@ -614,8 +668,9 @@ subsets of one session. If resampling reproduces the across-session spread,
 pose sampling explains it and nothing physical changed. The principal point
 (cx, cy) is the weakest-determined parameter: shifting it can be largely
 compensated by shifting every board pose, so the optimiser sits in a shallow
-valley. That is the open question for camera 33661, whose cx spans 9.4 px
-across three sessions (FINDINGS §16, Open items #1).
+valley. It was the suspected cause of camera 33661's 9.4 px hand-held cx
+spread; two arm-driven sessions of that camera agree to 0.6 px (FINDINGS
+§16), so the spread came from the hand-held method, not the camera.
 
 ---
 
@@ -844,11 +899,11 @@ across a singularity (FINDINGS §20).
 - **Other checks:** six angles, the joint limits (below), servoing mode.
   Limited joints are sent in [0, 360), as the arm reports them. A continuous
   joint (`continuous_joints()`, from `config/arm.yaml`) is sent as the
-  measured angle plus the wrapped difference, so it turns at most 180°
-  whatever the target's representation. IK returns continuous joints
-  unwrapped (−444° seen, FINDINGS §20). `reach_joint_angles` accepts a
-  continuous joint above 360° and turns the short way (FINDINGS §20,
-  2026-11-02).
+  measured angle plus the change `CableTracker.plan()` picks (cable
+  winding, below); without a tracker, the wrapped difference, at most 180°.
+  IK returns continuous joints unwrapped (−444° seen, FINDINGS §20).
+  `reach_joint_angles` accepts a continuous joint above 360° and turns the
+  short way (FINDINGS §20, 2026-11-02).
 - **Speed.** `reach_joints(joints, lim, dps=None)` leaves the action's
   `constraint` field unset unless `dps` is given, as in Kinova's
   `102-Movement_high_level/01-move_angular_and_cartesian.py`; the arm then
@@ -868,6 +923,57 @@ across a singularity (FINDINGS §20).
   the median as `rate_dps`. Short moves spend more of their time
   accelerating, so the median tends to overestimate a long move's time. The
   wait, timeout and Ctrl-C are `_execute()`, shared with `reach_pose()`.
+
+**Cable winding** (`CableTracker`, `joint_waypoints()`, `run_joint_move()`
+in `arm.py`). The camera cable runs through the wrist, and the continuous
+joints (1, 4, 6) wind it: every move takes the short way, yet the turns add
+up over a session. The arm reports each joint in [0, 360), so the turns
+can't be read back; they are counted in software.
+
+- **Reference and count.** Each continuous joint's reference is the saved
+  `hub` pose's angle (`cable_reference()`; the measured joints if no hub is
+  saved). A tracker starts with each joint on its turn within 180° of the
+  reference: the cable is assumed unwound then. `observe()` adds the
+  measured change after every move. After a joint move it takes the change
+  within 180° of the commanded one, so a 170° move isn't read as −190°;
+  after a Cartesian move, the wrapped change (a pan turns a joint far less
+  than 180°).
+- **Choosing the turn.** `choose()` takes the short way if that ends
+  within reference ± `cable_window_deg` (`config/arm.yaml`, 170). If not,
+  it takes the turn inside the window nearest the current angle: the long
+  way round, unwinding. With a window under 180° a target can have no turn
+  inside it; it then takes the turn nearest the reference, flagged
+  `outside the window`. With a `goal`, it takes the turn nearest the goal.
+  `check_joint_move(..., cable=, goal=)` applies it and prints
+  `cable      J1 … (short way | long way round: unwinding, turns A -> B)`.
+- **Long moves as waypoints.** The arm has only been seen turning the short
+  way (FINDINGS §20). A long-way move sent in one piece might go the short
+  way, winding the cable further while the count said otherwise. So
+  `joint_waypoints()` splits any move that turns a continuous joint more
+  than 180° into `ceil(turn / CABLE_SEGMENT_DEG)` equal steps
+  (`CABLE_SEGMENT_DEG` is 150). A limited joint is interpolated on its
+  wrapped angle, the way it physically moves. `check_joint_move()` checks
+  every waypoint's FK against the box and estimates the time per waypoint.
+  `run_joint_move()` sends the steps, re-checking each from the measured
+  joints and sending it the short way, and calls `observe()` after each.
+  Waypoints make the box check stricter than a single joint move's, whose
+  arc is unchecked. A joint 1 unwind sweeps the whole arm round the base,
+  so it is usually refused.
+- **In a session** (`_Session`):
+  - The tracker is made at the start from P0's joints. The dry run's
+    `cable` line gives the reference and the starting turns.
+  - Every joint move goes through it.
+  - Before a Cartesian move (`move()`), a joint outside the window is
+    unwound first. `unwind()` makes an `unwind` entry: a joint move to the
+    measured joints with each continuous joint on its in-window turn, the
+    same pose. A refused or aborted unwind is a `SessionStop`.
+  - The return to P0 lands on the starting turns (`goal=cable.start`). A
+    Cartesian return (orbit mode) that ends a turn or more off is followed
+    by an unwind to them.
+  - Each log line ends `turns J1 +a J4 +b J6 +c`, turns from the reference.
+- `arm.py joints` / `goto-pose` and `session --from-pose` make a tracker
+  for the one move, assuming the cable unwound. They print its plan and,
+  after `--yes`, the turns.
 
 **Abort report.** `_execute()` copies every `ActionNotification` the
 callback receives for the action, not only the last. On `ACTION_ABORT`,
@@ -941,7 +1047,7 @@ sees the board at each. Orbit stays behind `--orbit`.
   joins the first family with a member within `FAMILY_DEG` (90°) of it on
   every limited joint (2, 3, 5: `joint_gap(..., lim)`, wrapped), or starts
   one. Continuous joints are left out: they define no configuration, and
-  `check_joint_move()` turns them the short way. `visit_order()` orders the
+  the cable tracker picks their turn (cable winding, above). `visit_order()` orders the
   viewpoints by capture band (`BAND_ORDER`: mid, then near, then far, by the
   predicted `capture_band`), family by family within a band, and serpentine
   within each family (`serpentine()`: the left-right index reverses each
@@ -1171,12 +1277,20 @@ recorded exactly like one held by hand. Mechanism, in `run_session()`:
 - **Endings.** `SessionStop`, from completion, an exhausted list, `q`
   (polled between moves; the terminal is in cbreak mode), Ctrl-C (raw, or
   `arm.ArmInterrupted` from a move, after `Base.Stop`) or a stale status
-  file, returns to P0. A stale file whose last word was `complete: true` is
+  file, returns to P0. A status with `stalled` set is not a dead capture:
+  `_Session.live()` calls `ride_out_stall()`, which holds (it is only called
+  between moves, so the arm is still) and polls until a fresh unstalled
+  status, for up to `STALL_WAIT_S` (30 s) on its own clock. A stale or
+  unreadable file during that wait counts as still stalled, since capture
+  may be inside `Camera::restart()`. No recovery in time is a `SessionStop`
+  (`capture stalled and did not recover within 30 s`), so it returns to P0.
+  Time held is added to `settle()`'s deadline, so a recovered stall doesn't
+  turn into a still timeout; it still counts in that entry's `still_s`. A stale file whose last word was `complete: true` is
   a normal end, since capture exits on completion. A fatal `arm.ArmError`
   (three consecutive aborts, or a move ending other than `ACTION_END` /
   `ACTION_ABORT`, such as a timeout) ends the session without another move.
   A board out of view never ends it; it abandons the viewpoint.
-- **Record.** `session_arm.json`, schema `panoptes.session_arm/6`, in the
+- **Record.** `session_arm.json`, schema `panoptes.session_arm/8`, in the
   capture's session folder (`session_path` from the status file), rewritten
   atomically after every target. It holds:
   - P0 and its joints;
@@ -1191,7 +1305,7 @@ recorded exactly like one held by hand. Mechanism, in `run_session()`:
   - the viewpoints or variants, with both bands (viewpoints also `orbit`, or
     `grid`, the joints `joints_deg` (taught at a corner, else IK), `family`,
     `ik_seed`, `taught` and `ik_failed`); `families.ik`, the `ik_summary()`;
-  - every target: kind (`variant`, `cell`, `back`, `hub`, `abandon`,
+  - every target: kind (`variant`, `cell`, `back`, `hub`, `abandon`, `unwind`,
     `return`), variant,
     cell, aim, outcome, the measured pose, capture's verdict, bin and
     accept, and the timers. Each commanded pose carries its absolute and
@@ -1201,17 +1315,31 @@ recorded exactly like one held by hand. Mechanism, in `run_session()`:
     entries carry `aim_error` (leg, centroid, error, miss) and any
     `aim_refit_px`. Aborted entries also carry `joints_after_abort_deg`. A
     joint move past a null limit adds its warning to the entry's `warnings`.
+    A joint move's commanded entry carries `cable` (per continuous joint:
+    `sent_deg`, `turns_before`, `turns_after`, `how`), and `waypoints` when
+    split. Every entry has `cable_turns` after it; `unwind` entries are the
+    inserted unwinding moves;
+  - `cable`: `reference_source`, `window_deg`, `reference_deg`,
+    `start_deg`, `cumulative_deg`, `turns` and `unwinds`, rewritten with
+    the record.
 
   The summary is stored too: `accepted` is capture's own count delta;
   `timing` is `timing_breakdown()`; `abandoned` and `reach_edge` count the
-  two kinds of `abandon` entry. Schema 1 (2026-10-28) lacks joints, IK,
+  two kinds of `abandon` entry; `capture_stalls` and `capture_stall_wait_s`
+  count the stalls in the top-level `capture_stalls` list (each: `start_s`,
+  `utc`, `frame`, `accepted`, `first_report`, `recovered`, `waited_s`,
+  `last_report`, and `frame_after` if it recovered); `cable_turns_end`,
+  `cable_net_turns` (end against start) and `cable_unwinds`. Schema 1 (2026-10-28) lacks joints, IK,
   `sent` and the timers; schema 2 lacks the board estimate, the cap and the
   aim errors; schema 3 lacks `mode` and `taught_poses`; schema 4 has the
   user guide's limits as `ik.joint_limits_deg` instead of
   `limits.joint_limits_deg`, no `warnings`, and a taught session's
   `joints_deg` is a joint-space blend, with no `families`, `hub` or `hub`
   entries; schema 5 has no `abandon` entries, no `abandoned` or
-  `reach_edge`, and visits taught viewpoints family by family.
+  `reach_edge`, and visits taught viewpoints family by family; schema 6 has
+  no `capture_stalls`, and a stalled capture ended the session as dead;
+  schema 7 has no `cable`, `cable_turns` or `unwind` entries, and turned
+  continuous joints the short way always.
 
 **Band limit (inferred, not measured).** `poseBin()` bands by
 `apparentSquarePx()`, which is size-in-image. A camera aimed so the board

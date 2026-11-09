@@ -249,10 +249,14 @@ class FakeStub:
 class Capture(threading.Thread):
     """Stand-in for 04_capture --auto: gates 1-3, 5, 6; coverage; bins; status file."""
 
-    def __init__(self, arm, path, dry, session_path=None, interval_ms=50, die_after=None):
+    def __init__(self, arm, path, dry, session_path=None, interval_ms=50, die_after=None,
+                 stall_at=None, stall_s=None):
         super().__init__(daemon=True)
         self.arm, self.path, self.dry, self.sp = arm, path, dry, session_path
         self.interval, self.die_after = interval_ms / 1000, die_after
+        # At frame stall_at, no frames for stall_s seconds (None: never again),
+        # with the status rewritten "stalled" as 04_capture does.
+        self.stall_at, self.stall_s = stall_at, stall_s
         self.frame, self.halt, self.prev_full = 0, False, False
         self.cells = np.zeros(30, int)
         self.bins = {f"{b}/{t}": 0 for b in ("near", "mid", "far")
@@ -264,6 +268,22 @@ class Capture(threading.Thread):
             self.frame += 1
             if self.die_after and self.frame > self.die_after:
                 return
+            if self.stall_at and self.frame == self.stall_at:
+                self.stall_at, self.frame = None, self.frame - 1
+                t = time.monotonic()
+                while not self.halt and (self.stall_s is None or time.monotonic() - t < self.stall_s):
+                    with open(self.path) as f:
+                        s = json.load(f)
+                    s["stalled"] = {"seconds": round(time.monotonic() - t + 1.0, 1),
+                                    "restarts": int((time.monotonic() - t + 1.0) // 5),
+                                    "camera_state": "state Initialized  running yes"}
+                    s["timestamp_utc"] = (datetime.datetime.now(datetime.timezone.utc)
+                                          .strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z")
+                    with open(self.path + ".tmp", "w") as f:
+                        f.write(json.dumps(s))
+                    os.replace(self.path + ".tmp", self.path)
+                    time.sleep(0.05)
+                continue
             uv, inside, (tx, ty, tilt), sq, roll = view(self.arm.pose)
             if getattr(self.arm, "hidden", False):  # one corner out, 87/88, as at 17:52 entry 51
                 inside = inside.copy()
@@ -373,6 +393,150 @@ def limit_config_checks(lim, d):
     check(refuse and "need 10" in refuse[0], "teach margin: joint 5 at +120, 8 deg from +128, refused")
 
 
+class WindArm:
+    """A stand-in for cable tests. Keeps the true, unwrapped joint angles and
+    reports them in [0, 360), as the arm does. reach_joints() turns each
+    continuous joint the SHORT way to the value sent, whatever its turn (the
+    worst case: a move over 180 deg sent in one piece would go the wrong
+    way). reach_pose() is a pan that turns joint 6 by `wind` deg. FK ignores
+    the continuous joints' turns, so the box never refuses."""
+
+    def __init__(self, joints, wind=40.0, cont=(1, 4, 6)):
+        self.q, self.wind, self.cont = [float(v) for v in joints], wind, cont
+        self.sent, self.turned, self.at_pan = [], [], []
+
+    def measured_joints(self):
+        return list(enumerate(v % 360.0 for v in self.q))
+
+    def forward_kinematics(self, q):
+        return (0.5, 0.0, 0.5, 90.0, 0.0, armlib.wrap180(q[5]))
+
+    def measured_pose(self):
+        return self.forward_kinematics(self.q)
+
+    def servoing_mode(self):
+        return "SINGLE_LEVEL_SERVOING"
+
+    def inverse_kinematics(self, pose, guess):
+        return list(guess)
+
+    def reach_joints(self, joints, lim, dps=None):
+        self.sent.append(list(joints))
+        turn = [armlib.wrap180(joints[i - 1] - self.q[i - 1] % 360.0) for i in self.cont]
+        self.turned.append(turn)
+        for i, d in zip(self.cont, turn):
+            self.q[i - 1] += d
+        for i in range(1, 7):
+            if i not in self.cont:
+                self.q[i - 1] = joints[i - 1] % 360.0
+        return "end", None
+
+    def reach_pose(self, target, lim):
+        self.at_pan.append(list(self.q))
+        self.q[5] += self.wind
+        return "end", None
+
+
+def cable_checks(lim):
+    """Cable winding: sequences that would wind joint 6 by +2 turns stay
+    inside the window and end with zero net turns."""
+    print("\ncable winding")
+    W = lim["cable_window_deg"]
+    check(W == 170.0, f"config/arm.yaml: cable_window_deg {W:g}")
+    hub = [347.7, 105.5, 118.5, 16.1, 257.9, 90.5]
+    c = armlib.CableTracker(lim, hub, hub)
+    check(c.cont == [1, 4, 6] and all(abs(t) < 1e-9 for t in c.turns().values()),
+          "tracker: continuous joints 1, 4, 6, zero turns at the reference")
+    c.cumulative[6] = 90.5 + 160.0
+    v, how = c.choose(6, 90.5 + 200.0)
+    check(abs(v - (90.5 - 160.0)) < 1e-6 and "unwinding" in how,
+          f"short way +40 would leave the window (+200): long way round to -160 ({how})")
+    v, how = c.choose(6, 90.5 + 150.0)
+    check(abs(v - (90.5 + 150.0)) < 1e-6 and how == "short way", "inside the window: the short way")
+    c.cumulative[6] = 90.5
+    v, how = c.choose(6, 90.5 + 175.0)
+    check(abs(v - (90.5 + 175.0)) < 1e-6 and "outside the window" in how,
+          f"a target 175 deg off has no turn within 170: nearest the reference ({how})")
+    c.cumulative[6] = 90.5 + 720.0 + 10.0
+    v, how = c.choose(6, 90.5 + 10.0, goal=90.5)
+    check(abs(v - (90.5 + 10.0)) < 1e-6 and "unwinding" in how, "goal: the turn nearest the goal")
+    c2 = armlib.CableTracker(lim, hub, hub)
+    q = list(hub)
+    q[5] = (hub[5] + 170.0) % 360.0
+    c2.observe(q, {6: 170.0})
+    q[5] = (q[5] + 170.0) % 360.0
+    c2.observe(q, {6: 170.0})
+    check(abs(c2.turns(6) - 340.0 / 360.0) < 1e-9,
+          "observe() with the commanded change counts two 170 deg moves as 340, not 340 - 360")
+    wps = armlib.joint_waypoints(lim, hub, [hub[0], hub[1], hub[2], hub[3], hub[4], hub[5] - 360.0])
+    check(len(wps) == 3 and all(abs(b[5] - a[5]) <= armlib.CABLE_SEGMENT_DEG
+                                for a, b in zip([hub] + wps, wps)),
+          f"a 360 deg turn goes as {len(wps)} waypoints of at most {armlib.CABLE_SEGMENT_DEG:g} deg")
+    lim_wp = armlib.joint_waypoints(lim, [0, 120.0, 0, 0, 0, 0], [0, 250.0, 0, 0, 0, 300.0])
+    check(len(lim_wp) == 2 and abs(lim_wp[0][1] - 5.0) < 1e-6,
+          f"a limited joint is interpolated on its wrapped angle: 120 -> 250 (-110) is via "
+          f"{lim_wp[0][1]:.1f}, not 185")
+
+    def session(arm):
+        ses = ac._Session(arm, lim, None, None, None, None, None, lines.append)
+        ses.p0 = arm.measured_pose()
+        ses.cable = armlib.CableTracker(lim, hub, [v for _, v in arm.measured_joints()])
+        return ses
+
+    # Cartesian pans, each turning joint 6 by +40: 18 of them would be +2 turns.
+    lines = []
+    arm = WindArm(hub)
+    ses = session(arm)
+    worst, agree = 0.0, True
+    for k in range(18):
+        e = ses.new_entry("cell", f"pan {k}")
+        ses.move(arm.measured_pose(), e)
+        worst = max(worst, abs(arm.q[5] - hub[5]))
+        agree &= abs(ses.cable.cumulative[6] - arm.q[5]) < 1e-6
+    before_pan = [abs(q[5] - hub[5]) for q in arm.at_pan]
+    check(len(before_pan) == 18 and max(before_pan) <= W + 1e-6 and worst <= W + arm.wind + 1e-6
+          and ses.unwinds == 2,
+          f"18 pans of +40 on joint 6 (+2 turns unchecked): every pan starts inside +-{W:g} "
+          f"(worst {max(before_pan):.0f}), {ses.unwinds} unwinding moves inserted (one per turn)")
+    check(agree, "the tracker's cumulative angle matches the true one after every pan")
+    turns = [t for w in arm.turned for t in w]
+    check(all(abs(t) <= armlib.CABLE_SEGMENT_DEG + 1e-6 for t in turns),
+          f"each unwinding goes as waypoints the short way: largest step {max(map(abs, turns)):.0f} deg")
+    check(any("unwind" in l and "turns J1" in l for l in lines),
+          "each logged line ends with the continuous joints' turns")
+    ses.unwind(goal=ses.cable.start, what="P0, net zero turns")
+    check(abs(arm.q[5] - hub[5]) < 1e-6 and abs(ses.cable.cumulative[6] - ses.cable.start[6]) < 1e-6,
+          f"the return ends with zero net turns: joint 6 {arm.q[5] - hub[5]:+.3f} deg from the start")
+
+    # Joint moves whose targets step joint 6 by +150 each, the short way
+    # every time: 5 of them, +750 unchecked, over +2 turns.
+    lines = []
+    arm = WindArm(hub)
+    ses = session(arm)
+    inside, agree, long_way = True, True, 0
+    for k in range(1, 6):
+        target = list(hub)
+        target[5] = (hub[5] + 150.0 * k) % 360.0
+        e = ses.new_entry("variant", f"step {k}")
+        check_ok = ses.move_joints(target, e)
+        inside &= check_ok and abs(arm.q[5] - hub[5]) <= W + 1e-6
+        agree &= abs(ses.cable.cumulative[6] - arm.q[5]) < 1e-6
+        long_way += any("unwinding" in p["how"] for p in e["commanded"][-1]["cable"])
+    turns = [t for w in arm.turned for t in w]
+    check(inside and agree and long_way >= 2,
+          f"joint targets +150 x 5 (+750 unchecked): joint 6 stays within +-{W:g} of the hub "
+          f"after every move; {long_way} went the long way round")
+    check(all(abs(t) <= 180.0 for t in turns) and len(arm.sent) > 5,
+          f"long-way moves are split: {len(arm.sent)} moves sent for 5 targets, "
+          f"largest step {max(map(abs, turns)):.0f} deg")
+    check(any("cable J1" in l and "long way round: unwinding" in l for l in lines),
+          "the chosen value and 'long way round: unwinding' are printed")
+    e = ses.new_entry("return", "P0")
+    ses.move_joints(hub, e, False, goal=ses.cable.start)
+    check(abs(arm.q[5] - hub[5]) < 1e-6 and all(abs(t) < 1e-6 for t in ses.cable.turns().values()),
+          f"the return lands on the start turn: joint 6 {arm.q[5] - hub[5]:+.3f} deg, net zero")
+
+
 def main():
     lim = armlib.load_limits()
     d = tempfile.mkdtemp(prefix="panoptes_session_")
@@ -405,6 +569,7 @@ def main():
 
     try:
         limit_config_checks(lim, d)
+        cable_checks(lim)
         # ------------------------------------------------ the recorded abort
         print("regression: tests/fixtures/session_arm_33664_20261028_185017.json")
         rec = json.load(open(FIXTURE))
@@ -562,8 +727,13 @@ def main():
         r = record()
         starts = [l for l in lines if ": " in l and " targets (" in l]
         n_first = int(starts[0].split(": ")[1].split()[0]) if starts else 0
-        check(r["schema"] == "panoptes.session_arm/6" and n_first <= 30 + 6,
+        check(r["schema"] == "panoptes.session_arm/8" and n_first <= 30 + 6,
               f"first variant plans {n_first} targets (30 empty cells + seekers), not 450")
+        check(r["cable"]["window_deg"] == lim["cable_window_deg"] and "turns" in r["cable"]
+              and all(abs(t) < 1e-6 for t in s["cable_net_turns"].values())
+              and all("cable_turns" in p for p in r["poses"]),
+              f"the record keeps the cable state and every pose's turns; net turns "
+              f"{s['cable_net_turns']}")
         check(all(c.get("ik_deg") for p in r["poses"] for c in p.get("commanded", [])),
               "every commanded pose records the IK solution it was validated with")
         check(r["cap"]["requested"] == 75 and r["board_estimate"]["base_m"] and
@@ -688,6 +858,29 @@ def main():
         s, e = session(a, Capture(a, st, dry=False, session_path=sess, die_after=150))
         check(s and s["end"].startswith("capture died") and a.calls[-1] == tuple(P0),
               "capture dies: back to P0")
+
+        clear()
+        a = FakeArm(P0)
+        s, e = session(a, Capture(a, st, dry=False, session_path=sess, stall_at=120, stall_s=1.0))
+        stalls = record().get("capture_stalls", [])
+        check(s and not s["end"].startswith("capture") and s["capture_stalls"] == 1 and
+              len(stalls) == 1 and stalls[0]["recovered"] and stalls[0]["waited_s"] >= 0.9,
+              f"capture stalls 1 s, recovers: session goes on (ended: {s and s['end']}), "
+              "stall in the record")
+
+        saved_wait, ac.STALL_WAIT_S = ac.STALL_WAIT_S, 0.5
+        try:
+            clear()
+            a = FakeArm(P0)
+            cp = Capture(a, st, dry=False, session_path=sess, stall_at=120)
+            s, e = session(a, cp)
+            cp.halt = True
+            stalls = record().get("capture_stalls", [])
+            check(s and s["end"].startswith("capture stalled and did not recover") and
+                  a.calls[-1] == tuple(P0) and len(stalls) == 1 and not stalls[0]["recovered"],
+                  "capture stalls for good: waits STALL_WAIT_S, then back to P0")
+        finally:
+            ac.STALL_WAIT_S = saved_wait
 
         class CtrlC(FakeArm):
             def reach_pose(self, target, lim):

@@ -2,6 +2,7 @@
 
 #include <cameralibrary.h>
 #include <chrono>
+#include <cstdio>
 #include <stdexcept>
 #include <thread>
 
@@ -63,6 +64,7 @@ struct Camera::Impl {
     bool applied = false;              // has apply() ever sent a full set
     Camera::FrameStats last;
     bool anyFrame = false;
+    int lastFrameId = -1;              // last FrameID received, kept across empty fetches
 
     // ONE fetch path for both modes. grab() and grabBlobs() previously
     // had separate copies of this, and the copies drifted: grabBlobs()
@@ -87,6 +89,7 @@ struct Camera::Impl {
         last.objects  = frame->ObjectCount();
         last.frameId  = frame->FrameID();
         anyFrame      = true;
+        lastFrameId   = last.frameId;
         return frame;
     }
 };
@@ -307,6 +310,55 @@ cv::Mat Camera::stagedMask() const {
     cv::Mat m(g.rows, g.cols, CV_8UC1, cv::Scalar(0));
     impl_->cam->GetBlockingMask(m.data, int(m.total()));
     return m;
+}
+
+std::string Camera::stateLine() const {
+    auto& c = *impl_->cam;
+    auto yn = [](bool b) { return b ? "yes" : "no"; };
+    char buf[320];
+    snprintf(buf, sizeof(buf),
+             "state %s  running %s  disconnected %s  data rate %.1f  frames queued %s  "
+             "allocated %zu  last frame id %d",
+             CameraStateText(c.State()), yn(c.IsCameraRunning()), yn(c.IsDisconnected()),
+             c.DataRate(), yn(c.HasAvailableFrames()), c.AllocatedFrameCount(),
+             impl_->lastFrameId);
+    return buf;
+}
+
+bool Camera::restart(const Settings& s, std::string* why) {
+    auto fail = [&](const std::string& w) { if (why) *why = w; return false; };
+
+    if (impl_->cam->State() != Initialized) {
+        // The handle may describe a device the SDK has dropped. Look the
+        // serial up again; keep the old handle until a new one is in hand,
+        // so stateLine() stays callable on failure.
+        std::shared_ptr<CameraLibrary::Camera> fresh;
+        CameraList list;
+        bool listed = false;
+        for (int i = 0; i < list.Count() && !fresh; ++i) {
+            if (list[i].Serial() != serial_) continue;
+            listed = true;
+            if (list[i].State() != Initialized)
+                return fail(std::string("listed but ") + CameraStateText(list[i].State()));
+            fresh = CameraManager::X().GetCamera(list[i].UID());
+        }
+        if (!listed) return fail("serial not in CameraList");
+        if (!fresh)  return fail("GetCamera returned nothing");
+        impl_->cam = fresh;
+    } else {
+        impl_->cam->Stop();
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    // Drop whatever is still queued from before the stop.
+    while (impl_->cam->NextFrame()) {}
+
+    // start() re-sends everything only when apply() believes nothing was
+    // ever sent (rule 10's diff would otherwise send nothing).
+    impl_->applied = false;
+    start(s);
+    if (why) why->clear();
+    return true;
 }
 
 std::string Camera::diagnostics() const {

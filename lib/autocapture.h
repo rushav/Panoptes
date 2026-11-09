@@ -165,6 +165,11 @@ public:
     Decision evaluate(const Detection& d, const Settings& actual, double tMs,
                       const Coverage& coverage);
 
+    // Drop the previous-frame reference, so the next frame cannot pass the
+    // still gate against a frame from before a gap in the stream (a
+    // stalled and restarted camera). Gate 4's reference is kept.
+    void forgetPrevious() { havePrev_ = false; }
+
     // Record an accepted frame: adds it to coverage and its pose bin.
     void commit(const Decision& dec, const Detection& d, Coverage& coverage);
 

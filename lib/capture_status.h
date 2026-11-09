@@ -20,7 +20,7 @@
 
 namespace mocap {
 
-inline const char* kStatusSchema = "panoptes.capture_status/1";
+inline const char* kStatusSchema = "panoptes.capture_status/2";
 
 struct StatusMeta {
     long   frame = 0;          // frames evaluated, 1-based
@@ -29,6 +29,14 @@ struct StatusMeta {
     int    serial = 0;
     bool   dryRun = true;
     std::string sessionPath;   // capture's session folder; empty in a dry run
+
+    // No frame for >= 1 s. While set, every per-frame field in the file
+    // (settings, corners, board, motion, decision) is from the last frame
+    // received, `frame`, and is stale; "stalled" says so.
+    bool   stalled = false;
+    double stalledS = 0;       // seconds since the last frame
+    int    restarts = 0;       // restart attempts in this stall
+    std::string cameraState;   // Camera::stateLine() at the last check
 };
 
 // "2026-10-28T18:03:12.345Z", now.

@@ -1,0 +1,28 @@
+%YAML:1.0
+---
+# Intrinsics of camera 33661. Written by python/fit_intrinsics.py --write-camera;
+# refit rather than edit. One joint Brown-Conrady fit over every frame of the
+# sessions below. uncertainty_px: the range of the per-session fits of the
+# same sessions (their spread is the repeatability, FINDINGS §16). Pixels;
+# dist is OpenCV's order k1 k2 p1 p2 k3.
+camera_serial: 33661
+model: "Brown-Conrady (5)"
+image_size: [ 1280, 1024 ]
+fx: 768.655324
+fy: 768.486259
+cx: 641.500694
+cy: 523.703794
+K: [ 768.655324, 0.000000, 641.500694, 0.000000, 768.486259, 523.703794, 0.000000, 0.000000, 1.000000 ]   # row-major 3 x 3
+dist: [ -0.09616626, 0.09008869, -0.00014329, 0.00064941, -0.02699320 ]
+rms_px: 0.172748
+views: 50
+uncertainty_px: { fx: 0.6081, fy: 0.6981, cx: 0.5998, cy: 0.3085 }
+uncertainty_kind: "range of 2 per-session fits"
+sessions:
+  - { name: "intrinsics_33661_20261107_170017", views: 27, rms_px: 0.1806, fx: 768.3587, fy: 768.1625, cx: 641.7278, cy: 523.7607 }
+  - { name: "intrinsics_33661_20261107_171252", views: 23, rms_px: 0.1627, fx: 768.9668, fy: 768.8606, cx: 641.1280, cy: 523.4522 }
+board: { name: "calibio_12x9_60mm", source: "config/charuco_board.yaml", rows: 9, cols: 12, square_mm: 60.0, marker_mm: 45.0, dictionary: "DICT_5X5_100", legacy_pattern: 0 }
+settings: { exposure: 8133, gain: 0, intensity: 15, frame_rate: 30, ir_filter: 1 }   # read back from the camera
+captured_date: "2026-11-07"
+fitted_utc: "2026-11-08T01:25:02Z"
+opencv_version: "5.0.0"

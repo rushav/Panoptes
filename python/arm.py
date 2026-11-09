@@ -33,6 +33,13 @@ Kortex cannot read them; the Web App shows them (FINDINGS §20). A joint move's 
 pose and every IK sample are refused past a confirmed limit (less a margin);
 past a null one they only warn, with the angle.
 
+CABLE. The camera cable runs through the wrist; the continuous joints wind
+it. A joint move counts each continuous joint's turns from the saved hub
+pose (CableTracker, assuming the cable unwound when arm.py starts) and turns
+it the way that stays within config/arm.yaml's cable_window_deg of the hub,
+the long way round if need be. A turn over 180 deg goes as waypoints, each
+sent the short way (joint_waypoints, run_joint_move). ARCHITECTURE §9.
+
 THE BOX. config/arm.yaml bounds the tool point in the base frame. Both the
 current pose and the target must be inside it before anything is sent.
 There is no flag to disable it or to point at another config file. A joint
@@ -177,6 +184,7 @@ def load_limits(path=LIMITS):
     lim["max_translation_mps"] = number("max_translation_mps", 0, TRANSLATION_CEILING_MPS)
     lim["max_rotation_dps"] = number("max_rotation_dps", 0, ROTATION_CEILING_DPS)
     lim["move_timeout_s"] = number("move_timeout_s", 0, TIMEOUT_CEILING_S)
+    lim["cable_window_deg"] = number("cable_window_deg", 0, 360.0)
 
     # {actuator: (low, high) deg, "continuous", or None (null: unconfirmed)}
     lim["joint_limits_deg"] = {}
@@ -227,6 +235,152 @@ def joint_limit_checks(lim, joints, margin=0.0):
 def continuous_joints(lim):
     """Actuator numbers whose limit in config/arm.yaml is "continuous"."""
     return {a for a, limit in lim["joint_limits_deg"].items() if limit == "continuous"}
+
+
+# ---------------------------------------------------------------- cable
+
+# The camera cable runs through the wrist, and a continuous joint winds it:
+# each move takes the short way, yet the turns add up over a session. The arm
+# reports every joint in [0, 360), so the turns can't be read back; they are
+# counted here. A continuous joint turning more than 180 deg in one move could
+# go either way, so such a move is sent as waypoints, each turning under
+# CABLE_SEGMENT_DEG, each the short way from the measured angle: the one
+# behaviour verified on the arm (FINDINGS §20). ARCHITECTURE §9.
+CABLE_SEGMENT_DEG = 150.0
+CABLE_HUB = "hub"         # the saved pose whose angles are each continuous joint's reference
+
+
+class CableTracker:
+    """Cumulative (unwrapped) angle of each continuous joint, deg, against a
+    reference (the hub's angle). Starts with every joint within 180 deg of
+    its reference: the cable is assumed unwound when this is made. observe()
+    integrates the measured change after every move; choose() and plan()
+    pick the turn of a joint target that stays within reference +-
+    lim["cable_window_deg"]."""
+
+    def __init__(self, lim, reference, joints_now):
+        self.window = lim["cable_window_deg"]
+        self.cont = sorted(continuous_joints(lim))
+        self.reference = {a: float(reference[a - 1]) for a in self.cont}
+        self.cumulative = {a: self.reference[a] + wrap180(joints_now[a - 1] - self.reference[a])
+                           for a in self.cont}
+        self.start = dict(self.cumulative)
+        self.measured = {a: float(joints_now[a - 1]) for a in self.cont}
+        self.last_plan = []
+
+    def observe(self, joints, expected=None):
+        """Add the measured change since the last reading. expected {actuator:
+        deg}: the commanded change, which decides the turn (the change taken
+        is the one within 180 deg of it); without it, the wrapped change, so
+        under 180 deg between readings."""
+        for a in self.cont:
+            d = joints[a - 1] - self.measured[a]
+            e = (expected or {}).get(a)
+            self.cumulative[a] += wrap180(d) if e is None else e + wrap180(d - e)
+            self.measured[a] = float(joints[a - 1])
+
+    def turns(self, a=None):
+        """Turns from the reference: {actuator: turns}, or one actuator's."""
+        if a is not None:
+            return (self.cumulative[a] - self.reference[a]) / 360.0
+        return {j: self.turns(j) for j in self.cont}
+
+    def fmt_turns(self):
+        return "turns " + " ".join(f"J{a} {t:+.2f}" for a, t in self.turns().items())
+
+    def outside(self):
+        """Continuous joints further than the window from their reference."""
+        return [a for a in self.cont
+                if abs(self.cumulative[a] - self.reference[a]) > self.window + 1e-6]
+
+    def choose(self, a, angle, goal=None):
+        """(cumulative target, how) for continuous joint a at angle (any
+        turn of it). goal: land on the turn nearest this cumulative angle
+        (a return with net zero turns). Otherwise the short way if it ends
+        inside the window, else the turn inside the window nearest the
+        current angle: the long way round, unwinding. A target with no turn
+        inside the window (window under 180) takes the turn nearest the
+        reference."""
+        ref, cum, w = self.reference[a], self.cumulative[a], self.window
+        short = cum + wrap180(angle - cum)
+        if goal is not None:
+            c = goal + wrap180(angle - goal)
+        elif abs(short - ref) <= w + 1e-6:
+            return short, "short way"
+        else:
+            near = ref + wrap180(angle - ref)
+            inside = [near + 360.0 * k for k in (-1, 0, 1) if abs(near + 360.0 * k - ref) <= w + 1e-6]
+            c = min(inside, key=lambda v: abs(v - cum)) if inside else near
+            if not inside:
+                return c, (f"outside the window: no turn of it within {w:g} deg of the "
+                           "reference; nearest the reference" +
+                           ("" if abs(c - short) < 1e-6 else ", long way round"))
+        if abs(c - short) < 1e-6:
+            return c, "short way"
+        return c, "long way round: unwinding"
+
+    def plan(self, joints, joints_now, goal=None):
+        """joints with each continuous joint replaced by the value to send:
+        the measured angle plus the chosen change. Reads joints_now first.
+        goal {actuator: cumulative deg} or None. Keeps last_plan, one dict
+        per continuous joint."""
+        self.observe(joints_now)
+        out, self.last_plan = list(joints), []
+        for a in self.cont:
+            c, how = self.choose(a, joints[a - 1], None if goal is None else goal[a])
+            out[a - 1] = joints_now[a - 1] + (c - self.cumulative[a])
+            self.last_plan.append({"joint": a, "sent_deg": round(out[a - 1], 3),
+                                   "turns_before": round(self.turns(a), 3),
+                                   "turns_after": round((c - self.reference[a]) / 360.0, 3),
+                                   "how": how})
+        return out
+
+    def fmt_plan(self):
+        return "  ".join(f"J{p['joint']} {p['sent_deg']:.2f} ({p['how']}, turns "
+                         f"{p['turns_before']:+.2f} -> {p['turns_after']:+.2f})"
+                         for p in self.last_plan)
+
+    def state(self):
+        """For a session record."""
+        r = lambda d: {str(a): round(v, 3) for a, v in d.items()}
+        return {"window_deg": self.window, "reference_deg": r(self.reference),
+                "start_deg": r(self.start), "cumulative_deg": r(self.cumulative),
+                "turns": r(self.turns())}
+
+
+def cable_reference(joints_now, poses_path=None):
+    """(reference joints, source): the saved hub pose's angles, else joints_now."""
+    hub = load_poses(poses_path).get(CABLE_HUB)
+    if hub is not None and len(hub["joints_deg"]) == len(joints_now):
+        return hub["joints_deg"], f"saved pose {CABLE_HUB}"
+    return list(joints_now), "the measured joints (no saved hub pose)"
+
+
+def joint_waypoints(lim, now, joints):
+    """The moves that make up one joint move from now to joints (as sent):
+    just joints, unless a continuous joint turns over 180 deg; then
+    ceil(turn / CABLE_SEGMENT_DEG) equal steps, a limited joint interpolated
+    on its wrapped angle (the way it physically moves)."""
+    cont = continuous_joints(lim)
+    turn = max((abs(joints[i - 1] - now[i - 1]) for i in cont if i <= len(joints)), default=0.0)
+    if turn <= 180.0:
+        return [list(joints)]
+    n = math.ceil(turn / CABLE_SEGMENT_DEG)
+    out = []
+    for k in range(1, n):
+        f = k / n
+        out.append([a + f * (b - a) if i in cont else
+                    (wrap180(a) + f * (wrap180(b) - wrap180(a))) % 360.0
+                    for i, (a, b) in enumerate(zip(now, joints), 1)])
+    return out + [list(joints)]
+
+
+def joint_changes(lim, now, joints):
+    """Per joint, the change a move makes: continuous joints as sent, limited
+    ones wrapped."""
+    cont = continuous_joints(lim)
+    return [b - a if i in cont else wrap180(b - a)
+            for i, (a, b) in enumerate(zip(now, joints), 1)]
 
 
 def joint_margin_deg(limit, angle):
@@ -752,7 +906,7 @@ def check_move(arm, lim, current, target, show=True):
 
 
 def check_joint_move(arm, lim, current, joints_now, joints, show=True, dps=None,
-                     rate_dps=None, warn=print):
+                     rate_dps=None, warn=print, cable=None, goal=None):
     """
     Every check made before a joint move is sent; the only path to
     reach_joints(). current and joints_now are the measured pose and joints;
@@ -762,10 +916,14 @@ def check_joint_move(arm, lim, current, joints_now, joints, show=True, dps=None,
     over dps, or else over rate_dps, a measured rate (largest joint change
     over ExecuteAction-to-ACTION_END time) of earlier moves; with neither
     there is no estimate and no timeout check. Otherwise as check_move().
-    Returns (joints as sent: continuous joints within 180 of the measured
-    angle, the others in [0, 360); FK pose; dps). A target past a confirmed
-    joint limit is refused; an unconfirmed one is passed to warn (always,
-    even with show=False).
+    Returns (joints as sent; FK pose; dps). Limited joints are sent in
+    [0, 360). Continuous joints: with cable (a CableTracker), the turn
+    cable.plan() picks (goal: its goal), which may be the long way round;
+    without, within 180 of the measured angle. A move turning a continuous
+    joint over 180 deg is sent as joint_waypoints(); each waypoint's FK must
+    be in the box too, and the time estimate is per waypoint. A target past
+    a confirmed joint limit is refused; an unconfirmed one is passed to warn
+    (always, even with show=False).
     """
     if dps is not None and not 0 < dps <= ROTATION_CEILING_DPS:
         raise ArmError(f"REFUSED, nothing sent:\n  joint speed constraint {dps:g} deg/s "
@@ -776,7 +934,9 @@ def check_joint_move(arm, lim, current, joints_now, joints, show=True, dps=None,
     # Continuous joints: the shortest way from the measured angle (may leave
     # [0, 360)); the others in [0, 360), as the arm reports them.
     cont = continuous_joints(lim)
-    joints = [now + wrap180(v - now) if i in cont else v % 360.0
+    if cable is not None:
+        joints = cable.plan(joints, joints_now, goal)
+    joints = [(v if cable is not None else now + wrap180(v - now)) if i in cont else v % 360.0
               for i, (v, now) in enumerate(zip(joints, joints_now), 1)]
     refuse, warnings = joint_limit_checks(lim, joints)
     refuse = [f"target: {r}" for r in refuse]
@@ -786,12 +946,18 @@ def check_joint_move(arm, lim, current, joints_now, joints, show=True, dps=None,
         raise ArmError("REFUSED, nothing sent:\n  " + "\n  ".join(refuse))
 
     target = arm.forward_kinematics(joints)
-    rot = max(abs(v) for v in joint_error(joints_now, joints))
+    waypoints = joint_waypoints(lim, joints_now, joints)
+    rot = max(abs(v) for v in joint_changes(lim, joints_now, joints))
     rate = dps or rate_dps
-    est = rot / rate if rate else None
+    est = rot / len(waypoints) / rate if rate else None
     if show:
         print(f"current    {fmt_joints(joints_now)}")
         print(f"target     {fmt_joints(joints)}")
+        if cable is not None:
+            print(f"cable      {cable.fmt_plan()}")
+        if len(waypoints) > 1:
+            print(f"waypoints  {len(waypoints)} moves, a continuous joint turns {rot:.1f} deg "
+                  f"(over 180); each waypoint is sent the short way and checked again")
         print(f"current    {fmt_pose(current)}")
         print(f"target FK  {fmt_pose(target)}")
         if dps:
@@ -803,7 +969,8 @@ def check_joint_move(arm, lim, current, joints_now, joints, show=True, dps=None,
         else:
             when = (f"about {est:.1f} s at {rate:.1f} deg/s"
                     + ("" if dps else " (measured)"))
-        print(f"change     up to {rot:.2f} deg on a joint; {speed}; {when} "
+        print(f"change     up to {rot:.2f} deg on a joint; {speed}; {when}"
+              + (" per waypoint" if est is not None and len(waypoints) > 1 else "") + " "
               f"(timeout {lim['move_timeout_s']:g} s)")
         print(f"box        x [{lim['x_min']:+.3f}, {lim['x_max']:+.3f}]  "
               f"y [{lim['y_min']:+.3f}, {lim['y_max']:+.3f}]  "
@@ -812,6 +979,9 @@ def check_joint_move(arm, lim, current, joints_now, joints, show=True, dps=None,
 
     refuse = [f"current pose: {p}" for p in outside_box(lim, current)]
     refuse += [f"target: {p}" for p in outside_box(lim, target)]
+    for k, wp in enumerate(waypoints[:-1], 1):
+        refuse += [f"waypoint {k}/{len(waypoints)}: {p}"
+                   for p in outside_box(lim, arm.forward_kinematics(wp))]
     if est is not None and est > lim["move_timeout_s"]:
         refuse.append(f"estimated {est:.1f} s exceeds move_timeout_s; split the move")
     mode = arm.servoing_mode()
@@ -822,6 +992,34 @@ def check_joint_move(arm, lim, current, joints_now, joints, show=True, dps=None,
     if show:
         print("checks     current and target inside the box; servoing SINGLE_LEVEL_SERVOING")
     return joints, target, dps
+
+
+def run_joint_move(arm, lim, now, joints, dps=None, cable=None, each=None):
+    """Send a joint move that check_joint_move() passed (joints as it
+    returned them, from the measured joints now): one reach_joints(), or one
+    per joint_waypoints() step, each checked again from the measured joints
+    and sent the short way. With cable, observe() after every move, with the
+    commanded change. each(k, n, before, sent, result, reason, took_s) after
+    every move. Returns the last (result, reason); stops at the first move
+    that doesn't end."""
+    steps = joint_waypoints(lim, now, joints)
+    result, reason = "end", None
+    for k, wp in enumerate(steps, 1):
+        before = [v for _, v in arm.measured_joints()] if k > 1 else list(now)
+        q = wp if len(steps) == 1 else check_joint_move(
+            arm, lim, arm.measured_pose(), before, wp, show=False, dps=dps, warn=lambda w: None)[0]
+        t = time.monotonic()
+        result, reason = arm.reach_joints(q, lim, dps)
+        took = time.monotonic() - t
+        if cable is not None:
+            after = [v for _, v in arm.measured_joints()]
+            cable.observe(after, {a: q[a - 1] - before[a - 1] for a in cable.cont}
+                          if result == "end" else None)
+        if each:
+            each(k, len(steps), before, q, result, reason, took)
+        if result != "end":
+            break
+    return result, reason
 
 
 def _motion(args, make_target):
@@ -864,7 +1062,11 @@ def _joint_motion(args, joints):
     with _connect(args) as arm:
         current = arm.measured_pose()
         now = [v for _, v in arm.measured_joints()]
-        joints, target, _ = check_joint_move(arm, lim, current, now, joints, dps=dps)
+        ref, source = cable_reference(now)
+        cable = CableTracker(lim, ref, now)
+        print(f"cable      reference {source}; window +-{cable.window:g} deg; assumed unwound "
+              f"now: {cable.fmt_turns()}")
+        joints, target, _ = check_joint_move(arm, lim, current, now, joints, dps=dps, cable=cable)
         print("sent as    " + "  ".join(f"id {i}: {v:.3f}" for i, v in enumerate(joints))
               + "  (joint_identifier: value deg)")
 
@@ -873,14 +1075,19 @@ def _joint_motion(args, joints):
             return
 
         print("\nsending reach_joint_angles ...")
-        result, reason = arm.reach_joints(joints, lim, dps)
+        took = []
+        result, reason = run_joint_move(
+            arm, lim, now, joints, dps, cable,
+            each=lambda k, n, b, q, r, why, s: took.append(arm.last_move_s) or
+            (n > 1 and print(f"waypoint   {k}/{n}: {r.upper()}")))
         err = joint_error(joints, [v for _, v in arm.measured_joints()])
         _report(target, arm.measured_pose(), result, reason, lim, arm.last_abort)
         print(f"joints     largest error {max(abs(v) for v in err):.3f} deg")
-        rot = max(abs(v) for v in joint_error(now, joints))
-        if arm.last_move_s:
-            print(f"duration   {arm.last_move_s:.2f} s for up to {rot:.2f} deg on a joint "
-                  f"({rot / arm.last_move_s:.2f} deg/s average)")
+        print(f"cable      {cable.fmt_turns()}")
+        rot = max(abs(v) for v in joint_changes(lim, now, joints))
+        if all(took):
+            print(f"duration   {sum(took):.2f} s for up to {rot:.2f} deg on a joint "
+                  f"({rot / sum(took):.2f} deg/s average)")
 
 
 def move(args):
