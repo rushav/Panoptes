@@ -18,11 +18,12 @@ rms_px: 0.172748
 views: 50
 uncertainty_px: { fx: 0.6081, fy: 0.6981, cx: 0.5998, cy: 0.3085 }
 uncertainty_kind: "range of 2 per-session fits"
+status: "done"
 sessions:
   - { name: "intrinsics_33661_20261107_170017", views: 27, rms_px: 0.1806, fx: 768.3587, fy: 768.1625, cx: 641.7278, cy: 523.7607 }
   - { name: "intrinsics_33661_20261107_171252", views: 23, rms_px: 0.1627, fx: 768.9668, fy: 768.8606, cx: 641.1280, cy: 523.4522 }
 board: { name: "calibio_12x9_60mm", source: "config/charuco_board.yaml", rows: 9, cols: 12, square_mm: 60.0, marker_mm: 45.0, dictionary: "DICT_5X5_100", legacy_pattern: 0 }
 settings: { exposure: 8133, gain: 0, intensity: 15, frame_rate: 30, ir_filter: 1 }   # read back from the camera
 captured_date: "2026-11-07"
-fitted_utc: "2026-11-08T01:25:02Z"
+fitted_utc: "2026-11-10T23:12:36Z"
 opencv_version: "5.0.0"

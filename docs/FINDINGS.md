@@ -34,8 +34,17 @@ this repo.
 - **Arm-driven intrinsics, 33276:** 3 sessions (26, 27, 17 views), RMS 0.13–0.15 px; mean fx 768.27, fy 767.92, cx 634.26, cy 514.62 px; range fx 0.50, fy 0.42, cx 0.60, cy 0.99 px; gain 0, intensity 15, exposure 8133 µs; joint fit over all 70 views: fx 768.25, fy 767.93, cx 634.37, cy 514.78 px, RMS 0.143 px, in `config/intrinsics/33276.yaml`; 2026-11-07, `intrinsics_33276_20261107_154811` / `_160123` / `_153730`, `python/fit_intrinsics.py`. §16
 - **Arm-driven intrinsics, 33661:** 2 sessions (27, 23 views), RMS 0.16–0.18 px; mean fx 768.66, fy 768.51, cx 641.43, cy 523.61 px; range fx 0.61, fy 0.70, cx 0.60, cy 0.31 px; gain 0, intensity 15, exposure 8133 µs; joint fit over all 50 views: fx 768.66, fy 768.49, cx 641.50, cy 523.70 px, RMS 0.173 px, in `config/intrinsics/33661.yaml`; 2026-11-07, `intrinsics_33661_20261107_170017` / `_171252`, `python/fit_intrinsics.py`. §16
 - **Arm-driven intrinsics, 33665:** 2 sessions (25, 15 views), RMS 0.14–0.16 px; mean fx 766.97, fy 766.69, cx 622.27, cy 517.68 px; range fx 0.57, fy 0.56, cx 1.54, cy 1.12 px; gain 0, intensity 15, exposure 8133 µs; joint fit over all 40 views: fx 766.94, fy 766.67, cx 622.47, cy 517.60 px, RMS 0.153 px, in `config/intrinsics/33665.yaml`. The earlier `_20261107_175417` (25 views, fx 767.52, fy 767.32) was left out: its fy is 0.63 px from the pair's mean, outside the pair's 0.56 px range. 2026-11-09, `intrinsics_33665_20261109_143810` / `_144726`, `python/fit_intrinsics.py`. §16
-- **Arm-driven intrinsics, 33275 (marginal):** 2 sessions (26, 26 views), RMS 0.16–0.18 px; mean fx 765.62, fy 765.44, cx 630.99, cy 521.38 px; range fx 1.40, fy 1.43, cx 0.33, cy 0.22 px. fx/fy miss the ~1 px target that the other cameras met; a third session is recommended. Gain 0, intensity 15, exposure 8133 µs; joint fit over all 52 views: fx 765.66, fy 765.47, cx 630.97, cy 521.39 px, RMS 0.170 px, in `config/intrinsics/33275.yaml` (`status` marginal); 2026-11-09, `intrinsics_33275_20261109_150317` / `_151252`, `python/fit_intrinsics.py`. §16
-- **Unit-to-unit intrinsics:** 33664 against 33276, mean fx 771.83 against 768.27 px (3.56 px), cx 629.49 against 634.26 px (4.77 px), about 7× the within-camera fx range (~0.5 px) and 5–8× the cx ranges (0.60–1.03 px): per-camera intrinsics are required. With 33661 (fx 768.66, cx 641.43 px) the three units span fx 3.56, cx 11.94, cy 9.00 px. With 33665 and 33275, five units (of 10) span fx 765.6–771.8 px (6.21), cx 622.3–641.4 px (19.16), cy 514.6–523.6 px (8.99), means of the per-session fits. §16
+- **Arm-driven intrinsics, 33275 (marginal):** 2 sessions (26, 26 views), RMS 0.16–0.18 px; mean fx 765.62, fy 765.44, cx 630.99, cy 521.38 px; range fx 1.40, fy 1.43, cx 0.33, cy 0.22 px. fx/fy miss the ~1 px target; marginal, accepted 2026-11-10 (decision below). Gain 0, intensity 15, exposure 8133 µs; joint fit over all 52 views: fx 765.66, fy 765.47, cx 630.97, cy 521.39 px, RMS 0.170 px, in `config/intrinsics/33275.yaml` (`status` marginal); 2026-11-09, `intrinsics_33275_20261109_150317` / `_151252`, `python/fit_intrinsics.py`. §16
+- **Arm-driven intrinsics, last five cameras, 2026-11-10:** 2 sessions each, gain 0, intensity 15, exposure 8133 µs, every session 0 cells remaining and 0 capture stalls; per-session means and ranges, then the joint fit in `config/intrinsics/<serial>.yaml`. §16
+  - 33277 (21, 22 views; **marginal**, fy): mean fx 768.47, fy 768.42, cx 638.93, cy 516.20; range fx 0.87, **fy 1.26**, cx 0.79, cy 1.55; joint fx 768.92, fy 768.78, cx 639.11, cy 516.57, RMS 0.159. `_131315` / `_132556`.
+  - 33660 (21, 19; **marginal**, fx/fy): mean fx 771.88, fy 771.78, cx 646.86, cy 516.36; range **fx 1.23, fy 1.34**, cx 1.04, cy 0.31; joint fx 771.83, fy 771.72, cx 646.90, cy 516.46, RMS 0.166. `_133847` / `_134538`.
+  - 33662 (21, 22): mean fx 769.16, fy 768.89, cx 630.78, cy 526.61; range fx 0.89, fy 0.90, cx 1.39, cy 1.84; joint fx 769.07, fy 768.83, cx 630.91, cy 526.77, RMS 0.162. `_135401` / `_140205`.
+  - 33659 (23, 18; **marginal**, fx/fy): mean fx 772.04, fy 771.90, cx 630.54, cy 516.06; range **fx 1.07, fy 1.13**, cx 1.08, cy 1.15; joint fx 772.20, fy 772.07, cx 630.65, cy 515.98, RMS 0.166. `_142951` / `_143928`.
+  - 33663 (24, 24): mean fx 768.62, fy 768.44, cx 635.28, cy 514.83; range fx 0.88, fy 0.95, cx 0.54, cy 0.26; joint fx 768.59, fy 768.40, cx 635.33, cy 514.95, RMS 0.154. `_144844` / `_145755`.
+- **Intrinsics, all ten cameras (10/10):** marginal if the fx or fy range is over 1.0 px, or cx or cy over 3.0 px. Marginal: 33275, 33660, 33277, 33659, all on fx/fy; none on cx/cy. The rule is in each file's `status`. §16
+- **Unit-to-unit intrinsics, ten cameras:** fx spans 765.6–772.0 px (means of the per-session fits; 765.66–772.20 px in the joint fits), 0.8 %, against within-camera fx/fy repeatability of 0.39–1.43 px: per-camera intrinsics are required. cx/cy repeatability is ≤ 1.84 px on every camera, against hand-held 33661's cx 2.51 px (same-day pair) to 9.40 px (three sessions). §16
+- **Fewer views does not mean a wider range:** each camera's fx/fy range against its smallest session's view count, ten cameras: Pearson r +0.25 (fx) / +0.22 (fy), Spearman ρ +0.19 / +0.22. The sign is the opposite of the hypothesis and the correlation is weak (|r| < 0.63, the 5 % critical value at n = 10). The two-session cameras alone (n = 8): r +0.39 for both. §16
+- **Intrinsics decision, 2026-11-10:** all ten accepted, marginal ones included. Extrinsics will first hold them fixed, then test refining focal length against the wand-length residual. A camera is recalibrated only if it stands out there. §16, Open items #27
 - **Distortion model:** Brown-Conrady (5); training RMS BC 0.3756 / rational 0.3746 / fisheye 181 px on `intrinsics_33661_20260924_155048`, `python/compare_models.py`; held-out numbers not recorded. §16
 - **Coverage beats RMS:** centre-clustered set (18/30 empty) RMS 0.262 px vs edge-covered 0.223 px, yet edge undistortion error 55.96 vs 26.82 px; synthetic, `solve_intrinsics.py` (removed), date not recorded. §7
 - **4.6 mislabelling:** old 9×6 board, 40/40 corners with homography residual 200–234 px; 2026-10-27, frames of `intrinsics_33661_20260925_103705`. §9
@@ -538,22 +547,30 @@ cameras at the `mask.yaml` settings, §13):
 
 ## 16. Intrinsics: 33661 hand-held; per-camera arm-driven
 
-**Per-camera progress: 5 of 10.** Arm-driven intrinsics, one joint fit per
-camera in `config/intrinsics/<serial>.yaml` (RUNBOOK §13, per-camera
-procedure). Target: fx/fy ranges within ~1 px.
+**Per-camera progress: 10 of 10, accepted 2026-11-10.** Arm-driven
+intrinsics, one joint fit per camera in `config/intrinsics/<serial>.yaml`
+(RUNBOOK §13, per-camera procedure). **Flag rule:** marginal if the fx or
+fy range is over 1.0 px, or cx or cy over 3.0 px. It is applied to all ten
+and written as each file's `status`. Ranges are over the sessions in the
+file. "Smallest" is the view count of the camera's smallest session.
 
-| Serial | Intrinsics | Date | Sessions | fx range (px) | cx range (px) |
-|---|---|---|---:|---:|---:|
-| 33664 | yes | 2026-11-02 | 3 | 0.50 | 1.03 |
-| 33276 | yes | 2026-11-07 | 3 | 0.50 | 0.60 |
-| 33661 | yes | 2026-11-07 | 2 | 0.61 | 0.60 |
-| 33665 | yes | 2026-11-09 | 2 | 0.57 | 1.54 |
-| 33275 | yes, **marginal** (fx/fy 1.4 px; third session recommended) | 2026-11-09 | 2 | **1.40** | 0.33 |
-| 33277 | no | | | | |
-| 33659 | no | | | | |
-| 33660 | no | | | | |
-| 33662 | no | | | | |
-| 33663 | no | | | | |
+| Serial | Status | Date | Sessions | Views (smallest) | fx range | fy range | cx range | cy range |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| 33664 | done | 2026-11-02 | 3 | 80 (25) | 0.50 | 0.39 | 1.03 | 0.47 |
+| 33276 | done | 2026-11-07 | 3 | 70 (17) | 0.50 | 0.42 | 0.60 | 0.99 |
+| 33661 | done | 2026-11-07 | 2 | 50 (23) | 0.61 | 0.70 | 0.60 | 0.31 |
+| 33665 | done | 2026-11-09 | 2 | 40 (15) | 0.57 | 0.56 | 1.54 | 1.12 |
+| 33275 | **marginal** (fx/fy 1.4 px) | 2026-11-09 | 2 | 52 (26) | **1.40** | **1.43** | 0.33 | 0.22 |
+| 33277 | **marginal** (fy 1.3 px) | 2026-11-10 | 2 | 43 (21) | 0.87 | **1.26** | 0.79 | 1.55 |
+| 33660 | **marginal** (fx/fy 1.3 px) | 2026-11-10 | 2 | 40 (19) | **1.23** | **1.34** | 1.04 | 0.31 |
+| 33662 | done | 2026-11-10 | 2 | 43 (21) | 0.89 | 0.90 | 1.39 | 1.84 |
+| 33659 | **marginal** (fx/fy 1.1 px) | 2026-11-10 | 2 | 41 (18) | **1.07** | **1.13** | 1.08 | 1.15 |
+| 33663 | done | 2026-11-10 | 2 | 48 (24) | 0.88 | 0.95 | 0.54 | 0.26 |
+
+Ranges are in px. Bold cells fail the rule. No camera fails on cx/cy; the
+widest is 33662's cy at 1.84 px. Details per camera are below; the last
+five cameras, the views test and the decision are at the end of this
+section.
 
 **Verified** by `python/fit_intrinsics.py` (OpenCV 5.0.0, Brown-Conrady, all
 frames). Sessions are in `$HOME/panoptes-data/sessions`, outside the repo.
@@ -745,12 +762,127 @@ per-session range.
 
 - **fx/fy ranges of 1.40/1.43 px exceed the ~1 px target** the other four
   units met (0.50–0.61 px). cx/cy are the tightest yet (0.33/0.22 px).
-  With two sessions there is no telling which is off. A third session is
-  recommended (Open items #27).
+  With two sessions there is no telling which is off. A third session was
+  recommended. **Superseded 2026-11-10:** accepted as marginal without one
+  (decision below; Open items #27). The file was refitted with
+  `--status "done, marginal (fx/fy 1.4 px)"`.
 - **Unit to unit, five cameras:** mean fx spans 765.62 (33275) to 771.83
   (33664), 6.21 px; cx 622.27 (33665) to 641.43 (33661), 19.16 px; cy
   514.62 (33276) to 523.61 (33661), 8.99 px. Even 33275's marginal 1.4 px
   fx range is under a quarter of the fx span.
+
+**Arm-driven intrinsics of the last five cameras, 2026-11-10.** 33277,
+33660, 33662, 33659, 33663. Same rig, board, easel and procedure. Settings
+read back in every `session.json`: gain 0, intensity 15, exposure 8133 µs,
+30 Hz, IR filter in. Every session's arm record ends with 0 cells
+remaining, `capture_stalls` 0 and 0 cable unwinds. No camera dropped.
+Fit by `fit_intrinsics.py --write-camera --status ...` (run by Claude
+2026-11-10 23:12 UTC).
+
+| Session | Views | RMS (px) | fx | fy | cx | cy |
+|---|---:|---:|---:|---:|---:|---:|
+| `intrinsics_33277_20261110_131315` | 21 | 0.160 | 768.04 | 767.78 | 639.32 | 516.97 |
+| `intrinsics_33277_20261110_132556` | 22 | 0.157 | 768.90 | 769.05 | 638.54 | 515.43 |
+| 33277 range | | | 0.87 | **1.26** | 0.79 | 1.55 |
+| **33277 joint fit** | 43 | 0.159 | 768.92 | 768.78 | 639.11 | 516.57 |
+| `intrinsics_33660_20261110_133847` | 21 | 0.169 | 771.27 | 771.11 | 647.38 | 516.52 |
+| `intrinsics_33660_20261110_134538` | 19 | 0.161 | 772.49 | 772.45 | 646.34 | 516.21 |
+| 33660 range | | | **1.23** | **1.34** | 1.04 | 0.31 |
+| **33660 joint fit** | 40 | 0.166 | 771.83 | 771.72 | 646.90 | 516.46 |
+| `intrinsics_33662_20261110_135401` | 21 | 0.172 | 768.71 | 768.45 | 631.47 | 527.53 |
+| `intrinsics_33662_20261110_140205` | 22 | 0.150 | 769.61 | 769.34 | 630.08 | 525.69 |
+| 33662 range | | | 0.89 | 0.90 | 1.39 | 1.84 |
+| **33662 joint fit** | 43 | 0.162 | 769.07 | 768.83 | 630.91 | 526.77 |
+| `intrinsics_33659_20261110_142951` | 23 | 0.175 | 772.57 | 772.47 | 631.08 | 515.48 |
+| `intrinsics_33659_20261110_143928` | 18 | 0.153 | 771.50 | 771.33 | 630.00 | 516.63 |
+| 33659 range | | | **1.07** | **1.13** | 1.08 | 1.15 |
+| **33659 joint fit** | 41 | 0.166 | 772.20 | 772.07 | 630.65 | 515.98 |
+| `intrinsics_33663_20261110_144844` | 24 | 0.158 | 768.18 | 767.96 | 635.55 | 514.70 |
+| `intrinsics_33663_20261110_145755` | 24 | 0.149 | 769.06 | 768.91 | 635.01 | 514.95 |
+| 33663 range | | | 0.88 | 0.95 | 0.54 | 0.26 |
+| **33663 joint fit** | 48 | 0.154 | 768.59 | 768.40 | 635.33 | 514.95 |
+
+Dist (k1, k2, p1, p2, k3) of the joint fits:
+- 33277: −0.0932, 0.0845, −0.0008, 0.0001, −0.0243
+- 33660: −0.0937, 0.0854, 0.0001, 0.0005, −0.0252
+- 33662: −0.0941, 0.0889, −0.0005, −0.00003, −0.0280
+- 33659: −0.0972, 0.0966, −0.0001, −0.0002, −0.0330
+- 33663: −0.0918, 0.0827, −0.0005, −0.0003, −0.0246
+
+Each joint parameter lies inside its per-session range, with one
+exception: **33277's joint fx, 768.921, is 0.016 px above** its sessions'
+768.036–768.905.
+
+- **Sessions not used.** `intrinsics_33277_20261110_131156` has 1 frame
+  and no arm record. `_132059` has 16 frames and ended `arm failure:
+  forward kinematics refused by the arm: ... METHOD_FAILED`, not back at
+  P0, cable at J1 +0.362 / J4 +0.252 / J6 +0.175 turns. Both were left out
+  of 33277's fit, by the operator's choice of sessions.
+- **Forward kinematics refused, twice.** The same `METHOD_FAILED` ended
+  `intrinsics_33662_20261110_135401`, which is used (21 frames, 0 cells
+  remaining). It did not return to P0; cable J1 +0.037 / J4 −0.030 /
+  J6 −0.007 turns. `intrinsics_33663_20261110_145755` ended `target list
+  exhausted` but also not at P0 (`returned_to_p0` false; J1 +0.243 / J4
+  −0.350 / J6 −0.008 turns). Cause not known: Open items #28.
+- **Repeatability.** fx/fy ranges 0.87–1.34 px against 0.39–0.70 px on the
+  first four units. Three of these five are marginal on fx/fy. cx/cy stay
+  at ≤ 1.84 px (33662's cy, the widest of all ten).
+- **Distortion** agrees with the first five units: k1 −0.092 to −0.097,
+  k2 0.083 to 0.097, k3 −0.024 to −0.033 (33659 has the largest k2 and
+  k3 of the ten).
+
+**Earlier camera files refitted for the flag rule, 2026-11-10.** 33276,
+33661 and 33664 had no `status`, and 33275's said "third session
+recommended". All four were refitted from the same sessions with
+`--write-camera --force --status ...`. The diffs show every number
+unchanged; only `status` and `fitted_utc` changed. 33665's file
+(`done`) was left as it was.
+
+**Ten cameras, unit to unit.** The means of the per-session fits span:
+
+| Parameter | Lowest (px) | Highest (px) | Span (px) |
+|---|---|---|---:|
+| fx | 765.62 (33275) | 772.04 (33659) | 6.42 (0.8 %) |
+| cx | 622.27 (33665) | 646.86 (33660) | 24.59 |
+| cy | 514.62 (33276) | 526.61 (33662) | 11.99 |
+
+The joint fits span fx 765.66–772.20 px. Within-camera fx/fy ranges are
+0.39–1.43 px, so the fx span is 4.5× the widest repeatability and 16× the
+tightest. **Per-camera intrinsics are required.** cx/cy repeatability is
+≤ 1.84 px on all ten. Hand-held 33661 (old 9×6 board, above) gave cx
+2.51 px for the same-day pair and 9.40 px across three sessions.
+
+**Does a smaller session give a wider range? No.** Tested 2026-11-10 by
+Claude on the ten camera files above: each camera's fx and fy range
+against its smallest session's view count. The table is the progress
+table above. Correlation, n = 10:
+
+| Range | Pearson r | Spearman ρ |
+|---|---:|---:|
+| fx | +0.25 | +0.19 |
+| fy | +0.22 | +0.22 |
+| max(fx, fy) | +0.24 | +0.22 |
+
+- **The sign is wrong for the hypothesis**, and the size is noise
+  (|r| < 0.63, the two-sided 5 % critical value at n = 10). The camera with
+  the smallest session (33665, 15 views) has one of the tightest ranges
+  (0.57 px). The widest range (33275, 1.43 px) came from the largest
+  smallest session (26 + 26 views).
+- **Confound checked.** 33664 and 33276 have three sessions each, and their
+  ranges are over three. Excluding them leaves r +0.39 (fx and fy) over the
+  eight two-session cameras: still positive.
+- Against **total** views the correlation is negative (max(fx, fy): r
+  −0.58, ρ −0.40). That comes from the two three-session cameras (70 and
+  80 views, both 0.50 px), so it confounds view count with session count
+  and with being calibrated first.
+- What does set the range is not identified. With two sessions per camera,
+  a range is one difference and noisy in itself.
+
+**Decision, 2026-11-10 (Rushav): intrinsics accepted for all ten**,
+marginal cameras included. Extrinsics will first hold them fixed, then
+test refining focal length against the wand-length residual. A camera is
+recalibrated only if it stands out there (Open items #27). The next stage
+is remounting all ten and re-learning masks, then extrinsics (RUNBOOK §13).
 
 ## 17. Synthetic triangulation accuracy, nominal layout
 
@@ -1469,6 +1601,8 @@ discrepancy, 2026-11-07 (§16).
     **2026-11-07/09:** five sessions on 33665 and 33275 with cable tracking,
     no drop (§20, cable winding). Whether the cable was tied down was not
     recorded; keep recording drops for the remaining five cameras.
+    **2026-11-10:** 11 arm sessions on the last five cameras (§16), 0 capture
+    stalls and no drop.
 26. **Cable unwinding has not run on the arm** (ARCHITECTURE §9, cable
     winding). Tested only against a stand-in arm. Unknown: whether a
     session's `unwind` moves pass the box (a joint 4 unwind swings the
@@ -1482,7 +1616,18 @@ discrepancy, 2026-11-07 (§16).
     zero turns with 0 unwind moves, peak 0.469 turns against the 0.472
     window. A session needs none at 170°, so the unwind moves themselves
     (box check, long-way waypoints) have still never run on the arm.
-27. **33275 intrinsics are marginal** (§16): fx/fy ranges 1.40/1.43 px over
-    two sessions, against ~1 px. Run a third session and refit all three
-    with `--write-camera --force`; drop `--status` marginal if the ranges
-    come in.
+27. **Four cameras' intrinsics are marginal** (§16), on fx/fy ranges:
+    33275 (1.40/1.43 px), 33660 (1.23/1.34), 33277 (fy 1.26), 33659
+    (1.07/1.13), against the 1.0 px rule. Accepted 2026-11-10 without more
+    sessions. Extrinsics will first hold all ten fixed, then test refining
+    focal length against the wand-length residual. Recalibrate a camera
+    only if it stands out there. Open until that test has run (needs
+    item 7).
+28. **The arm refused forward kinematics mid-session** (§16): `arm
+    failure: forward kinematics refused by the arm: Server error
+    name=ERROR_INTERNAL, sub name=METHOD_FAILED`. It ended 2 of 11 arm
+    sessions on 2026-11-10 (`intrinsics_33277_20261110_132059`,
+    `intrinsics_33662_20261110_135401`), neither back at P0. Separately,
+    `intrinsics_33663_20261110_145755` ended `target list exhausted` with
+    `returned_to_p0` false. Unknown: which joint angles were refused (the
+    record's last poses), and why the arm's own FK fails on them.

@@ -126,7 +126,7 @@ git log --oneline -10
 expect: `git status` clean after the commit; no `build/`, `.venv/` or `analysis/*.png` staged.
 
 ### 1.11 Arm (Kinova Gen3)
-E-stop pendant in reach, nothing inside the box. After power-up the arm rests on its joint stops: run `status`, and if a `limits` margin is negative, jog that joint to mid-range with the Web App before anything else. Motion only with `--yes`; first move is `move --dz 0.02 --yes`. Teach the eight viewpoints once per easel position, not per camera; again if the easel or arm base moves. Per camera: unmount it from the rig, mount it on the arm and tie its cable down at the bracket with slack through the wrist, unfold the arm, teach (once per easel position), probe, session twice, fit, remount, re-learn masks; capture at `--gain 0 --intensity 15 --exposure 8133` (procedure in §13). Save a `hub` pose (board-centred, every joint mid-range) with `save-pose hub`: a session whose viewpoints span several arm configurations goes through it, and refuses to start without it. The continuous joints' cable turns are counted from the hub's angles and kept within ±`cable_window_deg` (`config/arm.yaml`); start with the cable unwrapped at the hub. Never start an `--orbit` session from Home: `save-pose` a board-centred pose and start from it. Camera on the arm, board on an easel ~1.0 m from the camera, leaned back 10–12°, P0 near x 0.43 m. The probe needs `capture --auto-dry --status-file`, the session `capture --auto --status-file`; board centred and fully visible for both. Details: §13.
+E-stop pendant in reach, nothing inside the box. After power-up the arm rests on its joint stops: run `status`, and if a `limits` margin is negative, jog that joint to mid-range with the Web App before anything else. Motion only with `--yes`; first move is `move --dz 0.02 --yes`. Teach the eight viewpoints once per easel position, not per camera; again if the easel or arm base moves. Per camera: unmount it from the rig, mount it on the arm and tie its cable down at the bracket with slack through the wrist, unfold the arm, teach (once per easel position), probe, session twice, fit with `--status` by the flag rule (marginal if an fx/fy range is over 1.0 px or cx/cy over 3.0 px); capture at `--gain 0 --intensity 15 --exposure 8133`. All ten are done: the next stage is to remount all ten, re-learn masks once, then extrinsics (not built yet). Procedures in §13. Save a `hub` pose (board-centred, every joint mid-range) with `save-pose hub`: a session whose viewpoints span several arm configurations goes through it, and refuses to start without it. The continuous joints' cable turns are counted from the hub's angles and kept within ±`cable_window_deg` (`config/arm.yaml`); start with the cable unwrapped at the hub. Never start an `--orbit` session from Home: `save-pose` a board-centred pose and start from it. Camera on the arm, board on an easel ~1.0 m from the camera, leaned back 10–12°, P0 near x 0.43 m. The probe needs `capture --auto-dry --status-file`, the session `capture --auto --status-file`; board centred and fully visible for both. Details: §13.
 ```sh
 .venv/bin/pip install --no-deps -r python/requirements-arm.txt
 ip -brief addr show enp6s0
@@ -725,7 +725,7 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
 
 | Command | Does |
 |---|---|
-| `fit_intrinsics.py` | Brown-Conrady on all frames; writes `<session>/intrinsics.json`, prints a table, and with several sessions the spread across them. `--write-camera`: also one joint fit over all the sessions' frames, written to `config/intrinsics/<serial>.yaml` with provenance and the cross-session range as `uncertainty_px`; refused if the sessions differ in camera, image size, board or settings, or if the file exists (`--force` replaces it). `--status TEXT` (only with `--write-camera`) is written verbatim as the file's `status`, e.g. `done` or `done, marginal (fx/fy 1.4 px); third session recommended`; omitted, no status line. Prints `joint fit, all sessions: …` and `wrote config/intrinsics/<serial>.yaml` |
+| `fit_intrinsics.py` | Brown-Conrady on all frames; writes `<session>/intrinsics.json`, prints a table, and with several sessions the spread across them. `--write-camera`: also one joint fit over all the sessions' frames, written to `config/intrinsics/<serial>.yaml` with provenance and the cross-session range as `uncertainty_px`; refused if the sessions differ in camera, image size, board or settings, or if the file exists (`--force` replaces it). `--status TEXT` (only with `--write-camera`) is written verbatim as the file's `status`, e.g. `done` or `done, marginal (fx/fy 1.4 px)` (flag rule in §13); omitted, no status line. Prints `joint fit, all sessions: …` and `wrote config/intrinsics/<serial>.yaml` |
 | `compare_models.py` | Brown-Conrady vs rational vs fisheye: held-out error and edge straightness printed; writes `<session>/model_comparison.json` (training RMS only) |
 | `bootstrap_intrinsics.py` | Refits random subsets (defaults 20 subsets of 50) to see whether pose sampling explains a cross-session difference |
 | `board.py` | Prints the board a yaml describes (default `config/charuco_board.yaml`), or the error |
@@ -1321,8 +1321,9 @@ band.
 
 **Procedure, one camera's intrinsics on the arm**
 
-Per camera, in this order. Validated on 33664 (2026-11-02), 33276 and
-33661 (2026-11-07); progress per camera is in FINDINGS §16.
+Per camera, in this order. Done for all ten cameras; results in FINDINGS
+§16. Repeat it only for a camera that extrinsics shows needs
+recalibrating (FINDINGS Open items #27).
 `PATH` is `"$HOME"/panoptes-data/capture_status.json`.
 
 1. **Unmount** the camera from its rig position. Its mask (and any
@@ -1353,19 +1354,38 @@ Per camera, in this order. Validated on 33664 (2026-11-02), 33276 and
    near poses the IR ring glares off the board at higher gain
    (FINDINGS §16). Quit capture with `q` when the session ends.
 7. **Fit:** `.venv/bin/python python/fit_intrinsics.py --write-camera <session_1> <session_2>`.
-   Expect RMS under ~0.2 px and the two within fx/fy ~1 px, cx/cy ~3 px
-   (on 33664: ranges 0.5 / 0.4 / 1.0 / 0.5 px; on 33276: 0.5 / 0.4 / 0.6 /
-   1.0 px; on 33661: 0.6 / 0.7 / 0.6 / 0.3 px; on 33665: 0.6 / 0.6 / 1.5 /
-   1.1 px), then `wrote config/intrinsics/<serial>.yaml`. Add
-   `--status done`, or, if fx/fy spread more than ~1 px,
-   `--status "done, marginal (fx/fy N px); third session recommended"` and
-   run a third session. Record the fit in FINDINGS §16 and update its
-   per-camera progress table.
-8. **Remount** the camera at its rig position, filter in, ring at 15.
-9. **Re-learn masks** (§6): `src/07_mask/build/mask` with the volume empty;
-   it learns, applies, verifies and saves. Check the verify table reads
-   `residual: none` with no `LEAK` line. Learn runs on every camera, so all
-   ten are re-learned. A moved camera's mask is wrong (FINDINGS §15).
+   Expect RMS under ~0.2 px, then `wrote config/intrinsics/<serial>.yaml`.
+   The ten cameras' ranges are in FINDINGS §16: fx/fy 0.4–1.4 px, cx/cy
+   0.2–1.8 px. Read the `spread across sessions` lines and set `--status`
+   by the flag rule. **Marginal** if the fx or fy range is over 1.0 px, or
+   cx or cy over 3.0 px:
+   `--status "done, marginal (P N px)"`, where P names the failing
+   parameters (`fx`, `fy`, `fx/fy`, `cx/cy`...) and N is the larger range
+   to 0.1 px. Otherwise `--status done`. Fitting before knowing the
+   status? Fit without `--write-camera` first, or refit with `--force`.
+   Record the fit in FINDINGS §16 and its per-camera progress table.
+8. **Unmount** it from the arm. Remounting and masks wait for the stage
+   below.
+
+**Procedure, after all ten cameras' intrinsics: remount, masks, then extrinsics**
+
+Every camera has been off its rig position, so every mask is wrong
+(FINDINGS §15).
+
+1. **Remount** each camera at its rig position (`config/layout.yaml`),
+   filter in, ring at 15. Check all ten come up (§4):
+   `src/01_discover/build/discover` prints `settled on 10 camera(s)`, and
+   every `src/05_identify/build/identify` tile shows fps > 0.
+2. **Re-learn masks** (§6) once, for all ten. Run `src/07_mask/build/mask`
+   with the volume empty; learn runs on every camera, then applies,
+   verifies and saves `config/masks/<serial>.json`. Check the verify table
+   reads `residual: none` with no `LEAK` line, and no `<-- TOO MUCH`.
+3. **Accept** with `mask --coverage` (§6): walk one marker through the
+   volume; expect `PASS`.
+4. **Extrinsics** with all ten intrinsics held fixed; then test refining
+   focal length against the wand-length residual. Not built yet: FINDINGS
+   Open items #7. A camera that stands out there gets the per-camera
+   procedure above again (Open items #27).
 
 **Procedure, taught session**
 

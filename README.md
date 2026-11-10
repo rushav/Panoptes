@@ -56,8 +56,9 @@ positions and serials: [config/layout.yaml](config/layout.yaml).
   The acceptance criterion is zero empty grid cells, not RMS reprojection
   error. Every tool prints the board it loaded, and each session records it.
   Detection reports a fit residual as well as the corner count, because a
-  wrong board layout still returns every corner. Intrinsics for one camera are solved in Python, and the solves are
-  compared across sessions.
+  wrong board layout still returns every corner. Intrinsics are solved in Python and
+  compared across sessions. **All ten cameras have arm-driven intrinsics**
+  in `config/intrinsics/` (FINDINGS §16).
 - **Ten-camera object mode**: every camera streaming blob centroids at once,
   in a tiled view labelled by serial.
 - **IR blocking masks** that hide other cameras' illumination rings. Masks
