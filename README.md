@@ -38,12 +38,14 @@ repo.
 | Imager | 1280 × 1024, mono, global shutter, up to 120 Hz |
 | Optics | 82° × 70° field of view, manual focus; 850 nm IR ring; switchable 850 nm bandpass filter |
 | Network | Gigabit Ethernet with PoE, link-local addressing, one host NIC dedicated to the cameras |
-| Mounting | 4 cameras at 51.5 in, 6 at 119 in, all aimed at one point, around a 61 × 134 × 119 in volume |
+| Mounting | 4 cameras low at the corners, 6 high (two per long side, one at each end), all aimed at one point. Remounted 2026-11-14; positions, aim and volume size are not yet re-measured ([top view](docs/panoptes_camera_layout.svg)) |
 | Calibration target | calib.io ChArUco board: 12 × 9 squares of 60 mm (nominal), 45 mm markers, `DICT_5X5_100`, on aluminium; defined in [config/charuco_board.yaml](config/charuco_board.yaml) with caliper-measured sizes |
 | Host | Linux (Ubuntu 24.04), C++17, OpenCV 4.6 (C++) and 5.x (Python) |
 
 Specifications: [docs/hardware/cameras.md](docs/hardware/cameras.md). Camera
-positions and serials: [config/layout.yaml](config/layout.yaml).
+names and serials: [config/layout.yaml](config/layout.yaml). Its positions,
+volume, aim and perch are stale pre-remount estimates (`measured: 0`; see
+[FINDINGS → Open items](docs/FINDINGS.md#open-items)).
 
 ## Current state
 
@@ -64,11 +66,15 @@ positions and serials: [config/layout.yaml](config/layout.yaml).
 - **IR blocking masks** that hide other cameras' illumination rings. Masks
   are learned per camera from an empty volume, applied on the camera,
   verified and saved, and there is a walk-through coverage test.
-- **A synthetic triangulation accuracy study** of the mounted layout:
+- **A synthetic triangulation accuracy study**, last run on the
+  **pre-remount** layout (2026-10-17). Its numbers do not describe the rig
+  as remounted on 2026-11-14, and the study refuses to run until the layout
+  is re-measured (FINDINGS §17):
   - A DLT seed plus Levenberg-Marquardt triangulator, with a self-test.
-  - The floor on error is a median of 0.077 mm at the perch.
-  - **19% of the volume (the top of the room) cannot be triangulated** with
-    the current aim.
+  - On the old layout the floor on error was a median of 0.077 mm at the
+    perch.
+  - On the old layout **19% of the volume (the top of the room) could not
+    be triangulated** with the aim of that time.
 
 ### Arm-driven calibration
 
@@ -81,9 +87,14 @@ around the board while capture accepts views and fills the coverage grid
 sessions the principal point cx repeated to 1.0 px; numbers in
 [FINDINGS §16](docs/FINDINGS.md#16-intrinsics-33661-hand-held-per-camera-arm-driven).
 
+- **Frame groups from all ten cameras** through the SDK's `cModuleSync`,
+  recorded with every blob and every clock the SDK attaches
+  (`src/08_sync`). In 60 s recordings, with the volume empty and with one
+  marker moving, all 1800 groups were complete at 30 Hz. Whether the ten exposures actually coincide is not measured
+  ([FINDINGS §21](docs/FINDINGS.md#21-frame-groups-through-cmodulesync)).
+
 **Not built yet**
 
-- Frame synchronisation across cameras
 - Marker labeling
 - Extrinsic calibration (wand and L-frame)
 - Rigid-body pose
@@ -93,7 +104,7 @@ sessions the principal point cx repeated to 1.0 px; numbers in
 
 ```
 lib/       C++ library: SDK wrapper, ChArUco detection, coverage, session output. No UI.
-src/       One small tool per task (01_discover ... 07_mask), each its own CMake project
+src/       One small tool per task (01_discover ... 08_sync), each its own CMake project
 python/    Intrinsics solve, rig model, triangulation, synthetic accuracy study,
            Kinova Gen3 arm client: status, boxed Cartesian moves (arm.py),
            tool-to-image probe and arm-driven sessions (arm_capture.py),

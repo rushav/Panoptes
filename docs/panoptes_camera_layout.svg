@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 880" font-family="Helvetica, Arial, sans-serif">
+  <rect width="700" height="880" fill="#ffffff"/>
+  <text x="350" y="38" text-anchor="middle" font-size="20" font-weight="bold" fill="#1F3A5F">PANOPTES camera layout (top view)</text>
+  <text x="350" y="60" text-anchor="middle" font-size="12" fill="#666">Updated 2026-11-14. Schematic, not to scale: volume size to come from extrinsic calibration.</text>
+
+  <!-- volume -->
+  <rect x="170" y="130" width="360" height="580" fill="#F4F7FB" stroke="#1F3A5F" stroke-width="2"/>
+  <text x="350" y="168" text-anchor="middle" font-size="11" fill="#888">far end</text>
+  <text x="350" y="680" text-anchor="middle" font-size="11" fill="#888">near end</text>
+  <text x="185" y="424" font-size="11" fill="#888">left</text>
+  <text x="515" y="424" text-anchor="end" font-size="11" fill="#888">right</text>
+
+  <!-- aim point -->
+  <g stroke="#C0392B" stroke-width="1.5">
+    <line x1="342" y1="250" x2="358" y2="250"/><line x1="350" y1="242" x2="350" y2="258"/>
+  </g>
+  <text x="350" y="275" text-anchor="middle" font-size="11" fill="#C0392B">aim point (between F and G)</text>
+
+  <!-- low cameras (corners): hollow -->
+  <g fill="#ffffff" stroke="#1F3A5F" stroke-width="3">
+    <circle cx="170" cy="710" r="11"/><circle cx="170" cy="130" r="11"/>
+    <circle cx="530" cy="130" r="11"/><circle cx="530" cy="710" r="11"/>
+  </g>
+  <!-- top cameras: filled -->
+  <g fill="#1F3A5F">
+    <circle cx="170" cy="590" r="11"/><circle cx="170" cy="250" r="11"/>
+    <circle cx="530" cy="250" r="11"/><circle cx="530" cy="590" r="11"/>
+    <circle cx="350" cy="710" r="11"/><circle cx="350" cy="130" r="11"/>
+  </g>
+
+  <!-- labels -->
+  <g font-size="15" fill="#111">
+    <g text-anchor="end">
+      <text x="148" y="708"><tspan font-weight="bold">A</tspan> 33659</text>
+      <text x="148" y="128"><tspan font-weight="bold">B</tspan> 33663</text>
+      <text x="148" y="588"><tspan font-weight="bold">E</tspan> 33662</text>
+      <text x="148" y="248"><tspan font-weight="bold">F</tspan> 33276</text>
+    </g>
+    <g text-anchor="start">
+      <text x="552" y="128"><tspan font-weight="bold">C</tspan> 33661</text>
+      <text x="552" y="708"><tspan font-weight="bold">D</tspan> 33665</text>
+      <text x="552" y="248"><tspan font-weight="bold">G</tspan> 33275</text>
+      <text x="552" y="588"><tspan font-weight="bold">H</tspan> 33664</text>
+    </g>
+    <g text-anchor="middle">
+      <text x="350" y="742"><tspan font-weight="bold">I</tspan> 33277</text>
+      <text x="350" y="110"><tspan font-weight="bold">J</tspan> 33660</text>
+    </g>
+  </g>
+  <g font-size="11" fill="#666">
+    <g text-anchor="end">
+      <text x="148" y="724">low</text><text x="148" y="144">low</text>
+      <text x="148" y="604">top</text><text x="148" y="264">top</text>
+    </g>
+    <text x="552" y="144">low</text><text x="552" y="724">low</text>
+    <text x="552" y="264">top</text><text x="552" y="604">top</text>
+    <text x="350" y="757" text-anchor="middle">top</text>
+    <text x="350" y="94" text-anchor="middle">top</text>
+  </g>
+
+  <!-- operator and axes -->
+  <text x="350" y="800" text-anchor="middle" font-size="13" fill="#333">operator / laptop side</text>
+  <g stroke="#333" stroke-width="1.5" fill="#333">
+    <line x1="60" y1="790" x2="110" y2="790"/><polygon points="110,786 118,790 110,794"/>
+    <line x1="60" y1="790" x2="60" y2="740"/><polygon points="56,740 60,732 64,740"/>
+  </g>
+  <text x="122" y="794" font-size="12" fill="#333">x</text>
+  <text x="56" y="726" font-size="12" fill="#333">y</text>
+  <text x="60" y="810" font-size="10" fill="#666">z up</text>
+
+  <!-- legend -->
+  <circle cx="232" cy="846" r="8" fill="#ffffff" stroke="#1F3A5F" stroke-width="3"/>
+  <text x="248" y="851" font-size="12" fill="#333">low (corner)</text>
+  <circle cx="352" cy="846" r="8" fill="#1F3A5F"/>
+  <text x="368" y="851" font-size="12" fill="#333">top</text>
+  <g stroke="#C0392B" stroke-width="1.5"><line x1="432" y1="846" x2="446" y2="846"/><line x1="439" y1="839" x2="439" y2="853"/></g>
+  <text x="454" y="851" font-size="12" fill="#333">aim point</text>
+</svg>

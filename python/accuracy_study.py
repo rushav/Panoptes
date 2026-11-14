@@ -19,7 +19,12 @@ Steps, in order:
   4. camera subsets: all, upper ring, lower ring, random sixes
   5. sensitivity: rerun on randomly perturbed layouts
 
-Usage: python accuracy_study.py [layout.yaml] [study.yaml]
+Usage: python accuracy_study.py [--allow-unmeasured] [layout.yaml] [study.yaml]
+
+A layout marked `measured: 0` is refused: its positions, volume, aim and perch
+are stale, so every number would describe a rig that is not the one mounted.
+--allow-unmeasured runs anyway, prints the warning, and records
+`layout_measured: false` in the JSON provenance.
 Outputs into analysis/: PNGs, accuracy_study.json, accuracy_study.npz
 """
 
@@ -301,6 +306,7 @@ def provenance(paths, S, info, rig):
                           for p in paths},
         "versions": {"python": platform.python_version(), "numpy": np.__version__,
                      "opencv": cv2.__version__, "platform": platform.platform()},
+        "layout_measured": info["measured"],
         "layout_inches": info["raw"],
         "study": S["raw"],
         "units_internal": "mm",
@@ -321,8 +327,19 @@ def provenance(paths, S, info, rig):
 
 # ---------------------------------------------------------------- main
 
-def main(layout_path, study_path):
+def main(layout_path, study_path, allow_unmeasured=False):
     t0 = time.time()
+    # Before the self-test and before anything is written: an unmeasured
+    # layout must not quietly replace analysis/accuracy_study.json.
+    _, info0 = rigmod.load_layout(layout_path, quiet=True)
+    if not info0["measured"]:
+        if not allow_unmeasured:
+            sys.exit(f"refusing to run: {layout_path}: {rigmod.UNMEASURED_NOTE}\n"
+                     "Re-measure the rig (or wait for extrinsics) and set `measured: 1`, or pass "
+                     "--allow-unmeasured to run on the stale geometry. That OVERWRITES the "
+                     "outputs in the study's output dir with numbers for a rig that is not "
+                     "the one mounted.")
+        print(f"WARNING: --allow-unmeasured: {rigmod.UNMEASURED_NOTE}", file=sys.stderr)
     print("=" * 78)
     print("PANOPTES synthetic triangulation study")
     print("=" * 78)
@@ -330,7 +347,7 @@ def main(layout_path, study_path):
     if not self_test(layout_path):
         sys.exit("self-test failed: triangulation is wrong, refusing to report numbers")
 
-    rig, info = rigmod.load_layout(layout_path)
+    rig, info = rigmod.load_layout(layout_path, quiet=True)
     S = rigmod.load_study(study_path)
     os.makedirs(S["output"]["dir"], exist_ok=True)
     out_dir, flag, frame = S["output"]["dir"], S["min_observers_flag"], volume_frame(info)
@@ -529,9 +546,13 @@ def main(layout_path, study_path):
                         perch_rms_axis_mm=per["rms_axis"], camera_names=np.array(rig.names))
     print(f"\nWrote {jpath} (+ .npz per-point arrays) in {time.time() - t0:.0f} s")
     print(f"\nNOTE: {FLOOR_NOTE}")
+    if not info["measured"]:
+        print(f"\nWARNING: {rigmod.UNMEASURED_NOTE}", file=sys.stderr)
 
 
 if __name__ == "__main__":
     a = sys.argv[1:]
+    allow = "--allow-unmeasured" in a
+    a = [x for x in a if x != "--allow-unmeasured"]
     main(a[0] if len(a) > 0 else os.path.join(CONFIG, "layout.yaml"),
-         a[1] if len(a) > 1 else os.path.join(CONFIG, "study.yaml"))
+         a[1] if len(a) > 1 else os.path.join(CONFIG, "study.yaml"), allow)

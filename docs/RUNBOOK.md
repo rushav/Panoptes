@@ -29,11 +29,11 @@ expect: the last line prints a 5.x version and `True`.
 After every pull or code change; relinking strips capabilities. Fresh build: `rm -rf src/0*/build tests/build` first. Details: §3.
 ```sh
 for t in src/0*/; do cmake -S "$t" -B "$t/build" -DCMAKE_BUILD_TYPE=Release && cmake --build "$t/build" -j"$(nproc)" || break; done
-for b in src/01_discover/build/discover src/02_stream/build/stream src/03_detect/build/detect src/04_capture/build/capture src/05_identify/build/identify src/06_focus/build/focus src/07_mask/build/mask src/07_objdiag/build/objdiag; do sudo setcap cap_net_raw,cap_net_admin+eip "$b"; done
+for b in src/01_discover/build/discover src/02_stream/build/stream src/03_detect/build/detect src/04_capture/build/capture src/05_identify/build/identify src/06_focus/build/focus src/07_mask/build/mask src/07_objdiag/build/objdiag src/08_sync/build/sync; do sudo setcap cap_net_raw,cap_net_admin+eip "$b"; done
 getcap src/*/build/*
-cmake -S tests -B tests/build -DCMAKE_BUILD_TYPE=Release && cmake --build tests/build -j"$(nproc)" && tests/build/test_autocapture
+cmake -S tests -B tests/build -DCMAKE_BUILD_TYPE=Release && cmake --build tests/build -j"$(nproc)" && tests/build/test_autocapture && tests/build/test_sync
 ```
-expect: `[100%] Built target` for all 8 tools; `getcap` lists all 8 with `cap_net_admin,cap_net_raw=eip`; `test_autocapture: 63/63 passed`.
+expect: `[100%] Built target` for all 9 tools; `getcap` lists all 9 with `cap_net_admin,cap_net_raw=eip`; `test_autocapture: 63/63 passed`; `test_sync: 71/71 passed`.
 
 ### 1.3 Network, discover, identify
 Start of every session. Details: §4.
@@ -108,10 +108,10 @@ venv interpreter only. Details: §10.
 .venv/bin/python python/bootstrap_intrinsics.py <session> [n_subsets] [subset_size]
 .venv/bin/python python/board.py [board.yaml]
 .venv/bin/python python/triangulate.py [layout.yaml]
-.venv/bin/python python/accuracy_study.py [layout.yaml] [study.yaml]
+.venv/bin/python python/accuracy_study.py [--allow-unmeasured] [layout.yaml] [study.yaml]
 .venv/bin/python python/test_arm_capture.py
 ```
-expect: `triangulate.py` prints `self-test: 12/12 passed`; `test_arm_capture.py` prints `186/186 passed`; the study prints `Wrote .../accuracy_study.json`.
+expect: `triangulate.py` prints `self-test: 12/12 passed` (plus `note: layout is unmeasured ...` while `config/layout.yaml` has `measured: 0`); `test_arm_capture.py` prints `186/186 passed`; the study prints `refusing to run: ... layout is UNMEASURED` and exits 1 while `measured: 0`, otherwise `Wrote .../accuracy_study.json`.
 
 ### 1.10 Git
 Changes are left uncommitted for review. Details: §11.
@@ -143,6 +143,15 @@ ip -brief addr show enp6s0
 .venv/bin/python python/arm_capture.py session --status-file PATH [--yes] [--poses | --orbit] [--from-pose NAME] [--speed-constraint DEG_S] [--ip IP] [--port PORT] [--username U] [--password P]
 ```
 expect: `enp6s0` lists `192.168.1.11/24` and a `169.254.x.x` address; `status` prints a `limits` line per actuator (`limit [low, high], margin M deg` or `continuous`) and ends `session closed`; `move`/`goto`/`joints`/`goto-pose` without `--yes` end `dry run: nothing sent`; `joints`/`goto-pose` print a `cable` line (each continuous joint's value to send, `short way` or `long way round: unwinding`, and its turns before and after) and, past 180° on one, a `waypoints` line; with `--yes`, `result     END` and an `error` line; `save-pose` ends `saved      NAME in config/arm_poses.yaml`; `probe --yes` prints six probe lines, the mapping, and `wrote config/arm_camera.yaml`; `teach` ends with `far/near` and `families` lines; `session` prints the `taught` line, all 27 viewpoints, `checks` and `families` (and `hub` if one is needed) and a `cable` line before anything moves (`--orbit`: `board` and `cap`); `session --yes` prints `NAME: viewpoint abandoned (...)` or `NAME: viewpoint at reach edge (...)` when it gives up a viewpoint and moves on, ends every pose line with `turns J1 … J4 … J6 …`, and ends with a `summary` block (its `cable` line gives the net turns, 0 for each joint after a return to P0) and writes `session_arm.json` into the capture's session folder.
+
+### 1.12 Frame sync
+All ten cameras, masks learned at `config/mask.yaml`'s settings, from the repo root. Startup takes about a minute. Details: §14.
+```sh
+src/08_sync/build/sync --label empty
+src/08_sync/build/sync --label marker
+src/08_sync/build/sync [--seconds N] [--label TEXT] [--delivery complete|favor-timely|timely] [--cameras N] [--warmup S] [--config DIR] [--out DIR]
+```
+expect: ten rows reading `object` and `yes`; `cModuleSync: 10 cameras, delivery complete (asked complete), incomplete groups allowed`; after 60 s a `=== frame sync summary ===` block with `complete 1800 of 1800 (100.00%)`, `group rate 30.000 Hz`, `0 gaps`, and `wrote .../sync_<label>_<timestamp>/{groups.jsonl,session.json}`.
 
 ---
 
@@ -197,10 +206,17 @@ The command block is §1.2; it appears only there.
 3. **Never run the tools under `sudo` instead.** It breaks desktop audio for
    the session and leaves root-owned files.
 4. **Unit tests** (last line). `tests/` is its own CMake project, outside the
-   `src/0*/` loop, with no camera SDK and no setcap. Run from the repo root;
-   it reads `config/charuco_board.yaml` and `config/autocapture.yaml` and
-   exits 0 only if every check passes. It covers the `--auto` accept logic
-   on synthetic corners and what auto mode writes to `session.json`.
+   `src/0*/` loop, with no camera SDK and no setcap. Run both from the repo
+   root; each exits 0 only if every check passes.
+   - `test_autocapture` reads `config/charuco_board.yaml` and
+     `config/autocapture.yaml`. It covers the `--auto` accept logic on
+     synthetic corners and what auto mode writes to `session.json`.
+   - `test_sync [config_dir]` (default `config`) reads `config/mask.yaml`
+     and `config/masks/`. It covers the `groups.jsonl` line, the frame-sync
+     statistics on synthetic groups, and the mask-file reader. Its last
+     check fails if any saved mask is unreadable or was learned under
+     settings other than `mask.yaml`'s: the same condition under which
+     `sync` refuses to run.
    `KEEP_TEST_SESSION=1 tests/build/test_autocapture` leaves the test's
    session folder in the system temp directory, for a `json.load` check.
 
@@ -214,7 +230,8 @@ The command block is §1.2; it appears only there.
 | 06_focus | `src/06_focus/build/focus` |
 | 07_mask | `src/07_mask/build/mask` |
 | 07_objdiag | `src/07_objdiag/build/objdiag` |
-| tests | `tests/build/test_autocapture` |
+| 08_sync | `src/08_sync/build/sync` |
+| tests | `tests/build/test_autocapture`, `tests/build/test_sync` |
 
 **Troubleshooting**
 
@@ -719,7 +736,7 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
 .venv/bin/python python/bootstrap_intrinsics.py <session> [n_subsets] [subset_size]
 .venv/bin/python python/board.py [board.yaml]
 .venv/bin/python python/triangulate.py [layout.yaml]
-.venv/bin/python python/accuracy_study.py [layout.yaml] [study.yaml]
+.venv/bin/python python/accuracy_study.py [--allow-unmeasured] [layout.yaml] [study.yaml]
 .venv/bin/python python/test_arm_capture.py
 ```
 
@@ -729,8 +746,8 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
 | `compare_models.py` | Brown-Conrady vs rational vs fisheye: held-out error and edge straightness printed; writes `<session>/model_comparison.json` (training RMS only) |
 | `bootstrap_intrinsics.py` | Refits random subsets (defaults 20 subsets of 50) to see whether pose sampling explains a cross-session difference |
 | `board.py` | Prints the board a yaml describes (default `config/charuco_board.yaml`), or the error |
-| `triangulate.py` | Triangulation self-test, 12 checks; exit 0 only if all pass |
-| `accuracy_study.py` | Synthetic study (defaults `config/layout.yaml`, `config/study.yaml`); writes `analysis/` PNGs, `accuracy_study.json` and `.npz`; refuses to run if the self-test fails |
+| `triangulate.py` | Triangulation self-test, 12 checks; exit 0 only if all pass. Prints `note: layout is unmeasured ...` when the layout has `measured: 0`; the checks still apply |
+| `accuracy_study.py` | Synthetic study (defaults `config/layout.yaml`, `config/study.yaml`); writes `analysis/` PNGs, `accuracy_study.json` and `.npz`; refuses to run if the self-test fails, or if the layout has `measured: 0`. `--allow-unmeasured` runs on an unmeasured layout anyway, warns, and records `layout_measured: false` in the JSON |
 | `test_arm_capture.py` | Arm session tests, no arm or camera: a simulated camera on the arm and a stand-in capture; replays the 2026-10-28 abort from `tests/fixtures/session_arm_33664_20261028_185017.json` and reads the corner run in `..._191025.json`; aiming and orbit on a second, rig-like geometry; joint moves, saved poses, the wrist check; teach and taught sessions (pose-space grid, IK, families and the hub); joint limits from `config/arm.yaml`, asymmetric and null; continuous joints the short way; the abort report; joint moves with and without `--speed-constraint`, and the measured joint rate; grid corners from taught joints and the IK summary; replays the 2026-11-02 taught sessions `..._20261102_150512.json` and `..._175213.json` through the mid-near-far visit order and the reach-edge rule; abandoning a viewpoint when the board isn't back (17:52's ending, simulated) and at the reach edge; a capture stall that recovers and one that doesn't; cable winding (`cable_window_deg`, the long way round, long moves as waypoints, unwinding before a pan, net zero turns at the end, against a stand-in arm that always turns the short way); 186 checks, exit 0 only if all pass |
 
 1. Run from the repo root with `.venv/bin/python` only. Each script prints the
@@ -743,11 +760,24 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
    run `test_arm_capture.py`; all 186 must pass.
 3. `analysis/*.png` and `.npz` are regenerated and gitignored;
    `analysis/accuracy_study.json` is tracked. Record new numbers in FINDINGS.
+4. `config/layout.yaml` carries `measured: 0` or `1`. Leave it at 0 until
+   every position, the volume, the aim and the perch in the file have been
+   re-measured or taken from extrinsics; then set 1 and re-run the study.
+   While it is 0:
+   - don't quote any position, the volume, the aim or the perch from the
+     file as measured; only the name/serial mapping is current
+   - don't run `accuracy_study.py --allow-unmeasured` against the default
+     `study.yaml` unless you mean to overwrite `analysis/accuracy_study.json`
+     with numbers for stale geometry. To try it out, point a copy of
+     `study.yaml` at another `output.dir`.
 
 **Troubleshooting**
 
 - **0 corners on every frame.** The board's `legacy_pattern` doesn't match
   the physical board (FINDINGS §9). Check the board each script prints.
+- **`accuracy_study.py` exits with "refusing to run: ... layout is
+  UNMEASURED".** The layout has `measured: 0` (item 4 above). That is the
+  intended state until the rig is re-measured.
 - **`accuracy_study.py` exits with "self-test failed".** Run `triangulate.py`
   alone and read which check failed. The study refuses to report numbers from
   a broken triangulator.
@@ -1372,7 +1402,9 @@ recalibrating (FINDINGS Open items #27).
 Every camera has been off its rig position, so every mask is wrong
 (FINDINGS §15).
 
-1. **Remount** each camera at its rig position (`config/layout.yaml`),
+1. **Remount** each camera at its rig position (name and serial in
+   `config/layout.yaml`, top view in `docs/panoptes_camera_layout.svg`; the
+   positions in the file are not measured, see §10 item 4),
    filter in, ring at 15. Check all ten come up (§4):
    `src/01_discover/build/discover` prints `settled on 10 camera(s)`, and
    every `src/05_identify/build/identify` tile shows fps > 0.
@@ -1537,3 +1569,71 @@ Every camera has been off its rig position, so every mask is wrong
 - **Reconnect refused right after a crashed script.** The arm drops the
   dead session by itself 10 s after its last keep-alive; wait that long
   and retry.
+
+---
+
+## 14. Frame sync
+
+```sh
+src/08_sync/build/sync --label empty
+src/08_sync/build/sync --label marker
+src/08_sync/build/sync [--seconds N] [--label TEXT] [--delivery complete|favor-timely|timely] [--cameras N] [--warmup S] [--config DIR] [--out DIR]
+```
+
+| Flag | Default | Does |
+|---|---|---|
+| `--seconds N` | 60 | Recording length |
+| `--label TEXT` | none | Goes into the folder name and `session.json`; letters, digits, `-` and `_` |
+| `--delivery` | `complete` | `cModuleSync` optimisation: `complete`, `favor-timely` or `timely` |
+| `--cameras N` | 10 | Refuses to record unless exactly N cameras open |
+| `--warmup S` | 2 | Seconds of groups discarded before recording |
+| `--config DIR` | `config` | Where `mask.yaml` and `masks/` are; relative to where you run it |
+| `--out DIR` | `$HOME/panoptes-data/sessions` | Session root |
+
+`sync` opens every camera in object mode at `config/mask.yaml`'s settings,
+applies the saved masks, and records the SDK's frame groups. It has no
+window. What the numbers mean is in FINDINGS §21; the file format is in
+ARCHITECTURE §10.
+
+1. **Before.** Masks learned today, at `mask.yaml`'s settings, with the
+   cameras where they are now (§6). No other camera tool running; wait a
+   couple of seconds after stopping one.
+2. **Run from the repo root.** Discovery and opening ten cameras take about
+   a minute before the table appears.
+3. **Read the table.** Every row must say `object` under mode and `yes`
+   under object-mode-synchronous, with the readback equal to `mask.yaml`.
+   A `READBACK DIFFERS` line names a setting the camera did not take.
+4. **Recording.** A progress line every 5 s. Ctrl-C ends early; the session
+   is still written, with `"ended": "interrupted"`.
+5. **Read the summary.**
+   - `complete`: share of groups holding all ten cameras.
+   - `cameras present`: how many groups held 10, 9, ... cameras.
+   - `group frame ID ... gaps`: groups the SDK never delivered.
+   - `frame ID spread`: groups whose cameras carry different frame IDs.
+   - Per camera: `missing`, `id-gaps`, `id-skipped`.
+   - `hardware stamps`: each camera's stamp interval, and its offset to the
+     master camera. `range us` and `drift ppm` are how far that offset
+     moved during the run.
+6. **Two recordings make a set:** one with the volume empty
+   (`--label empty`), one with a single marker carried through it
+   (`--label marker`). Record the numbers in FINDINGS §21.
+7. **Output** is `sync_<label>_<YYYYMMDD_HHMMSS>/` under the session root:
+   `groups.jsonl` (one group per line, about 87 kB per second with ten
+   cameras and one blob each) and `session.json`.
+
+**Troubleshooting**
+
+- **`REFUSED: N cameras opened, --cameras expects 10`.** A camera is down
+  (§4). `--cameras N` records with fewer, on purpose only.
+- **`mask REFUSED - learned under other settings (...)`.** The saved mask
+  doesn't match `mask.yaml`. Re-learn (§6); don't edit either file to match.
+- **`mask REFUSED - no saved mask`.** Learn masks first (§6).
+- **`NO GROUPS during warm-up`.** The cameras are streaming (the table
+  showed `object`) but the SDK formed no group. The recording goes ahead so
+  the absence is on file; report it.
+- **`complete` below 100%.** Read `cameras present` and the per-camera
+  `missing` column to see which camera, then `identify` (§4) for that
+  camera's fps.
+- **Every camera shows one blob in an "empty" volume.** Something
+  reflective is in view of all ten. It doesn't affect the sync numbers, but
+  the recording isn't an empty-volume one.

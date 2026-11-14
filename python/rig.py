@@ -12,6 +12,7 @@ operation runs over all cameras and all points at once in numpy.
 """
 
 import os
+import sys
 import numpy as np
 import cv2
 
@@ -189,11 +190,26 @@ class Rig:
 
 # ---------------------------------------------------------------- loading
 
-def load_layout(path):
-    """layout.yaml -> (Rig, info dict). The inch->mm conversion lives here."""
+UNMEASURED_NOTE = ("layout is UNMEASURED (measured: 0): camera positions, volume, aim and "
+                   "perch are stale pre-remount estimates. Only the name/serial mapping is "
+                   "current. Nothing computed from the geometry describes the rig as mounted.")
+
+
+def load_layout(path, quiet=False):
+    """
+    layout.yaml -> (Rig, info dict). The inch->mm conversion lives here.
+
+    info["measured"] is False unless the file says `measured: 1`; a file
+    without the key counts as unmeasured. An unmeasured layout prints
+    UNMEASURED_NOTE to stderr (unless quiet); callers whose output depends on
+    the geometry must check the flag themselves.
+    """
     y = read_yaml(path)
     if y["units"] != "inch":
         raise ValueError(f"layout units {y['units']!r}; expected inch")
+    measured = y.get("measured", 0) == 1
+    if not measured and not quiet:
+        print(f"WARNING: {os.path.basename(path)}: {UNMEASURED_NOTE}", file=sys.stderr)
     mm = lambda v: np.asarray(v, float) * MM_PER_IN
     aim, up = mm(y["aim"]), np.asarray(y["up"], float)
     cams = y["cameras"]
@@ -202,7 +218,7 @@ def load_layout(path):
     rig = Rig([c["name"] for c in cams], [c["serial"] for c in cams],
               centers, R, y["camera_model"])
     info = {"volume_min": mm(y["volume"]["min"]), "volume_max": mm(y["volume"]["max"]),
-            "aim": aim, "up": up, "perch": mm(y["perch"]), "raw": y}
+            "aim": aim, "up": up, "perch": mm(y["perch"]), "measured": measured, "raw": y}
     return rig, info
 
 

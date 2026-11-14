@@ -1,8 +1,11 @@
 #include "camera.h"
+#include "sync.h"
 
 #include <cameralibrary.h>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
+#include <mutex>
 #include <stdexcept>
 #include <thread>
 
@@ -310,6 +313,144 @@ cv::Mat Camera::stagedMask() const {
     cv::Mat m(g.rows, g.cols, CV_8UC1, cv::Scalar(0));
     impl_->cam->GetBlockingMask(m.data, int(m.total()));
     return m;
+}
+
+bool Camera::objectSynchronous() const {
+    return impl_->cam->IsVideoTypeSynchronous(Core::ObjectMode);
+}
+
+// ---------------------------------------------------------------------
+// Frame groups (cModuleSync)
+// ---------------------------------------------------------------------
+
+struct FrameSync::Impl : public cModuleSyncListener {
+    cModuleSync* sync = nullptr;
+    std::mutex m;
+    std::condition_variable cv;
+    bool signalled = false;
+
+    // Called on an SDK thread. Only wakes next(); the group is fetched there.
+    void FrameGroupAvailable() override {
+        { std::lock_guard<std::mutex> lock(m); signalled = true; }
+        cv.notify_one();
+    }
+};
+
+FrameSync::FrameSync() : impl_(std::make_unique<Impl>()) {
+    impl_->sync = cModuleSync::Create();
+    if (!impl_->sync) throw std::runtime_error("cModuleSync::Create() returned null");
+    impl_->sync->AttachListener(impl_.get());
+}
+
+FrameSync::~FrameSync() {
+    impl_->sync->RemoveListener(impl_.get());
+    impl_->sync->RemoveAllCameras();
+    cModuleSync::Destroy(impl_->sync);
+}
+
+void FrameSync::add(Camera& cam)    { impl_->sync->AddCamera(cam.impl_->cam); }
+int  FrameSync::cameraCount() const { return impl_->sync->CameraCount(); }
+
+void FrameSync::setDelivery(Delivery d) {
+    impl_->sync->SetOptimization(d == Delivery::Timely      ? cModuleSync::ForceTimelyDelivery
+                               : d == Delivery::FavorTimely ? cModuleSync::FavorTimelyDelivery
+                                                            : cModuleSync::ForceCompleteDelivery);
+}
+
+FrameSync::Delivery FrameSync::delivery() const {
+    switch (impl_->sync->Optimization()) {
+        case cModuleSync::ForceTimelyDelivery: return Delivery::Timely;
+        case cModuleSync::FavorTimelyDelivery: return Delivery::FavorTimely;
+        default:                               return Delivery::Complete;
+    }
+}
+
+const char* FrameSync::deliveryName(Delivery d) {
+    return d == Delivery::Timely ? "timely" : d == Delivery::FavorTimely ? "favor-timely" : "complete";
+}
+
+void FrameSync::setAllowIncomplete(bool on) { impl_->sync->SetAllowIncompleteGroups(on); }
+bool FrameSync::allowIncomplete() const     { return impl_->sync->AllowIncompleteGroups(); }
+float FrameSync::deliveryRate() const       { return impl_->sync->FrameDeliveryRate(); }
+
+const char* FrameSync::timeStampMode() const {
+    return impl_->sync->TimeStampMode() == cModuleSync::FrameIDBased ? "frame ID based" : "system clock";
+}
+
+bool FrameSync::next(SyncGroup& out, int waitMs) {
+    auto group = impl_->sync->GetFrameGroup();
+    if (!group && waitMs > 0) {
+        std::unique_lock<std::mutex> lock(impl_->m);
+        impl_->cv.wait_for(lock, std::chrono::milliseconds(waitMs), [&] { return impl_->signalled; });
+        impl_->signalled = false;
+        lock.unlock();
+        group = impl_->sync->GetFrameGroup();
+    }
+    if (!group) return false;
+
+    out = SyncGroup{};
+    out.hostMonoNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                         std::chrono::steady_clock::now().time_since_epoch()).count();
+    out.frameId    = group->FrameID();
+    out.mode       = group->Mode() == FrameGroup::Hardware ? kSyncModeHardware
+                   : group->Mode() == FrameGroup::Software ? kSyncModeSoftware : kSyncModeNone;
+    out.timeStamp  = group->TimeStamp();
+    out.timeSpread = group->TimeSpread();
+    out.earliest   = group->EarliestTimeStamp();
+    out.latest     = group->LatestTimeStamp();
+    out.sdkDropped = group->DroppedFrames();
+
+    const int n = group->Count();
+    out.frames.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        auto frame = group->GetFrame(i);
+        if (!frame) continue;
+        SyncFrame f;
+        f.serial       = int(frame->Serial());
+        f.frameId      = frame->FrameID();
+        // Rule 3: a frame queued before the mode change is not object mode.
+        f.object       = frame->FrameType() == Core::ObjectMode;
+        f.invalid      = frame->IsInvalid();
+        f.timeStamp    = frame->TimeStamp();
+        f.hwStampValid = frame->IsHardwareTimeStamp();
+        f.hwTimeStamp  = frame->HardwareTimeStampValue();
+        f.hwTicks      = frame->HardwareTimeStamp();
+        f.hwFreq       = frame->HardwareTimeFreq();
+        f.hwMaster     = frame->MasterTimingDevice();
+        f.syncVideo    = frame->IsFromSynchronousVideoCamera();
+        f.hwTiming     = frame->IsFromHardwareTimingCamera();
+        if (f.object) {
+            f.blobs.reserve(frame->ObjectCount());
+            for (int k = 0; k < frame->ObjectCount(); ++k) {
+                const cObject* o = frame->Object(k);
+                f.blobs.push_back({float(o->X()), float(o->Y()),
+                                   float(o->Area()), float(o->Roundness())});
+            }
+        }
+        out.frames.push_back(std::move(f));
+    }
+    return true;
+}
+
+std::vector<std::pair<std::string, bool>> FrameSync::health() const {
+    // Named here: IndicatorText() came back empty for all of these.
+    static const struct { HealthMonitor::Types kind; const char* name; } kinds[] = {
+        {HealthMonitor::Health_Not_In_Hardware_Sync,           "Not_In_Hardware_Sync"},
+        {HealthMonitor::Health_Partial_FrameGroup_Delivered,   "Partial_FrameGroup_Delivered"},
+        {HealthMonitor::Health_Missing_Expected_Frame,         "Missing_Expected_Frame"},
+        {HealthMonitor::Health_FrameGroup_Queue_Overflow,      "FrameGroup_Queue_Overflow"},
+        {HealthMonitor::Health_Synchonizer_Queue_Overflow,     "Synchonizer_Queue_Overflow"},
+        {HealthMonitor::Health_Increased_FrameGroup_Buffering, "Increased_FrameGroup_Buffering"},
+        {HealthMonitor::Health_Out_Of_Order_Group_Delivery,    "Out_Of_Order_Group_Delivery"},
+        {HealthMonitor::Health_FrameID_Mismatch,               "FrameID_Mismatch"},
+        {HealthMonitor::Health_Out_Of_Band_FrameID,            "Out_Of_Band_FrameID"},
+        {HealthMonitor::Health_Duplicate_FrameID,              "Duplicate_FrameID"},
+        {HealthMonitor::Health_Lost_Hardware_TimeStamping,     "Lost_Hardware_TimeStamping"},
+        {HealthMonitor::Health_Dropped_Network_Packet,         "Dropped_Network_Packet"},
+    };
+    std::vector<std::pair<std::string, bool>> out;
+    for (auto& k : kinds) out.emplace_back(k.name, impl_->sync->QueryIndicator(k.kind));
+    return out;
 }
 
 std::string Camera::stateLine() const {

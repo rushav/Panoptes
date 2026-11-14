@@ -19,6 +19,7 @@
 #include <opencv2/core.hpp>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace mocap {
@@ -196,10 +197,68 @@ public:
     // what the camera currently applies.
     cv::Mat stagedMask() const;
 
+    // IsVideoTypeSynchronous(ObjectMode): the SDK's statement about this
+    // camera model, not a measurement of anything.
+    bool objectSynchronous() const;
+
 private:
+    friend class FrameSync;            // hands the SDK camera to cModuleSync
     struct Impl;                       // SDK types stay out of this header
     std::unique_ptr<Impl> impl_;
     int serial_;
+};
+
+// ---- Frame groups ------------------------------------------------------
+// cModuleSync: the SDK collects one frame per camera into a FrameGroup.
+// The plain records (SyncGroup, SyncFrame) are in sync.h.
+//
+// While a camera is added here, take its frames ONLY through next(): the
+// per-camera fetches (grab, grabBlobs) pull from the same camera and are
+// not meant to run alongside.
+struct SyncGroup;
+
+class FrameSync {
+public:
+    // cModuleSync::eOptimization, in the SDK's words:
+    //   Timely      no queueing; a late frame is dropped from its group
+    //   FavorTimely queue only once 5% or more of frames arrive out of order
+    //   Complete    queue up to 60 frames per camera waiting for every camera
+    enum class Delivery { Timely, FavorTimely, Complete };
+
+    FrameSync();
+    ~FrameSync();
+    FrameSync(const FrameSync&) = delete;
+    FrameSync& operator=(const FrameSync&) = delete;
+
+    void add(Camera& cam);             // start() the camera first
+    int cameraCount() const;           // the SDK's count, read back
+
+    void setDelivery(Delivery d);
+    Delivery delivery() const;         // read back from the SDK
+    static const char* deliveryName(Delivery d);
+
+    // Off, the SDK may withhold a group that lacks a camera, and an
+    // incomplete group could then not be told from no group.
+    void setAllowIncomplete(bool on);
+    bool allowIncomplete() const;      // read back
+
+    // The next group, oldest first, waiting up to waitMs for one. False if
+    // none came. Fills everything except out.index. out.hostMonoNs is
+    // CLOCK_MONOTONIC taken as GetFrameGroup() returned, so it includes
+    // the SDK's queueing and this thread's wake-up; it is a receive time,
+    // not an exposure time.
+    bool next(SyncGroup& out, int waitMs);
+
+    float deliveryRate() const;        // cModuleSync::FrameDeliveryRate()
+    const char* timeStampMode() const; // "system clock" or "frame ID based"
+
+    // The SDK health indicators that concern grouping, as QueryIndicator()
+    // reports them at this moment.
+    std::vector<std::pair<std::string, bool>> health() const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace mocap

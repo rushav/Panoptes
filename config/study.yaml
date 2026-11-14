@@ -2,6 +2,11 @@
 # Synthetic triangulation study, python/accuracy_study.py. Geometry lives in
 # layout.yaml; this file holds only how the study samples and perturbs it.
 # Lengths are inches, to match layout.yaml.
+#
+# layout.yaml is UNMEASURED since the 2026-11-14 remount (see its header).
+# The subsets below go by camera name and still hold (A-D low, E-J top). The
+# slice heights and perch_plane_y_in were chosen for the pre-remount
+# geometry and are stale with it.
 
 seed: 20261017
 
@@ -17,8 +22,8 @@ perch:
   spacing_in: 3.0         # its own denser grid; the box is where accuracy matters
 
 slices:                   # heat maps. Horizontal slices at these heights...
-  z_in: [12, 30, 51.5, 80, 110]
-  perch_plane_y_in: 102   # ...plus one vertical x-z slice through the perch
+  z_in: [12, 30, 51.5, 80, 110]   # stale: old aim / low-camera heights
+  perch_plane_y_in: 102   # ...plus one vertical x-z slice through the (stale) perch
   spacing_in: 2.0
   trials: 100
   vmax_percentile: 98     # shared colour scale tops out here; higher values clip

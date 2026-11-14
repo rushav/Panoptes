@@ -15,3 +15,11 @@ add_executable(test_autocapture
     ../lib/session.cpp)
 
 target_link_libraries(test_autocapture PRIVATE ${OpenCV_LIBS})
+
+# Frame-group records and statistics, and the mask-file reader. No SDK.
+add_executable(test_sync
+    test_sync.cpp
+    ../lib/maskfile.cpp
+    ../lib/sync.cpp)
+
+target_link_libraries(test_sync PRIVATE ${OpenCV_LIBS})

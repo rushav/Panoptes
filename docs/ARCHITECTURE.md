@@ -43,10 +43,10 @@ discover ─► open/start ─┬─► grayscale ─► ChArUco detect ─► c
 
 | | Contents | Rule |
 |---|---|---|
-| `lib/` | `camera` (SDK wrapper), `detect` (ChArUco), `coverage` (acceptance grid), `autocapture` (frame selection), `capture_status` (live status file), `session` (capture output) | No UI code. Every SDK quirk is handled here, once. |
+| `lib/` | `camera` (SDK wrapper, and `FrameSync` over `cModuleSync`), `detect` (ChArUco), `coverage` (acceptance grid), `autocapture` (frame selection), `capture_status` (live status file), `session` (capture output), `sync` (frame-group records, file lines, statistics), `maskfile` (reads saved masks) | No UI code. Every SDK quirk is handled here, once. |
 | `src/NN_name/` | One small program per task, each its own CMake project that compiles the `lib/` sources it needs | Thin: parse arguments, loop, draw, call `lib/`. |
 | `python/` | Calibration solve, rig model, triangulation, synthetic study; Kinova arm client, status and boxed moves (`arm.py`, §9) | Separate runtime (OpenCV 5.x in `.venv`); shares only file formats with the C++ side. |
-| `tests/` | Unit tests for `lib/` logic that needs no camera (`test_autocapture`) | Own CMake project; links OpenCV only, no SDK. |
+| `tests/` | Unit tests for `lib/` logic that needs no camera (`test_autocapture`, `test_sync`) | Own CMake project; links OpenCV only, no SDK. |
 
 **Why the split exists.** `lib/camera.cpp` carries the reason in a comment.
 `grab()` (grayscale) and `grabBlobs()` (object mode) used to have separate
@@ -678,11 +678,37 @@ spread; two arm-driven sessions of that camera agree to 0.6 px (FINDINGS
 
 **Files:** `config/layout.yaml`, `python/rig.py`, `python/triangulate.py`.
 
-**Layout.** Ten cameras are given by tape-measured position in **inches**,
-the unit the room was measured in, in a volume 61 × 134 × 119 in.
-`load_layout()` is the only place that converts to millimetres; everything
-downstream is mm. Every camera is aimed at one point (z = 30 in), and world
-up fixes roll, so each rotation comes from a look-at construction. All ten
+**Layout.** Ten cameras are given by name, serial and position in
+**inches**, the unit the room was measured in. `load_layout()` is the only
+place that converts to millimetres; everything downstream is mm. Every
+camera is aimed at the file's one `aim` point, and world up fixes roll, so
+each rotation comes from a look-at construction.
+
+**The `measured` flag.** The file carries `measured: 0` or `1`. Since the
+2026-11-14 remount it is 0: the name/serial mapping is current
+([top view](panoptes_camera_layout.svg)), while every position, the volume,
+the aim and the perch are the pre-remount estimates, kept only so the
+synthetic code has numbers to run on (status:
+[FINDINGS → Open items](FINDINGS.md#open-items)). Each slot keeps the old
+estimate for the same physical place, not for the same letter. The flag is
+there because stale geometry fails silently: the model still loads, the
+self-test still passes and the study would still print sub-0.1 mm numbers.
+
+- `load_layout()` returns the flag as `info["measured"]` and, when it is not
+  1 (a missing key counts as 0), prints a warning to stderr unless called
+  with `quiet=True`.
+- `triangulate.py`'s self-test runs either way and prints a one-line note.
+  It uses the layout only as a fixture for checking the maths.
+- `accuracy_study.py` checks the flag before the self-test and before
+  writing anything, and exits unless given `--allow-unmeasured`. With the
+  override it warns at the start and end and records
+  `layout_measured: false` in the JSON provenance. Refusing by default keeps
+  a stale run from replacing the tracked `analysis/accuracy_study.json`.
+- `corner_jitter.py` reads only `camera_model` from the file, through
+  `read_yaml()`, so the flag doesn't concern it.
+
+No C++ tool reads `layout.yaml`; the camera tools identify cameras by serial
+alone. All ten
 share one intrinsic model, taken from camera 33661. Its distortion
 coefficients are placeholders chosen to match the 82° × 70° spec, not the
 fitted values (FINDINGS §16).
@@ -760,6 +786,10 @@ triangulation still needs frame sync, marker labeling and extrinsics.
 **Question.** Before the rig is calibrated, how accurately can the mounted
 layout triangulate a marker, and where?
 
+**Status.** The results below are for the pre-remount layout. The rig was
+remounted on 2026-11-14 and the layout is unmeasured (§7), so they don't
+describe it, and the study refuses to run without `--allow-unmeasured`.
+
 **Method.**
 
 - **Grid:** the volume at spacing of 6 in or less, plus a denser grid
@@ -777,7 +807,7 @@ layout triangulate a marker, and where?
 - **Provenance:** the run records the git commit and dirty flag, config
   hashes and library versions.
 
-**Results** (FINDINGS §17).
+**Results, pre-remount layout** (FINDINGS §17).
 
 - **Accuracy is a non-issue at this scale.** The perch box reaches 0.077 mm
   median. The whole volume reaches 0.098 mm.
@@ -1391,9 +1421,151 @@ address, 192.168.1.11/24, next to the cameras' link-local one
 
 ---
 
+## 10. Frame groups (`08_sync`)
+
+**Files:** `src/08_sync/main.cpp`, `lib/camera.{h,cpp}` (`FrameSync`),
+`lib/sync.{h,cpp}`, `lib/maskfile.{h,cpp}`, `tests/test_sync.cpp`.
+
+**Question.** Before several cameras are used together, what does the SDK
+hand over when asked for one frame from each, and what clocks come with it?
+Results: [FINDINGS §21](FINDINGS.md#21-frame-groups-through-cmodulesync).
+
+**The SDK path.** `cModuleSync` takes cameras and returns `FrameGroup`s: one
+frame per camera, matched by the SDK. `mocap::FrameSync` wraps it:
+
+- `add(Camera&)` hands the SDK camera to `AddCamera()`. Cameras are started
+  first, and from then on their frames are taken only through the group;
+  the per-camera fetches (`grab`, `grabBlobs`) are not used alongside.
+- `setDelivery()` maps to the SDK's three optimisations. The tool's default
+  is `ForceCompleteDelivery`, which queues up to 60 frames per camera to
+  wait for all of them.
+- `setAllowIncomplete(true)` is always on. Without it the SDK may withhold
+  a group that lacks a camera, and an incomplete group could not be told
+  from no group.
+- `next(group, waitMs)` returns groups oldest first. A
+  `cModuleSyncListener` callback on an SDK thread wakes it; the group
+  itself is fetched and copied on the caller's thread.
+- Every delivery setting is read back from the SDK and recorded, not
+  echoed.
+
+**Split.** `lib/sync` holds the plain records (`SyncGroup`, `SyncFrame`),
+the line writer and the statistics, with no SDK types, so
+`tests/test_sync` builds without the SDK and feeds it synthetic groups.
+`lib/camera.cpp` includes `sync.h` only for those structs; tools that
+don't use `FrameSync` still link `camera.cpp` alone.
+
+**Startup.** `sync` reads `config/mask.yaml` and every saved mask before it
+touches a camera, and refuses if a mask is missing, belongs to another
+serial, or was learned under settings other than `mask.yaml`'s (rule 9).
+Then: start all cameras in object mode, drain per-camera frames for 1 s
+(this is where the mode shown in the table comes from: the last frame
+actually received), apply masks with `Camera::setMask()`, drain 1 s more,
+add the cameras to the sync, discard `--warmup` seconds of groups, record.
+`lib/maskfile` is a second reader of the files `07_mask` writes; `07_mask`
+keeps its own, so a format change has to be made in both.
+
+**Clocks in a record.**
+
+- `host_mono_ns` is `CLOCK_MONOTONIC` (`std::chrono::steady_clock`) read as
+  `GetFrameGroup()` returned. It is a receive time: it includes the SDK's
+  queueing and the thread's wake-up. `session.json` holds one
+  (`unix_time_s`, `mono_ns`) pair taken together at the start of
+  recording, so a monotonic time can be placed on the wall clock.
+- `ts` and `group_ts` are the SDK's `TimeStamp()` values, recorded as
+  given. Under `cModuleSync` they are derived from the frame ID (rule 22).
+- `hw_ts` / `hw_ticks` / `hw_freq` are the camera's hardware stamp, in that
+  camera's own clock.
+
+**Statistics** (`SyncStats`), all over the recorded groups:
+
+- *Complete:* a group is complete when every opened serial has a frame in
+  it. A histogram counts groups by cameras present.
+- *Skipped groups:* steps greater than 1 in `FrameGroup::FrameID()`.
+- *Per-camera gaps:* steps greater than 1 between a camera's consecutive
+  frames. A camera absent from a group therefore shows up twice, as
+  `missing` and as a gap, unless its frame arrived in another group.
+- *Frame ID spread:* max minus min of the frame IDs inside one group, and
+  each camera's offset from the group's ID.
+- *Rate:* (groups − 1) / (last − first), on the host clock and on
+  `group_ts`.
+- *Hardware stamps:* raw stamps from two cameras can't be compared (their
+  clocks start seconds apart), so each camera is taken as a difference to
+  a reference camera in the same group: the one flagged
+  `MasterTimingDevice()` in the first stamped group, else the first
+  stamped. Reported per camera: the mean difference, how far it moved
+  (max − min), its least-squares drift against reference time in ppm, and
+  the RMS about that line. The stamp interval is taken only across
+  consecutive frame IDs.
+- *Health:* twelve `HealthMonitor` indicators are polled once a second and
+  the polls in which each was raised are counted. This is the SDK's
+  belief, sampled; an indicator raised between polls is missed.
+
+**Session files.** A folder `sync_<label>_<YYYYMMDD_HHMMSS>/` (local time)
+under `$HOME/panoptes-data/sessions`.
+
+`groups.jsonl`: one JSON object per line, one line per group, flushed about
+once a second.
+
+| Key | Type | Meaning |
+|---|---|---|
+| `g` | int | Group index, 0-based, counted by the tool after warm-up |
+| `host_mono_ns` | int | Host `CLOCK_MONOTONIC`, ns, when the group was taken from the SDK |
+| `group_frame_id` | int | `FrameGroup::FrameID()` |
+| `mode` | string | `FrameGroup::Mode()`: `hardware`, `software` or `none` |
+| `group_ts`, `ts_earliest`, `ts_latest` | number, s | `FrameGroup::TimeStamp()`, `EarliestTimeStamp()`, `LatestTimeStamp()` |
+| `ts_spread` | number, s | `FrameGroup::TimeSpread()` |
+| `sdk_dropped` | int array | `FrameGroup::DroppedFrames()`, serials |
+| `cams` | array | One entry per opened camera, ascending serial, always all of them |
+
+Each `cams` entry:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `serial` | int | |
+| `present` | bool | `false`: no frame from this camera in this group, and no other key follows |
+| `unexpected` | bool | Only on a frame from a serial that was not opened; such entries follow the expected ones |
+| `frame_id` | int | `Frame::FrameID()` |
+| `object` | bool | `FrameType()` was object mode. If `false`, `blobs` is empty and means nothing |
+| `invalid` | bool | `Frame::IsInvalid()` |
+| `ts` | number, s | `Frame::TimeStamp()` |
+| `hw_valid` | bool | `Frame::IsHardwareTimeStamp()` |
+| `hw_ts` | number, s | `Frame::HardwareTimeStampValue()`, 9 decimals |
+| `hw_ticks`, `hw_freq` | int | `Frame::HardwareTimeStamp()` and `HardwareTimeFreq()` (ticks per second) |
+| `hw_master` | bool | `Frame::MasterTimingDevice()` |
+| `sync_video`, `hw_timing` | bool | `IsFromSynchronousVideoCamera()`, `IsFromHardwareTimingCamera()` |
+| `blobs` | array of `[x, y, area, roundness]` | Every object in the frame; `x`, `y` in pixels, 3 decimals. `[]` is a frame with no blobs |
+
+A non-finite number is written `null`. `host_mono_ns` exceeds 32 bits;
+OpenCV 4.6's JSON reader truncates it and rejects `null`, so read these
+files with Python's `json`.
+
+`session.json`: written when recording starts with `"ended": "running"` and
+`"summary": null`, and rewritten at the end (to a temporary name, then
+renamed).
+
+| Key | Meaning |
+|---|---|
+| `tool`, `format` | `"08_sync"`, `1` |
+| `created`, `label`, `ended` | Local ISO time; the `--label`; `running`, `duration` or `interrupted` |
+| `host` | `unix_time_s` and `mono_ns`, read together at the start of recording |
+| `versions` | `camera_sdk`, `opencv` |
+| `requested` | The `mask.yaml` settings asked for |
+| `sync` | `delivery_requested`, `delivery_readback`, `allow_incomplete_groups`, `timestamp_mode`, `sdk_camera_count`, `sdk_delivery_rate` (`FrameDeliveryRate()` when the file was written) |
+| `duration_requested_s`, `warmup` | `--seconds`; warm-up length and groups discarded |
+| `cameras` | Per camera: `serial`, `name`, `object_mode_synchronous` (`IsVideoTypeSynchronous(ObjectMode)`), `readback` settings, `mask` (`file`, `learned_at`, `cells_set`) |
+| `health_polls`, `health` | Number of polls, and per indicator the polls in which it was raised |
+| `summary` | The printed summary as numbers: counts, rates, interval and spread distributions (`n`, `min`, `median`, `p95`, `max`), and per camera the gap counts, frame ID offset range, `hw_interval_ms` and `hw_offset` (`pairs`, `mean_s`, `range_us`, `drift_ppm`, `rms_about_drift_us`) |
+
+**What it does not do.** No latency measurement, no labelling, no
+triangulation, and nothing from `config/layout.yaml`. It records blobs and
+clocks for later steps to use.
+
+---
+
 ## Not built yet
 
-Frame sync (`cModuleSync`), marker labeling, extrinsics (wand and L-frame),
-reference markers, rigid-body pose, and streaming output.
+Marker labeling, extrinsics (wand and L-frame), reference markers,
+rigid-body pose, and streaming output. Frame groups are recorded (§10);
+nothing consumes them yet.
 The current state and open problems are in
 [FINDINGS.md → Open items](FINDINGS.md#open-items).

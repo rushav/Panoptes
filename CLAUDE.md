@@ -114,6 +114,16 @@ together, in the same change.**
     aborts a short move `METHOD_FAILED` (`INVALID_JOINT_ACCELERATION`); with
     no constraint it picks a profile itself. `--speed-constraint DEG_S` is
     opt-in. (§20)
+22. **Under `cModuleSync`, neither timestamp is a shared clock.**
+    - `Frame::TimeStamp()` is computed from the frame ID (the module reports
+      `FrameIDBased`), so it is equal across a group by construction. It is
+      quantised to 1 ms; a 1 ms difference inside a group is rounding.
+    - `Frame::HardwareTimeStampValue()` is each camera's own 100 MHz clock.
+      The clocks start seconds apart and drift against each other (up to
+      2.6 ppm measured). Compare two cameras only as a difference followed
+      over time, never as raw values.
+    - The camera flagged `MasterTimingDevice()` changes from run to run.
+      (§21)
 
 ## Keeping the docs current
 
@@ -161,8 +171,9 @@ A standing rule for every change.
 - **No absolute paths in code or docs.** Use repo-relative paths, `$HOME`, or
   `~`. (`07_mask`'s `MOCAP_CONFIG_DIR` is generated at configure time and is
   an open item.)
-- **Verify a change** with the build block in RUNBOOK §1.2 (all eight tools
-  build, and `tests/build/test_autocapture` passes) and
+- **Verify a change** with the build block in RUNBOOK §1.2 (all nine tools
+  build, and `tests/build/test_autocapture` and `tests/build/test_sync`
+  pass) and
   `python/triangulate.py` (all 12 checks must pass). Use a fresh build
   directory when the build configuration changes.
 

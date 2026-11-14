@@ -4,6 +4,13 @@ Predicts how accurately the PANOPTES rig can triangulate a marker anywhere in
 the capture volume, using only the mounted layout, before any calibration
 exists.
 
+> **Stale since 2026-11-14.** All ten cameras were remounted and nothing has
+> been re-measured. Every number, table and PNG here is for the pre-remount
+> layout (run of 2026-10-17) and does not describe the rig as mounted.
+> `config/layout.yaml` is marked `measured: 0` and `accuracy_study.py`
+> refuses to run on it without `--allow-unmeasured`
+> ([FINDINGS → Open items](../docs/FINDINGS.md#open-items)).
+
 > **This is a floor, not a forecast.** Every number here assumes perfect
 > calibration: the triangulator knows the exact intrinsics and extrinsics
 > that produced the data. Real extrinsics carry their own error, and that
@@ -21,7 +28,7 @@ exists.
 
 | File | Role |
 |---|---|
-| `config/layout.yaml` | Rig geometry in **inches** as tape-measured, plus the camera model |
+| `config/layout.yaml` | Rig geometry in **inches**, plus the camera model. Since 2026-11-14: current name/serial mapping, stale pre-remount positions, volume, aim and perch (`measured: 0`) |
 | `config/study.yaml` | Grid spacing, noise, trial counts, perch box, subsets, perturbation sizes |
 | `python/rig.py` | Loads both configs (the single inch-to-mm conversion), look-at extrinsics, Brown-Conrady projection plus analytic Jacobian, undistortion, visibility |
 | `python/triangulate.py` | DLT (SVD) seed, then per-point Levenberg-Marquardt on pixel reprojection error, and the self-test |

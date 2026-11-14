@@ -51,7 +51,9 @@ this repo.
 - **calib.io 12×9 board test:** 54/54 markers, 88/88 corners, fit 0.7–0.8 px, same with `--legacy` and `--no-legacy`; 2026-10-27, camera 33664, `03_detect`. §19
 - **Mask learn/verify:** 0 residual persistent sources on all ten cameras, 424–1177 cells masked (0.13–0.36%); 2026-10-17 15:37, `config/masks/*.json`. §15
 - **Mask coverage walk:** no recorded PASS, minimum 0 observers in all 4 logs; 2026-10-16/17, `logs/coverage_*.csv`. §15
-- **Triangulation floor:** 0.077 mm median (perch box), 0.098 mm (whole volume), 19% of the volume untriangulable; 2026-10-17, `python/accuracy_study.py`, `analysis/accuracy_study.json`. §17
+- **Triangulation floor (pre-remount layout; does not describe the rig since 2026-11-14):** 0.077 mm median (perch box), 0.098 mm (whole volume), 19% of the volume untriangulable; 2026-10-17, `python/accuracy_study.py`, `analysis/accuracy_study.json`. §17
+- **Frame groups (`cModuleSync`, 10 cameras, 30 Hz, complete delivery):** 1800 of 1800 groups complete in 60.0 s, both with the volume empty and with one marker moving; 29.999 and 30.000 Hz; 0 skipped groups, 0 frame-ID gaps, one frame ID per group; hardware stamps drift ≤ 2.60 ppm against the master with 0.02–0.10 µs RMS about the drift; exposure simultaneity not measured; 2026-11-14, `sync_empty_20261114_131644`, `sync_marker_20261114_131927`, `src/08_sync`. §21
+- **Rig layout:** name/serial mapping as of 2026-11-14 in `config/layout.yaml` (Rushav's report); every position, the volume, the aim and the perch unmeasured since that remount. §17, Open items #29
 - **Exposure ceiling:** `floor(1e6/fps) − 200` µs (33133 at 30 Hz); camera 33661, date not recorded. §3
 - **IR filter in:** 27/27 markers, 40/40 corners in every frame at ~1.5 m; 2026-08-24, `intrinsics_33661_20260824_234853` / `_235746`. §4
 - **Grayscale delivery:** ~10.7 MB/s, 6–8 fps whatever the imager rate; camera and date not recorded. §5
@@ -149,6 +151,16 @@ change both together.**
     aborts a short move `METHOD_FAILED` (`INVALID_JOINT_ACCELERATION`); with
     no constraint it picks a profile itself. `--speed-constraint DEG_S` is
     opt-in. (§20)
+22. **Under `cModuleSync`, neither timestamp is a shared clock.**
+    - `Frame::TimeStamp()` is computed from the frame ID (the module reports
+      `FrameIDBased`), so it is equal across a group by construction. It is
+      quantised to 1 ms; a 1 ms difference inside a group is rounding.
+    - `Frame::HardwareTimeStampValue()` is each camera's own 100 MHz clock.
+      The clocks start seconds apart and drift against each other (up to
+      2.6 ppm measured). Compare two cameras only as a difference followed
+      over time, never as raw values.
+    - The camera flagged `MasterTimingDevice()` changes from run to run.
+      (§21)
 
 ---
 
@@ -465,9 +477,10 @@ started 01:00:26 UTC) dropped once, **after** the arm session ended:
 - Grayscale is ~1.3 MB/frame and one camera delivers 6–8 fps (§5), so ten
   grayscale streams are not an operating mode. `05_identify` and `07_mask` run
   all ten in object mode.
-- **Hardware sync is unverified here.** `Camera::diagnostics()` prints
-  `IsVideoTypeSynchronous(ObjectMode)`, but no output is recorded and no
-  synchronised capture exists.
+- **Hardware sync: grouping measured, simultaneity not** (§21, 2026-11-14).
+  `IsVideoTypeSynchronous(ObjectMode)` is yes on all ten and `cModuleSync`
+  delivered 1800 of 1800 complete groups in 60 s, empty and with a marker
+  moving. That the exposures coincide is not measured.
 - **`SendEmptyFrames(true)` is needed for diagnosis.** Without it, no markers
   means no frames, so a dark scene looks like a dead stream. Source: code
   comment in `lib/camera.h`; no measurement.
@@ -886,6 +899,42 @@ is remounting all ten and re-learning masks, then extrinsics (RUNBOOK §13).
 
 ## 17. Synthetic triangulation accuracy, nominal layout
 
+**Superseded by the 2026-11-14 remount.** Everything in this section is for
+the layout as it was on 2026-10-17. On 2026-11-14 all ten cameras were
+remounted (Rushav's report, not re-measured):
+
+| Name | Place | Serial |
+|---|---|---:|
+| A | near-left corner, low | 33659 |
+| B | far-left corner, low | 33663 |
+| C | far-right corner, low | 33661 |
+| D | near-right corner, low | 33665 |
+| E | left side, near, top | 33662 |
+| F | left side, far, top | 33276 |
+| G | right side, far, top | 33275 |
+| H | right side, near, top | 33664 |
+| I | near end centre, top | 33277 |
+| J | far end centre, top | 33660 |
+
+- Every serial changed place. Before the remount (`config/layout.yaml` at
+  commit `d3b9b4b`): A 33664, B 33661, C 33276, D 33665, E 33275, F 33660,
+  G 33277, H 33659, I 33663, J 33662.
+- E and F exchanged meaning: E was the far left side camera (y = 102 in) and
+  F the near one (y = 40 in); now E is near and F far. G (far) and H (near)
+  kept theirs.
+- The side cameras are not evenly spaced: F and G sit nearer the far end,
+  E and H nearer the near end. Offsets not measured.
+- Every camera aims at a point on the line between F and G, x roughly
+  mid-width; its height is not measured. The old aim was the volume centre
+  at z = 30 in, so the 19% coverage gap and "every camera aims at z = 30 in"
+  below no longer follow.
+- The volume is bigger than 61 × 134 × 119 in. Size not measured.
+- Not re-run on the new rig: none of the numbers below. `layout.yaml` still
+  holds the old positions, volume, aim and perch as stale estimates
+  (`measured: 0`), and the study refuses to run on them (ARCHITECTURE §7;
+  Open items #29). Checked 2026-11-14: `accuracy_study.py` exits 1 with
+  `refusing to run`; `triangulate.py` 12/12.
+
 **Verified as a computation; a floor, not a forecast.** Run 2026-10-17 by
 `python/accuracy_study.py`. Assumes perfect calibration, 0.054 px centroid
 noise, shared 33661 intrinsics with placeholder distortion, geometric
@@ -921,6 +970,14 @@ visibility only. Method and full tables:
 - Every camera binary needs `cap_net_raw,cap_net_admin+eip`. Linking writes a
   new file, which **drops file capabilities**; a fresh build on 2026-10-19
   showed none on any binary under `getcap`.
+- **Contradicted on 2026-11-14.** `src/08_sync/build/sync`, linked that day
+  and never given capabilities (`getcap` printed nothing for it; the shell's
+  `CapEff` and `CapAmb` were 0), discovered and streamed from all ten
+  cameras (§21). `getcap src/*/build/*` at the time listed only `discover`
+  and `stream`, yet `config/masks/*.json` had been written by `07_mask` at
+  12:45 that day. What changed, and whether the capabilities were ever
+  needed for every tool, is not known (Open items #30). Rule 12 is left as
+  written until that is settled.
 - Running a tool under `sudo` breaks desktop audio for the session and leaves
   root-owned files (from the previous RUNBOOK; not re-tested).
 - C++ links system OpenCV **4.6** (`libopencv-dev`); Python uses **5.x** from
@@ -1461,6 +1518,168 @@ first schema-8 sessions (ARCHITECTURE §9, cable winding), read from each
   0.472 turns): the taught viewpoints already reach it, e.g. variant
   `lr2_hl1_nf2`, sent J1 to 451.56° the short way (turns −0.20 → +0.29).
 
+## 21. Frame groups through `cModuleSync`
+
+**Verified on hardware, 2026-11-14, for grouping and stamps. Exposure
+simultaneity is not measured.** Tool `src/08_sync`; mechanism and file format
+in [ARCHITECTURE §10](ARCHITECTURE.md#10-frame-groups-08_sync). Ten cameras,
+object mode, `config/mask.yaml` settings (exposure 10 µs, threshold 40,
+gain 0, intensity 15, 30 Hz; all read back as set), masks of 2026-11-14
+12:45 applied, `ForceCompleteDelivery`, incomplete groups allowed, plain
+Netgear PoE switch, no eSync.
+
+**The SDK API, as found in the headers** (`~/optitrack/CameraSDK/include`,
+SDK 3.5.0; no sample uses it):
+
+- `cModuleSync` (`modulesync.h:48`): `Create()` / `Destroy()` (127–128),
+  `AddCamera(shared_ptr<Camera>)` (102), `GetFrameGroup()` (123), a
+  `cModuleSyncListener::FrameGroupAvailable()` callback (36–41),
+  `SetAllowIncompleteGroups()` (112), `SetTimeStampMode()` (120),
+  `FrameDeliveryRate()` (125). It is also a `HealthMonitor`
+  (`healthmonitor.h:47–95`).
+- Delivery modes, `eOptimization` (`modulesync.h:64–86`):
+  `ForceTimelyDelivery` (no queueing), `FavorTimelyDelivery` (queue once 5%
+  arrive out of order), `ForceCompleteDelivery` (queue up to 60 frames per
+  camera).
+- `FrameGroup` (`framegroup.h:27`): `Count()` / `GetFrame(i)` (41–42),
+  `Mode()` returning `None`, `Software` or `Hardware` (33–38, 47),
+  `FrameID()` (59), `TimeStamp()`, `TimeSpread()`, `EarliestTimeStamp()`,
+  `LatestTimeStamp()` (54–57), `DroppedFrames()` as serials (67).
+- Per frame (`frame.h`): `FrameID()` (44), `FrameType()` (45), `Serial()`
+  (112), `TimeStamp()` (89), `HardwareTimeStampValue()` in seconds,
+  `HardwareTimeStamp()` in ticks, `IsHardwareTimeStamp()`,
+  `HardwareTimeFreq()`, `MasterTimingDevice()` (123–127),
+  `IsFromSynchronousVideoCamera()` (67), `IsFromHardwareTimingCamera()` (70).
+- `Camera::IsVideoTypeSynchronous(mode)` (`camera.h:162`).
+- There is no per-frame or per-group flag that says "these frames were
+  exposed together". The nearest things are `FrameGroup::Mode()` and the
+  two `IsFrom...` flags, which describe the source, not the frame.
+
+**Recordings**, all 2026-11-14, all `ForceCompleteDelivery` (read back as
+set), in `$HOME/panoptes-data/sessions`:
+
+| Session | What was in the volume | Length | Groups | Complete (10 of 10) | Group rate, host clock | Skipped groups | Groups with differing frame IDs | Master |
+|---|---|---:|---:|---:|---:|---:|---:|---|
+| `sync_empty_20261114_131644` | nothing: 0 blobs on every camera in all 1800 groups | 60.0 s | 1800 | 1800 (100%) | 29.999 Hz | 0 | 0 | 33277 |
+| `sync_marker_20261114_131927` | one marker carried through it (Rushav) | 60.0 s | 1800 | 1800 (100%) | 30.000 Hz | 0 | 0 | 33665 |
+| `sync_static_20261114_130953` | a stationary reflector seen by all ten | 60.0 s | 1800 | 1800 (100%) | 30.000 Hz | 0 | 0 | 33659 |
+| `sync_static_20261114_130737` (cut short by a timeout in the launching shell) | the same reflector | 50.4 s | 1512 | 1512 (100%) | 30.000 Hz | 0 | 0 | 33277 |
+
+A 10 s trial before them (300 groups, all complete, not kept) had 33665 as
+master.
+
+In all four sessions, for every camera:
+
+- 0 missing, 0 frame-ID gaps, 0 non-increasing steps, 0 non-object frames,
+  0 entries in `DroppedFrames()`.
+- Its frame ID equalled the group's frame ID in every group.
+- `IsVideoTypeSynchronous(ObjectMode)`: **yes** on all ten.
+  `IsFromSynchronousVideoCamera()` and `IsFromHardwareTimingCamera()`: true
+  on every frame (checked on every frame of the empty and marker runs).
+  `FrameGroup::Mode()`: `Hardware` on every group.
+- None of the twelve sync health indicators was raised in any once-a-second
+  poll (`Not_In_Hardware_Sync`, `Partial_FrameGroup_Delivered`,
+  `Missing_Expected_Frame`, `Dropped_Network_Packet` among them).
+
+**Marker run: frames in which each camera saw the marker**, of 1800 (never
+more than one blob in a frame):
+
+| 33275 | 33276 | 33277 | 33659 | 33660 | 33661 | 33662 | 33663 | 33664 | 33665 |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1239 | 644 | 1727 | 1537 | 511 | 534 | 1795 | 816 | 1790 | 1655 |
+
+These counts depend on the path walked; they are here to show the marker
+moved through most cameras' views (e.g. x 9–834 px on 33664), not as a
+coverage result.
+
+**Host receive interval** (ms). It is the time the tool's thread took each
+group from the SDK, so it includes SDK queueing and thread wake-up.
+
+| Run | Min | Median | p95 | Max |
+|---|---:|---:|---:|---:|
+| empty | 32.320 | 33.333 | 33.502 | 34.251 |
+| marker | 32.565 | 33.332 | 33.680 | 34.094 |
+
+**`Frame::TimeStamp()` carries no timing information here.** The module
+reported `FrameIDBased` (the header calls `SystemClock` the default).
+`FrameGroup::TimeStamp()` equalled `FrameID() / 30` and stepped exactly
+33.333 ms; `TimeSpread()` was 0 in every group. Per-frame values come in
+1 ms steps (successive steps of 32, 33 or 34 ms), and in 42 of 1800 groups
+(empty) and 12 of 1800 (marker) one camera's value differed from the others
+by 1 ms: rounding, not timing.
+
+**Hardware stamps** (`HardwareTimeFreq()` 100 MHz, valid on every frame).
+Each camera's stamp is in its own clock, so each camera is given as its
+stamp minus the master's in the same group: how far that difference moved
+over the run, its drift, and the RMS about the drift.
+
+| Serial | Empty: moved (µs) | drift (ppm) | RMS (µs) | Marker: moved (µs) | drift (ppm) | RMS (µs) |
+|---:|---:|---:|---:|---:|---:|---:|
+| 33275 | 23.8 | 0.397 | 0.04 | 70.6 | 1.178 | 0.04 |
+| 33276 | 142.4 | −2.373 | 0.06 | 95.8 | −1.598 | 0.05 |
+| 33277 | master | | | 45.9 | 0.767 | 0.02 |
+| 33659 | 43.6 | −0.725 | 0.08 | 4.3 | 0.070 | 0.04 |
+| 33660 | 11.0 | −0.183 | 0.08 | 38.7 | 0.646 | 0.05 |
+| 33661 | 78.2 | 1.304 | 0.06 | 125.8 | 2.096 | 0.05 |
+| 33662 | 107.4 | 1.791 | 0.07 | 155.9 | 2.599 | 0.03 |
+| 33663 | 30.3 | 0.507 | 0.08 | 79.0 | 1.318 | 0.02 |
+| 33664 | 22.5 | −0.376 | 0.03 | 23.8 | 0.398 | 0.06 |
+| 33665 | 48.7 | −0.811 | 0.10 | master | | |
+
+- The clocks sit seconds apart (mean offsets −1.29 to +3.78 s in the empty
+  run, −5.00 to +0.07 s in the marker run) and move against the master's by
+  up to 2.60 ppm, in a straight line: the RMS about the line is
+  0.02–0.10 µs in every session.
+- Every camera's stamp interval was 33.3332–33.3336 ms in both runs.
+- The drift belongs to the camera pair, not the run. 33276 against 33277:
+  −2.373 ppm (empty), −2.365 (marker, −1.598 − 0.767), −2.344 and −2.356
+  (the two reflector sessions).
+- The master differed between runs (33665, 33277, 33659, 33277, 33665 in
+  order) and stayed the same camera within a run (checked on every group
+  of `sync_static_20261114_130953`).
+- The group frame ID began near 6900 in every run (6913–6948), about a
+  minute after the process started. Why is not investigated.
+
+**What these numbers do and do not show.**
+
+- *Shown:* at 30 Hz with ten cameras the SDK delivered every group
+  complete, in order, with one frame ID across the group, at the requested
+  rate, for 60 s, with no blobs and with one moving blob. Nothing was
+  dropped between the cameras and this process.
+- *Shown:* each camera's stamps advance at a steady rate against the
+  master's, to within 0.1 µs RMS over a minute.
+- *Inferred from that:* all ten produce frames at one common rate set by
+  one source. A camera timing its own frames from the clock it stamps with
+  would show an interval of exactly 33.3333 ms and no drift; the non-master
+  cameras show ppm-level drift instead, the same for a given pair in every
+  session. The SDK flags (`Hardware`, synchronous) say the same thing.
+- *Not shown:* that the ten exposures happen at the same instant. A fixed
+  delay between two cameras' exposures is invisible here: it is absorbed in
+  the unknown offset between their clocks, which is seconds. What event a
+  hardware stamp marks (exposure start, end, readout, send) is not
+  documented and not measured.
+- *Not shown:* that frame ID N is the same sync pulse on every camera. An
+  offset of whole frames would give the same table.
+- *Not shown:* anything about latency, or about behaviour with many blobs,
+  a busier network, another frame rate or delivery mode, or a run longer
+  than 60 s.
+- The moving marker adds nothing on simultaneity by itself. Turning its
+  2D tracks into a timing check needs extrinsics, which is a later step.
+- Settling either "not shown" needs an event all cameras see at a known
+  time (a flashed LED), which is a separate work package and was not built
+  here.
+
+**Not as documented.**
+
+- The tool streamed from all ten cameras with **no file capabilities**:
+  `getcap src/08_sync/build/sync` printed nothing and the process had no
+  capabilities. This contradicts rule 12 as written (§18, Open items #30).
+- Startup takes about a minute: `mocap::Camera`'s constructor runs the full
+  discovery wait, once per camera (inferred from `lib/camera.cpp`; the
+  minute was observed, not timed).
+- `HealthMonitor::IndicatorText()` returned an empty string for every
+  indicator queried.
+
 ## Open items
 
 The single open-items list. CLAUDE.md and the other docs link here.
@@ -1481,8 +1700,16 @@ discrepancy, 2026-11-07 (§16).
 4. **Mask tool's compile-time config path.** `MOCAP_CONFIG_DIR` is the
    absolute path of `config/` at configure time; moving the repo breaks the
    default. Workaround: rebuild, or `--config DIR`.
-5. **Frame sync** via `cModuleSync` (SDK header: "utilized to synchronize
-   frame data"), not `Synchronizer`. Not built; unverified on hardware.
+5. **Frame sync** (§21). `src/08_sync` records `cModuleSync` frame groups;
+   grouping is verified on hardware (60 s empty, 60 s one marker moving).
+   Still open:
+   - Exposure simultaneity is not measured, and neither is whether frame ID
+     N is the same pulse on every camera. Both need a timed event every
+     camera sees.
+   - Only `ForceCompleteDelivery` at 30 Hz has run. The other delivery
+     modes, other rates and runs longer than 60 s are untested.
+   - Which camera becomes master, and why it changes between runs, is not
+     known.
 6. **Marker labeling.** Not built.
 7. **Extrinsics: wand and L-frame.** Not built. A wand works in object mode,
    which is synchronised; a board needs grayscale, which is not
@@ -1504,7 +1731,8 @@ discrepancy, 2026-11-07 (§16).
       the last write. The folder name is local time; `created` is UTC.
     - `config/cameras.yaml` and `docs/hardware/cameras.md` list six cameras
       with 33275 "excluded, defocused"; `config/layout.yaml` mounts ten,
-      including 33275 as camera E, and all ten have masks. No code reads
+      including 33275 (camera E then, G since 2026-11-14), and all ten have
+      masks. No code reads
       `cameras.yaml`.
     - `PyYAML` is in `python/requirements.txt` but unused; `rig.py` reads YAML
       through `cv2.FileStorage`.
@@ -1631,3 +1859,26 @@ discrepancy, 2026-11-07 (§16).
     `intrinsics_33663_20261110_145755` ended `target list exhausted` with
     `returned_to_p0` false. Unknown: which joint angles were refused (the
     record's last poses), and why the arm's own FK fails on them.
+29. **Layout positions and volume unmeasured since the 2026-11-14 remount**
+    (§17). All ten cameras were remounted; only the name/serial mapping in
+    `config/layout.yaml` is current. Unmeasured: every camera position, the
+    volume (bigger than the file's 61 × 134 × 119 in), the aim point (on the
+    F–G line, height unknown) and the perch. The file keeps the pre-remount
+    numbers as stale estimates under `measured: 0`. Until the rig is
+    re-measured or extrinsics exist (#7):
+    - §17's numbers, `analysis/accuracy_study.json`, the `analysis/` PNGs
+      and `analysis/README.md` describe the old rig only.
+    - `accuracy_study.py` refuses to run; `study.yaml`'s slice heights and
+      perch plane need re-choosing with the new geometry.
+    - Masks were re-learned after the remount: every file in
+      `config/masks/` is dated 2026-11-14 12:45 (file contents; the verify
+      result "residual: none" and the 135 s coverage walk are Rushav's
+      report, `logs/coverage_20261114_*.csv`).
+30. **Capabilities: `08_sync` ran without them** (§18, §21). Rule 12 says
+    every rebuilt binary needs `setcap`. On 2026-11-14 a binary with none
+    streamed from all ten cameras, and only `discover` and `stream` had
+    any. To settle: run each tool with and without capabilities and record
+    which, if any, fails; then correct rule 12 and RUNBOOK §3 to match.
+31. **Opening ten cameras takes about a minute.** Each `mocap::Camera`
+    constructor repeats the discovery wait (§21). Every tool that opens all
+    ten pays it.

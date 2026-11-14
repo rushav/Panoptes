@@ -132,7 +132,12 @@ def volume_frame(info):
 
 def self_test(layout_path=DEFAULT_LAYOUT, verbose=True):
     """Returns True if every check passes. Prints one line per check."""
-    rig, info = rigmod.load_layout(layout_path)
+    # The layout is only a fixture here: the checks test the maths, so they
+    # hold on stale geometry too. Say so once, instead of load_layout's warning.
+    rig, info = rigmod.load_layout(layout_path, quiet=True)
+    if verbose and not info["measured"]:
+        print("  note: layout is unmeasured (stale pre-remount geometry). These checks test "
+              "the maths\n        and hold regardless; they say nothing about the rig as mounted.")
     center, scale = volume_frame(info)
     rng = np.random.default_rng(1)
     results = []
