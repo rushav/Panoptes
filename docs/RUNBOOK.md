@@ -153,6 +153,22 @@ src/08_sync/build/sync [--seconds N] [--label TEXT] [--delivery complete|favor-t
 ```
 expect: ten rows reading `object` and `yes`; `cModuleSync: 10 cameras, delivery complete (asked complete), incomplete groups allowed`; after 60 s a `=== frame sync summary ===` block with `complete 1800 of 1800 (100.00%)`, `group rate 30.000 Hz`, `0 gaps`, and `wrote .../sync_<label>_<timestamp>/{groups.jsonl,session.json}`.
 
+### 1.13 LED latency and sync check
+LED at the aim point, volume otherwise empty, masks learned. `sync` in one terminal, `led.py run` in a second once sync's table has printed. Details: §15.
+```sh
+.venv/bin/pip install -r python/requirements-latency.txt
+.venv/bin/python python/led.py clock
+.venv/bin/python python/led.py ping --port PORT [--count N]
+.venv/bin/python python/led.py hold --port PORT
+.venv/bin/python python/led.py run --port PORT [--trials N] [--min-gap S] [--max-gap S] [--label TEXT] [--out DIR] [--seed N]
+src/08_sync/build/sync --label ledoff --seconds 10
+src/08_sync/build/sync --label ledsync --seconds 1200
+.venv/bin/python python/latency.py blobs <sync_session>
+.venv/bin/python python/latency.py analyze <sync_session> <led_session> [--radius PX] [--window-ms MS] [--out DIR] [--no-plot]
+.venv/bin/python python/latency.py --self-test
+```
+expect: `clock` ends `matches 08_sync host_mono_ns: yes`; `ping` ends `timeouts: 0`; `blobs` reads 0.0% on every camera with the LED off, 100.0% with max blobs 1 with it held on; `run` ends `flashes acknowledged: N of N  timeouts: 0  bad replies: 0`; `analyze` prints the Q1 table and Q2 lines and writes `analysis/latency/<sync_session>.json` and `_latency.png`; self-test `15/15 passed`.
+
 ---
 
 ## 2. Environment setup
@@ -1637,3 +1653,78 @@ ARCHITECTURE §10.
 - **Every camera shows one blob in an "empty" volume.** Something
   reflective is in view of all ten. It doesn't affect the sync numbers, but
   the recording isn't an empty-volume one.
+
+## 15. LED latency and sync check
+
+```sh
+.venv/bin/python python/led.py clock
+.venv/bin/python python/led.py ping --port PORT [--count N]
+.venv/bin/python python/led.py hold --port PORT
+.venv/bin/python python/led.py run --port PORT [--trials N] [--min-gap S] [--max-gap S] [--label TEXT] [--out DIR] [--seed N]
+.venv/bin/python python/latency.py blobs <sync_session>
+.venv/bin/python python/latency.py analyze <sync_session> <led_session> [--radius PX] [--window-ms MS] [--out DIR] [--no-plot]
+```
+
+| `led.py` | Flag | Default | Does |
+|---|---|---|---|
+| `ping`, `hold`, `run` | `--port` | required | `/dev/ttyACM*` |
+| `ping` | `--count N` | 1000 | Round trips to time; LED stays off |
+| `run` | `--trials N` | 600 | Flashes |
+| `run` | `--min-gap S`, `--max-gap S` | 1.0, 2.0 | Gap between flashes, uniform in this range; `--min-gap` at least 0.4 |
+| `run` | `--label TEXT` | none | Folder name; letters, digits, `-`, `_` |
+| `run` | `--out DIR` | `$HOME/panoptes-data/sessions` | Session root |
+| `run` | `--seed N` | none | Repeatable gaps |
+
+| `latency.py analyze` | Default | Does |
+|---|---|---|
+| `--radius PX` | 20 | Blobs within this many px of a camera's LED position count as lit; 0 counts any blob |
+| `--window-ms MS` | 400 | How long after a flash's send to look for its first lit frame |
+| `--out DIR` | `analysis/latency` | Where the JSON and PNG go |
+| `--no-plot` | off | Skip the figure |
+
+Keep the LED out of the volume while masks are learned.
+
+**Parts.** Seeed XIAO ESP32S3, 850 nm 5 mm IR LED, 2N2222 NPN transistor,
+47 Ω and 1 kΩ resistors.
+
+**Wiring.**
+
+| From | Through | To |
+|---|---|---|
+| XIAO 5V | 47 Ω | LED long leg |
+| LED short leg | | transistor collector |
+| transistor emitter | | XIAO GND |
+| XIAO D0 | 1 kΩ | transistor base |
+
+Nothing on 3V3. Transistor leg order: from its datasheet.
+
+**Firmware.** Arduino IDE, board XIAO_ESP32S3, Tools → USB CDC On Boot → Enabled.
+
+1. **Desk.** `led.py hold`: the LED glows purple through a phone camera. Enter turns it off. 
+   `led.py ping`: record min, median, p95, max.
+2. **LED in a ping pong ball.** 5 mm hole, dome inside, legs out. `hold` again: the whole ball glows.
+3. **Rig laptop.** `led.py clock` must print `yes`. `led.py ping --count 1000`: record min, median, p95, max.
+4. **Place** the ball at the aim point, between cameras F and G (`docs/panoptes_camera_layout.svg`). 
+   Nothing else in the volume.
+5. **LED off.** `src/08_sync/build/sync --label ledoff --seconds 10`, then `latency.py blobs <that session>`. 
+   Every camera reads 0.0%.
+6. **LED on.** Terminal 2: `led.py hold --port PORT`. Terminal 1: `sync --label ledon --seconds 10`, then `blobs`.
+   Every camera reads 100.0%, max blobs 1. Enter in terminal 2 turns the LED off.
+7. **Record.** Terminal 1: `src/08_sync/build/sync --label ledsync --seconds 1200`. Wait for its table. 
+   Terminal 2: `led.py run --port PORT --label ledsync`. It ends before sync does.
+8. **Analyze.** `latency.py analyze <sync_session> <led_session>`.
+9. **Read the output.**
+   - `seen by every camera` equals the flashes inside the recording.
+   - Per camera: `miss` 0, `early` 0, `stray` 0, `lit frames` 6–7.
+   - `constant frame ID offsets`: `none`, or the cameras listed.
+   - `trials with a timing disagreement`: the count, the share and the bound on the spread across cameras.
+   - Q2: the midpoint line; the reply and send lines bound it.
+10. **Second run** if time allows: steps 7–9 again.
+11. **Results** go to FINDINGS: session names, trial count, round trip, the Q1 table, the Q2 numbers, the figure.
+
+**Troubleshooting**
+
+- **A camera not 0.0% in step 5.** A reflection: tape it black, or remove the ball and use a sanded LED.
+- **A camera not 100.0% in step 6.** Too dim: a second LED in parallel with its own 47 Ω. Not a camera setting.
+- **`miss` on one camera.** It doesn't see the ball: check its view.
+- **`early` above 0.** A reflection within `--radius` of the LED, or the LED stuck on.

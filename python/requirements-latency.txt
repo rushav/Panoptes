@@ -1,0 +1,3 @@
+# LED latency and sync check: python/led.py, python/latency.py.
+pyserial==3.5
+matplotlib==3.11.2
