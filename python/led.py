@@ -30,7 +30,7 @@ def open_board(port):
         sys.exit("pyserial missing: .venv/bin/pip install -r python/requirements-latency.txt")
     ser = serial.Serial()
     ser.port, ser.baudrate, ser.timeout = port, 115200, REPLY_TIMEOUT_S
-    ser.dtr, ser.rts = False, False  # opening the port must not reset the board
+    ser.dtr, ser.rts = True, False  # opening the port must not reset the board
     ser.open()
     if command(ser, b"L")[0] != "L":
         sys.exit(f"{port}: the LED firmware did not answer")
