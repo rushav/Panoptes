@@ -1,0 +1,24 @@
+%YAML:1.0
+# Volume coverage, python/volume_coverage.py: how much of the capture volume
+# the cameras see, and the triangulation angle there. Pure geometry, no noise
+# and no Monte Carlo. Camera positions, aim, volume and perch come from
+# layout.yaml; this file holds only how the volume is sampled and judged.
+# Lengths are inches, to match layout.yaml (converted to mm in the script).
+#
+# layout.yaml is UNMEASURED since the 2026-11-14 remount (see its header), so
+# the slice heights below were chosen for the pre-remount geometry and are
+# stale with it.
+
+grid:
+  spacing_in: 2.0         # voxel edge, upper bound; each axis is split evenly
+  chunk_points: 100000    # voxels per batch: memory vs speed only
+
+min_cameras_seen: 3       # a voxel is "seen" when at least this many cameras see it
+min_angle_deg: 15.0       # "good" also needs a camera pair at least this effective angle
+
+slices:                   # heat maps. Horizontal slices at these heights...
+  z_in: [12, 30, 51.5, 80, 110]   # stale: old aim / low-camera heights
+  perch_plane: "y"        # ...plus one vertical slice through the perch, normal to this axis
+
+output:
+  dir: "../analysis/coverage"   # relative to this file's directory

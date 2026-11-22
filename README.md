@@ -105,13 +105,13 @@ sessions the principal point cx repeated to 1.0 px; numbers in
 ```
 lib/       C++ library: SDK wrapper, ChArUco detection, coverage, session output. No UI.
 src/       One small tool per task (01_discover ... 08_sync), each its own CMake project
-python/    Intrinsics solve, rig model, triangulation, synthetic accuracy study,
+python/    Intrinsics solve, rig model, triangulation, synthetic accuracy study, volume coverage,
            Kinova Gen3 arm client: status, boxed Cartesian moves (arm.py),
            tool-to-image probe and arm-driven sessions (arm_capture.py),
            capture status reader
 config/    Camera layout, mask and study settings, saved per-camera masks
 docs/      Runbook, architecture, measured findings, hardware
-analysis/  Accuracy study outputs (PNGs regenerated; JSON summary tracked)
+analysis/  Accuracy study and volume coverage outputs (PNGs regenerated; accuracy JSON tracked)
 logs/      Mask coverage-walk logs
 media/     Session video (side-by-side MP4, preview GIF); raw recordings in media/raw/, not tracked
 ```

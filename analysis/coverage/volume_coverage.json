@@ -1,0 +1,748 @@
+{
+ "provenance": {
+  "timestamp": "2026-11-21T17:16:40-08:00",
+  "git_commit": "1c500e67521e1185d83013c98e5e7d17d8d22104",
+  "git_dirty": true,
+  "config_sha256": {
+   "layout.yaml": "c3b8edc73b19b0987eed257b49e7b9ad467b8ba784e1b51dc17ff1ce328656de",
+   "coverage.yaml": "254e06e662847f4a10556aa280f44d358e4b64947217feb381d08df1a72d2c6c"
+  },
+  "versions": {
+   "python": "3.14.4",
+   "numpy": "2.5.2",
+   "opencv": "5.0.0",
+   "platform": "Linux-7.0.0-43-generic-x86_64-with-glibc2.43"
+  },
+  "layout_measured": false,
+  "layout_inches": {
+   "units": "inch",
+   "measured": 0,
+   "mapping_date": "2026-11-14",
+   "volume": {
+    "min": [
+     0,
+     0,
+     0
+    ],
+    "max": [
+     61,
+     134,
+     119
+    ]
+   },
+   "aim": [
+    30,
+    67,
+    30
+   ],
+   "up": [
+    0,
+    0,
+    1
+   ],
+   "perch": [
+    30,
+    102,
+    50
+   ],
+   "cameras": [
+    {
+     "name": "A",
+     "serial": 33659,
+     "position": [
+      0,
+      0,
+      51.5
+     ]
+    },
+    {
+     "name": "B",
+     "serial": 33663,
+     "position": [
+      0,
+      134,
+      51.5
+     ]
+    },
+    {
+     "name": "C",
+     "serial": 33661,
+     "position": [
+      61,
+      134,
+      51.5
+     ]
+    },
+    {
+     "name": "D",
+     "serial": 33665,
+     "position": [
+      61,
+      0,
+      51.5
+     ]
+    },
+    {
+     "name": "E",
+     "serial": 33662,
+     "position": [
+      0,
+      40,
+      119
+     ]
+    },
+    {
+     "name": "F",
+     "serial": 33276,
+     "position": [
+      0,
+      102,
+      119
+     ]
+    },
+    {
+     "name": "G",
+     "serial": 33275,
+     "position": [
+      61,
+      102,
+      119
+     ]
+    },
+    {
+     "name": "H",
+     "serial": 33664,
+     "position": [
+      61,
+      40,
+      119
+     ]
+    },
+    {
+     "name": "I",
+     "serial": 33277,
+     "position": [
+      30,
+      0,
+      119
+     ]
+    },
+    {
+     "name": "J",
+     "serial": 33660,
+     "position": [
+      30,
+      134,
+      119
+     ]
+    }
+   ],
+   "camera_model": {
+    "model": "OptiTrack Prime 13W",
+    "resolution": [
+     1280,
+     1024
+    ],
+    "fov_deg": [
+     82,
+     70
+    ],
+    "intrinsics_source": "camera 33661",
+    "fx": 782.0,
+    "fy": 781.6,
+    "cx": 644.6,
+    "cy": 511.1,
+    "dist": [
+     -0.08,
+     0.02,
+     0.0005,
+     -0.0003,
+     -0.003
+    ]
+   }
+  },
+  "coverage_config": {
+   "grid": {
+    "spacing_in": 2.0,
+    "chunk_points": 100000
+   },
+   "min_cameras_seen": 3,
+   "min_angle_deg": 15.0,
+   "slices": {
+    "z_in": [
+     12,
+     30,
+     51.5,
+     80,
+     110
+    ],
+    "perch_plane": "y"
+   },
+   "output": {
+    "dir": "../analysis/coverage"
+   }
+  },
+  "units_internal": "mm",
+  "intrinsics": {
+   "fx": 782.0,
+   "fy": 781.6,
+   "cx": 644.6,
+   "cy": 511.1,
+   "dist": [
+    -0.08,
+    0.02,
+    0.0005,
+    -0.0003,
+    -0.003
+   ],
+   "resolution": [
+    1280,
+    1024
+   ]
+  },
+  "assumed": {
+   "poses": "layout.yaml positions, each camera looking at the aim point",
+   "intrinsics": "one shared model for all cameras (layout.yaml camera_model)",
+   "visibility": "geometric only: on sensor, in front, inside FOV. No occlusion, no detection range, no marker size or brightness",
+   "angle": "effective angle min(raw, 180 - raw) at the voxel centre"
+  }
+ },
+ "results": {
+  "voxels": 124620,
+  "count_histogram": [
+   13150,
+   8531,
+   5773,
+   6463,
+   3322,
+   4856,
+   6183,
+   7332,
+   13000,
+   10620,
+   45390
+  ],
+  "frac_count_0": 0.10552078318086984,
+  "frac_count_1": 0.06845610656395443,
+  "frac_count_2": 0.0463248274755256,
+  "frac_count_3plus": 0.7796982827796501,
+  "frac_seen": 0.7796982827796501,
+  "frac_good": 0.7796982827796501,
+  "frac_seen_poor_angle": 0.0,
+  "best_angle_deg_over_ge2": {
+   "p5": 63.2920697210121,
+   "p25": 83.51896665891479,
+   "p50": 87.48466964032932,
+   "p75": 89.02366460046251,
+   "p95": 89.82686088765725
+  },
+  "best_angle_deg_over_seen": {
+   "p5": 68.41249177497889,
+   "p25": 84.45303319572356,
+   "p50": 87.68487200912432,
+   "p75": 89.08373153264507,
+   "p95": 89.83678049320237
+  },
+  "median_angle_deg_over_ge2": {
+   "p5": 34.82170947210856,
+   "p25": 46.60301451724699,
+   "p50": 53.256053999180125,
+   "p75": 58.385907895894775,
+   "p95": 69.24518279999297
+  },
+  "per_camera_frac_visible": {
+   "A": 0.5628791526239769,
+   "B": 0.5636655432514845,
+   "C": 0.565045739046702,
+   "D": 0.5659203980099502,
+   "E": 0.6861739688653506,
+   "F": 0.697504413416787,
+   "G": 0.7004734392553362,
+   "H": 0.6906836783822822,
+   "I": 0.7695875461402664,
+   "J": 0.7695313753811587
+  },
+  "by_height": [
+   {
+    "z_in": 0.99,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 82.9640047830943
+   },
+   {
+    "z_in": 2.98,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 83.91902616480253
+   },
+   {
+    "z_in": 4.96,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 84.73419213327735
+   },
+   {
+    "z_in": 6.94,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 85.56098463606189
+   },
+   {
+    "z_in": 8.93,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 86.24212341937884
+   },
+   {
+    "z_in": 10.91,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 87.14172380537322
+   },
+   {
+    "z_in": 12.89,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 87.6999304731908
+   },
+   {
+    "z_in": 14.88,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 87.82370428798947
+   },
+   {
+    "z_in": 16.86,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.04460711548889
+   },
+   {
+    "z_in": 18.84,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.4762546924143
+   },
+   {
+    "z_in": 20.83,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.43084357332344
+   },
+   {
+    "z_in": 22.81,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.28520497358379
+   },
+   {
+    "z_in": 24.79,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.42733097695454
+   },
+   {
+    "z_in": 26.78,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.37132495372546
+   },
+   {
+    "z_in": 28.76,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.49548943257193
+   },
+   {
+    "z_in": 30.74,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.55268579669439
+   },
+   {
+    "z_in": 32.72,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.46744408171163
+   },
+   {
+    "z_in": 34.71,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.42108893874614
+   },
+   {
+    "z_in": 36.69,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.48317510438235
+   },
+   {
+    "z_in": 38.67,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.44671882331681
+   },
+   {
+    "z_in": 40.66,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.3590132879139
+   },
+   {
+    "z_in": 42.64,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.2476580143107
+   },
+   {
+    "z_in": 44.62,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.01212825146074
+   },
+   {
+    "z_in": 46.61,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 87.82865468743624
+   },
+   {
+    "z_in": 48.59,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 87.8865191242791
+   },
+   {
+    "z_in": 50.58,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.04347360038865
+   },
+   {
+    "z_in": 52.56,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.27438708649561
+   },
+   {
+    "z_in": 54.54,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.33110339042683
+   },
+   {
+    "z_in": 56.52,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.39764604086162
+   },
+   {
+    "z_in": 58.51,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.33658897995927
+   },
+   {
+    "z_in": 60.49,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.10187832234053
+   },
+   {
+    "z_in": 62.48,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 87.86448718776236
+   },
+   {
+    "z_in": 64.46,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 87.81132611360754
+   },
+   {
+    "z_in": 66.44,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.0495156335917
+   },
+   {
+    "z_in": 68.42,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.11780784832874
+   },
+   {
+    "z_in": 70.41,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.4515722155474
+   },
+   {
+    "z_in": 72.39,
+    "frac_ge2": 1.0,
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "best_angle_median_deg": 88.2659517410609
+   },
+   {
+    "z_in": 74.38,
+    "frac_ge2": 1.0,
+    "frac_seen": 0.9812229176697159,
+    "frac_good": 0.9812229176697159,
+    "best_angle_median_deg": 87.98237875722802
+   },
+   {
+    "z_in": 76.36,
+    "frac_ge2": 1.0,
+    "frac_seen": 0.9754453538757824,
+    "frac_good": 0.9754453538757824,
+    "best_angle_median_deg": 87.72641774759043
+   },
+   {
+    "z_in": 78.34,
+    "frac_ge2": 1.0,
+    "frac_seen": 0.9706307173808377,
+    "frac_good": 0.9706307173808377,
+    "best_angle_median_deg": 87.45187197636882
+   },
+   {
+    "z_in": 80.32,
+    "frac_ge2": 1.0,
+    "frac_seen": 0.9672604718343765,
+    "frac_good": 0.9672604718343765,
+    "best_angle_median_deg": 86.85434271469957
+   },
+   {
+    "z_in": 82.31,
+    "frac_ge2": 1.0,
+    "frac_seen": 0.9643716899374097,
+    "frac_good": 0.9643716899374097,
+    "best_angle_median_deg": 86.20074283414867
+   },
+   {
+    "z_in": 84.29,
+    "frac_ge2": 1.0,
+    "frac_seen": 0.9581126624939817,
+    "frac_good": 0.9581126624939817,
+    "best_angle_median_deg": 85.26523156813407
+   },
+   {
+    "z_in": 86.28,
+    "frac_ge2": 1.0,
+    "frac_seen": 0.9383726528647087,
+    "frac_good": 0.9383726528647087,
+    "best_angle_median_deg": 84.42643678693995
+   },
+   {
+    "z_in": 88.26,
+    "frac_ge2": 0.9908521906596052,
+    "frac_seen": 0.8406355320173327,
+    "frac_good": 0.8406355320173327,
+    "best_angle_median_deg": 84.87144385351951
+   },
+   {
+    "z_in": 90.24,
+    "frac_ge2": 0.9354838709677419,
+    "frac_seen": 0.6528647087144921,
+    "frac_good": 0.6528647087144921,
+    "best_angle_median_deg": 85.86462313493001
+   },
+   {
+    "z_in": 92.22,
+    "frac_ge2": 0.8064516129032258,
+    "frac_seen": 0.5214251324025037,
+    "frac_good": 0.5214251324025037,
+    "best_angle_median_deg": 85.07538830001508
+   },
+   {
+    "z_in": 94.21,
+    "frac_ge2": 0.6779008184882042,
+    "frac_seen": 0.43716899374097257,
+    "frac_good": 0.43716899374097257,
+    "best_angle_median_deg": 84.45260158515484
+   },
+   {
+    "z_in": 96.19,
+    "frac_ge2": 0.5989407799711122,
+    "frac_seen": 0.31343283582089554,
+    "frac_good": 0.31343283582089554,
+    "best_angle_median_deg": 81.48374620360471
+   },
+   {
+    "z_in": 98.17,
+    "frac_ge2": 0.5382763601348098,
+    "frac_seen": 0.16466056812710642,
+    "frac_good": 0.16466056812710642,
+    "best_angle_median_deg": 76.06967778973757
+   },
+   {
+    "z_in": 100.16,
+    "frac_ge2": 0.44246509388541166,
+    "frac_seen": 0.06210881078478575,
+    "frac_good": 0.06210881078478575,
+    "best_angle_median_deg": 73.57655765999641
+   },
+   {
+    "z_in": 102.14,
+    "frac_ge2": 0.30813673567645644,
+    "frac_seen": 0.0274434280211844,
+    "frac_good": 0.0274434280211844,
+    "best_angle_median_deg": 71.85655890973436
+   },
+   {
+    "z_in": 104.13,
+    "frac_ge2": 0.182956186807896,
+    "frac_seen": 0.006740491092922484,
+    "frac_good": 0.006740491092922484,
+    "best_angle_median_deg": 72.6943038949345
+   },
+   {
+    "z_in": 106.11,
+    "frac_ge2": 0.0693307655272027,
+    "frac_seen": 0.0,
+    "frac_good": 0.0,
+    "best_angle_median_deg": null
+   },
+   {
+    "z_in": 108.09,
+    "frac_ge2": 0.01059220028887819,
+    "frac_seen": 0.0,
+    "frac_good": 0.0,
+    "best_angle_median_deg": null
+   },
+   {
+    "z_in": 110.08,
+    "frac_ge2": 0.0,
+    "frac_seen": 0.0,
+    "frac_good": 0.0,
+    "best_angle_median_deg": null
+   },
+   {
+    "z_in": 112.06,
+    "frac_ge2": 0.0,
+    "frac_seen": 0.0,
+    "frac_good": 0.0,
+    "best_angle_median_deg": null
+   },
+   {
+    "z_in": 114.04,
+    "frac_ge2": 0.0,
+    "frac_seen": 0.0,
+    "frac_good": 0.0,
+    "best_angle_median_deg": null
+   },
+   {
+    "z_in": 116.03,
+    "frac_ge2": 0.0,
+    "frac_seen": 0.0,
+    "frac_good": 0.0,
+    "best_angle_median_deg": null
+   },
+   {
+    "z_in": 118.01,
+    "frac_ge2": 0.0,
+    "frac_seen": 0.0,
+    "frac_good": 0.0,
+    "best_angle_median_deg": null
+   }
+  ],
+  "perch": {
+   "at_in": [
+    30.0,
+    102.0,
+    50.0
+   ],
+   "count": 10,
+   "best_eff_deg": 87.18021418521425,
+   "cameras": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J"
+   ]
+  },
+  "slices": [
+   {
+    "plane": "z = 12 in",
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "file": "slice_z12in.png"
+   },
+   {
+    "plane": "z = 30 in",
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "file": "slice_z30in.png"
+   },
+   {
+    "plane": "z = 51.5 in",
+    "frac_seen": 1.0,
+    "frac_good": 1.0,
+    "file": "slice_z51p5in.png"
+   },
+   {
+    "plane": "z = 80 in",
+    "frac_seen": 0.9682233991333654,
+    "frac_good": 0.9682233991333654,
+    "file": "slice_z80in.png"
+   },
+   {
+    "plane": "z = 110 in",
+    "frac_seen": 0.0,
+    "frac_good": 0.0,
+    "file": "slice_z110in.png"
+   },
+   {
+    "plane": "y = 102 in",
+    "frac_seen": 0.7736559139784946,
+    "frac_good": 0.7736559139784946,
+    "file": "slice_y102in.png"
+   }
+  ]
+ },
+ "runtime_s": 0.86
+}

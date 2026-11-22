@@ -704,6 +704,8 @@ self-test still passes and the study would still print sub-0.1 mm numbers.
   override it warns at the start and end and records
   `layout_measured: false` in the JSON provenance. Refusing by default keeps
   a stale run from replacing the tracked `analysis/accuracy_study.json`.
+- `volume_coverage.py` gates the same way, before its self-test and before
+  writing anything (§11).
 - `corner_jitter.py` reads only `camera_model` from the file, through
   `read_yaml()`, so the flag doesn't concern it.
 
@@ -1559,6 +1561,77 @@ renamed).
 **What it does not do.** No latency measurement, no labelling, no
 triangulation, and nothing from `config/layout.yaml`. It records blobs and
 clocks for later steps to use.
+
+---
+
+## 11. Volume coverage
+
+**Files:** `python/volume_coverage.py`, `config/coverage.yaml`;
+`python/rig.py` (cameras, visibility), `python/accuracy_study.py`
+(heat-map drawing).
+
+**Question.** Which parts of the capture volume can the cameras see, by
+how many, and how well placed is the best pair of them to triangulate
+there? (Not the same thing as `lib/coverage.*`, the intrinsics capture
+grid.)
+
+**Pure geometry.** Nothing is random: no pixel noise, no Monte Carlo, no
+triangulation. Each voxel is computed once, so a 2 in grid over the volume
+takes about a second. `accuracy_study.py` (§8) answers a different
+question, error in mm under noise, and needs its Monte Carlo.
+
+**Grid.** Voxel *centres* of an even grid filling the volume, edge at most
+`grid.spacing_in`. Centres rather than the corner grid of §8, so every voxel
+stands for the same volume and a fraction of voxels is a fraction of the
+volume.
+
+**Per voxel**, in batches of `grid.chunk_points` (memory only; a self-test
+check shows results don't depend on it):
+
+- **Count:** `Rig.visible()` (§7) summed over cameras: in front, on the
+  sensor, inside the true field of view. The camera model is not
+  duplicated.
+- **Pair angle:** for every pair of cameras that both see the voxel (at
+  most 45), the angle at the voxel between the rays to the two camera
+  centres, `raw` in 0–180°.
+- **Effective angle** `min(raw, 180° − raw)`, 0–90°. A pair constrains
+  depth as sin(raw), so 120° is as good as 60°, and two cameras facing each
+  other (180°) are as degenerate as 0°: their rays are one line. Scoring by
+  the raw maximum would rank the worst geometry best.
+- **Best** (largest effective) and **median** effective angle over the
+  pairs, and the raw angle of the best pair; NaN under 2 cameras.
+- **`seen`** = count ≥ `min_cameras_seen`; **`good`** = seen and best ≥
+  `min_angle_deg`.
+
+**The pose boundary.** `load_rig()` is the only function that knows where
+poses come from. Today it calls `rig.load_layout()` (positions looking at
+the aim point). When extrinsics exist, it returns a `rig.Rig` built from
+their camera centres and world-to-camera rotations instead; `Rig` already
+takes arbitrary poses, and nothing downstream changes.
+
+**Gate and self-test.** The `measured` flag is handled as in §7. A full
+run runs the 9 self-test checks first and refuses to report on a failure:
+
+- two cameras at 60° and 120° on a circle round the point (the angle at the
+  point is their angle on the circle); facing cameras give effective 0°
+- three cameras at 0/40/100°: best 80° (raw 100°), median 60°
+- a point behind every camera has count 0
+- the layout's aim point is seen by every camera
+- the vectorised maths matches a per-point loop on 500 random points
+- batch size doesn't change any result
+- voxel centres lie inside the volume with edge ≤ spacing
+
+**Outputs** in `analysis/coverage/`: `volume_coverage.json` (fractions by
+camera count, `seen`, `good`, angle percentiles, per-camera share, a
+by-height table, the perch, provenance with the git commit and config
+hashes); `volume_coverage.npz` (axes and full per-voxel grids, including
+per-camera visibility); one PNG per slice, camera count beside best angle,
+drawn by `accuracy_study.panel()` (its `unit` argument labels the angle
+colour bar).
+
+**What it doesn't model.** Occlusion, detection range, marker size and
+brightness, and per-camera intrinsics: all ten share `layout.yaml`'s
+`camera_model`.
 
 ---
 

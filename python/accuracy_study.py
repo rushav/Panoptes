@@ -193,11 +193,12 @@ def _nice(v):
     return next(m * e for m in (1, 2, 2.5, 5, 10) if m * e >= v)
 
 
-def panel(values, n_obs, h_ax, v_ax, kind, vmax, flag, marks, box, labels):
+def panel(values, n_obs, h_ax, v_ax, kind, vmax, flag, marks, box, labels, unit="RMS mm"):
     """
     One map panel. values/n_obs are (nh, nv) on the h/v axes (mm).
     kind 'error' colours by value with BLUE; 'count' by observers with GREY.
     Cells under 2 observers are hatched; the < flag region is outlined.
+    unit labels the 'error' colour bar (volume_coverage.py passes degrees).
     """
     nh, nv = len(h_ax), len(v_ax)
     cell = max(3, int(round(600 / max(nv, nh))))
@@ -256,7 +257,7 @@ def panel(values, n_obs, h_ax, v_ax, kind, vmax, flag, marks, box, labels):
         img[T:T + bh, bx:bx + 14] = bar
         for f in np.linspace(0, 1, 6):
             _text(img, f"{f * vmax:.3g}", (bx + 20, T + bh - f * bh), 0.36, INK2)
-        _text(img, "RMS mm", (bx, T - 14), 0.42, INK2)
+        _text(img, unit, (bx, T - 14), 0.42, INK2)
         _text(img, f"clips at {vmax:.3g}", (bx, T + bh + 14), 0.34, INK2)
     else:
         C = len(marks)

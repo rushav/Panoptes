@@ -1870,6 +1870,10 @@ discrepancy, 2026-11-07 (§16).
       and `analysis/README.md` describe the old rig only.
     - `accuracy_study.py` refuses to run; `study.yaml`'s slice heights and
       perch plane need re-choosing with the new geometry.
+    - `volume_coverage.py` (ARCHITECTURE §11) refuses to run too; it has
+      run only with `--allow-unmeasured`, as a test of the tool, so no
+      coverage number for the mounted rig exists. `coverage.yaml`'s slice
+      heights need re-choosing with the new geometry.
     - Masks were re-learned after the remount: every file in
       `config/masks/` is dated 2026-11-14 12:45 (file contents; the verify
       result "residual: none" and the 135 s coverage walk are Rushav's

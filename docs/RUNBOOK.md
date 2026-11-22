@@ -109,9 +109,10 @@ venv interpreter only. Details: §10.
 .venv/bin/python python/board.py [board.yaml]
 .venv/bin/python python/triangulate.py [layout.yaml]
 .venv/bin/python python/accuracy_study.py [--allow-unmeasured] [layout.yaml] [study.yaml]
+.venv/bin/python python/volume_coverage.py [--self-test] [--allow-unmeasured] [layout.yaml] [coverage.yaml]
 .venv/bin/python python/test_arm_capture.py
 ```
-expect: `triangulate.py` prints `self-test: 12/12 passed` (plus `note: layout is unmeasured ...` while `config/layout.yaml` has `measured: 0`); `test_arm_capture.py` prints `186/186 passed`; the study prints `refusing to run: ... layout is UNMEASURED` and exits 1 while `measured: 0`, otherwise `Wrote .../accuracy_study.json`.
+expect: `triangulate.py` prints `self-test: 12/12 passed` (plus `note: layout is unmeasured ...` while `config/layout.yaml` has `measured: 0`); `test_arm_capture.py` prints `186/186 passed`; the study prints `refusing to run: ... layout is UNMEASURED` and exits 1 while `measured: 0`, otherwise `Wrote .../accuracy_study.json`; `volume_coverage.py --self-test` prints `self-test: 9/9 passed`, and a full run refuses the same way while `measured: 0`, otherwise prints `Wrote .../analysis/coverage/volume_coverage.json`.
 
 ### 1.10 Git
 Changes are left uncommitted for review. Details: §11.
@@ -737,6 +738,7 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
 .venv/bin/python python/board.py [board.yaml]
 .venv/bin/python python/triangulate.py [layout.yaml]
 .venv/bin/python python/accuracy_study.py [--allow-unmeasured] [layout.yaml] [study.yaml]
+.venv/bin/python python/volume_coverage.py [--self-test] [--allow-unmeasured] [layout.yaml] [coverage.yaml]
 .venv/bin/python python/test_arm_capture.py
 ```
 
@@ -748,6 +750,7 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
 | `board.py` | Prints the board a yaml describes (default `config/charuco_board.yaml`), or the error |
 | `triangulate.py` | Triangulation self-test, 12 checks; exit 0 only if all pass. Prints `note: layout is unmeasured ...` when the layout has `measured: 0`; the checks still apply |
 | `accuracy_study.py` | Synthetic study (defaults `config/layout.yaml`, `config/study.yaml`); writes `analysis/` PNGs, `accuracy_study.json` and `.npz`; refuses to run if the self-test fails, or if the layout has `measured: 0`. `--allow-unmeasured` runs on an unmeasured layout anyway, warns, and records `layout_measured: false` in the JSON |
+| `volume_coverage.py` | Camera count and triangulation angle per voxel over the volume, geometry only (defaults `config/layout.yaml`, `config/coverage.yaml`). Prints the share of the volume seen by 0/1/2/3+ cameras, `seen` (≥ `min_cameras_seen`), `good` (seen and a camera pair ≥ `min_angle_deg`), angle percentiles, a by-height table and the perch; writes `analysis/coverage/volume_coverage.json`, `.npz` grids, one PNG per slice and `slices_overview.png`. `--self-test`: 9 checks only, exit 0 only if all pass; a full run runs them first and refuses to report if any fails. Refuses a layout with `measured: 0` unless `--allow-unmeasured`, which warns, marks the PNG titles `STALE LAYOUT` and records `layout_measured: false` |
 | `test_arm_capture.py` | Arm session tests, no arm or camera: a simulated camera on the arm and a stand-in capture; replays the 2026-10-28 abort from `tests/fixtures/session_arm_33664_20261028_185017.json` and reads the corner run in `..._191025.json`; aiming and orbit on a second, rig-like geometry; joint moves, saved poses, the wrist check; teach and taught sessions (pose-space grid, IK, families and the hub); joint limits from `config/arm.yaml`, asymmetric and null; continuous joints the short way; the abort report; joint moves with and without `--speed-constraint`, and the measured joint rate; grid corners from taught joints and the IK summary; replays the 2026-11-02 taught sessions `..._20261102_150512.json` and `..._175213.json` through the mid-near-far visit order and the reach-edge rule; abandoning a viewpoint when the board isn't back (17:52's ending, simulated) and at the reach edge; a capture stall that recovers and one that doesn't; cable winding (`cable_window_deg`, the long way round, long moves as waypoints, unwinding before a pan, net zero turns at the end, against a stand-in arm that always turns the short way); 186 checks, exit 0 only if all pass |
 
 1. Run from the repo root with `.venv/bin/python` only. Each script prints the
@@ -760,7 +763,23 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
    run `test_arm_capture.py`; all 186 must pass.
 3. `analysis/*.png` and `.npz` are regenerated and gitignored;
    `analysis/accuracy_study.json` is tracked. Record new numbers in FINDINGS.
-4. `config/layout.yaml` carries `measured: 0` or `1`. Leave it at 0 until
+   `analysis/coverage/*.png` and `.npz` are gitignored too.
+4. **Volume coverage settings** are in `config/coverage.yaml` (inches):
+   - `grid.spacing_in`: voxel edge, an upper bound (default 2). Each axis
+     is split evenly, so the printed edge can be slightly smaller.
+   - `grid.chunk_points`: voxels per batch; memory only, results are
+     identical at any value.
+   - `min_cameras_seen`: cameras needed for a voxel to count as seen (3).
+   - `min_angle_deg`: effective angle, 0–90, a camera pair needs for
+     `good` (15).
+   - `slices.z_in`: horizontal heat-map heights; `slices.perch_plane`: the
+     axis normal to the vertical slice through the perch (`"y"`).
+   - `output.dir`: relative to the config file's directory.
+
+   When the rig is re-measured, edit `config/layout.yaml`, set
+   `measured: 1` and rerun without `--allow-unmeasured`; re-choose
+   `slices.z_in` for the new geometry.
+5. `config/layout.yaml` carries `measured: 0` or `1`. Leave it at 0 until
    every position, the volume, the aim and the perch in the file have been
    re-measured or taken from extrinsics; then set 1 and re-run the study.
    While it is 0:
@@ -776,8 +795,9 @@ Bands `near` / `mid` / `far` come from `size` (px per square) against
 - **0 corners on every frame.** The board's `legacy_pattern` doesn't match
   the physical board (FINDINGS §9). Check the board each script prints.
 - **`accuracy_study.py` exits with "refusing to run: ... layout is
-  UNMEASURED".** The layout has `measured: 0` (item 4 above). That is the
-  intended state until the rig is re-measured.
+  UNMEASURED".** The layout has `measured: 0` (item 5 above). That is the
+  intended state until the rig is re-measured. `volume_coverage.py` prints
+  the same message for the same reason.
 - **`accuracy_study.py` exits with "self-test failed".** Run `triangulate.py`
   alone and read which check failed. The study refuses to report numbers from
   a broken triangulator.
@@ -1404,7 +1424,7 @@ Every camera has been off its rig position, so every mask is wrong
 
 1. **Remount** each camera at its rig position (name and serial in
    `config/layout.yaml`, top view in `docs/panoptes_camera_layout.svg`; the
-   positions in the file are not measured, see §10 item 4),
+   positions in the file are not measured, see §10 item 5),
    filter in, ring at 15. Check all ten come up (§4):
    `src/01_discover/build/discover` prints `settled on 10 camera(s)`, and
    every `src/05_identify/build/identify` tile shows fps > 0.
